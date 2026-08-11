@@ -1,0 +1,42 @@
+name: Refresh opportunity feed
+
+on:
+  schedule:
+    # 13:00 UTC daily (~8am US Central) — adjust to taste.
+    - cron: "0 13 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r scraper/requirements.txt
+
+      - id: scrape
+        run: python scraper/scrape.py
+        continue-on-error: true # a broken source shouldn't block a partial, honest update
+
+      - name: Commit updated feed if anything changed
+        run: |
+          git config user.name "opportunity-feed-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/opportunities.json FEED.md
+          if git diff --cached --quiet; then
+            echo "No change in tracked postings."
+          else
+            git commit -m "Refresh opportunity feed"
+            git push
+          fi
+
+      - name: Fail the run if any source errored
+        if: steps.scrape.outcome == 'failure'
+        run: exit 1

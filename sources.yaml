@@ -1,0 +1,64 @@
+# Sources the scraper polls. Each entry is one company's public ATS job
+# board. See scraper/connectors/ for what each `ats` value supports, and
+# docs/adding-a-source.md for how to find a new company's token.
+#
+# domain_native: true means this company's whole business already is
+# ops/logistics/supply chain (a freight broker, a logistics platform) — its
+# internship postings are kept without requiring a domain keyword in the
+# title, since e.g. "Uber Freight Internship 2026" doesn't say "logistics".
+# Leave it unset (false) for large diversified companies (industrials,
+# CPG, retail) where most postings are unrelated and the keyword filter is
+# what keeps the feed relevant.
+
+sources:
+  # --- verified working (Greenhouse) ---
+  - company: Koch Industries
+    ats: greenhouse
+    token: koch
+    category: Industrial Manufacturing
+
+  - company: Flexport
+    ats: greenhouse
+    token: flexport
+    category: Logistics & Transportation
+    domain_native: true
+
+  - company: project44
+    ats: greenhouse
+    token: project44
+    category: Logistics & Transportation
+    domain_native: true
+
+  - company: FourKites
+    ats: greenhouse
+    token: fourkites
+    category: Logistics & Transportation
+    domain_native: true
+
+  - company: Uber Freight
+    ats: greenhouse
+    token: uberfreight
+    category: Logistics & Transportation
+    domain_native: true
+
+  - company: Samsara
+    ats: greenhouse
+    token: samsara
+    category: Industrial Manufacturing
+
+  # --- verified working (Lever) ---
+  - company: Loadsmart
+    ats: lever
+    token: loadsmart
+    category: Logistics & Transportation
+    domain_native: true
+
+  # --- known to need per-company setup (Workday, Oracle Recruiting Cloud,
+  # SuccessFactors, iCIMS, Taleo) — most large industrials (Caterpillar,
+  # Cummins, Honeywell, P&G, UPS, PepsiCo, GE, Unilever...) run one of
+  # these. No stable public JSON API without the exact tenant/site slug,
+  # which varies per company and isn't guessable — see
+  # docs/adding-a-source.md for how to find it in ~2 minutes with browser
+  # devtools. Confirmed while building this: Honeywell runs Oracle
+  # Recruiting Cloud, not Workday — don't assume the ATS from the company's
+  # size or industry.
