@@ -1,22 +1,33 @@
-# Sources the scraper polls, in two tiers — see docs/sourcing-model.md for
-# the reasoning behind the split.
+# Sources the scraper polls, in three tiers — see docs/sourcing-model.md
+# for the reasoning behind the split.
 #
-# TIER 1 — AGGREGATORS: one entry, many companies. No per-company list to
-# maintain; new employers show up automatically as the aggregator indexes
-# them. This is the primary, general-purpose sourcing mechanism.
+# TIER 1 — AGGREGATORS: one entry, many companies, no per-company research
+# at all. New employers show up automatically as the aggregator indexes
+# them. The primary, general-purpose sourcing mechanism.
 #
-# TIER 2 — TARGETED: one entry per company's own ATS board. Higher
-# precision and freshness for a SPECIFIC company you care about (e.g. one
-# from companies.md you're seriously targeting), but doesn't scale — it's
-# a supplement, not the main strategy.
+# TIER 1.5 — GENERIC JSON-LD HARVESTER (`ats: jsonld`): still one entry per
+# company (needs that company's sitemap URL + a URL pattern), but the
+# CONNECTOR CODE is generic — the same jsonld.py works on any career site
+# that embeds schema.org/JobPosting data, regardless of which ATS vendor
+# is underneath. This is what covers a company an aggregator missed
+# without writing a new vendor-specific connector class for it.
+#
+# TIER 2 — VENDOR-SPECIFIC: one entry per company, AND the connector code
+# itself is tied to that company's specific ATS vendor (Greenhouse/Lever/
+# Workday). Highest precision, but the least general of the three —
+# reach for Tier 1.5 first for a new company unless it happens to already
+# use one of the three vendors these connectors cover.
 #
 # domain_native: true skips the domain-keyword check in filters.py — for
-# TIER 1 entries because the aggregator's own query/category already did
-# that filtering; for TIER 2 entries because the company's whole business
-# already is logistics/supply chain (e.g. "Uber Freight Internship 2026"
-# never says "logistics" in the title). Leave it unset for a TIER 2
-# diversified company (industrials, CPG, retail) where the keyword filter
-# is what keeps the feed relevant instead of every posting on the board.
+# aggregator entries because the query/category already did that
+# filtering (only set it if you've confirmed the category is actually
+# narrow enough — see the Muse entry's own comment for a case where it
+# wasn't); for a single-company entry because that company's whole
+# business already is logistics/supply chain (e.g. "Uber Freight
+# Internship 2026" never says "logistics" in the title). Leave it unset
+# for a diversified company (industrials, CPG, retail) where the keyword
+# filter is what keeps the feed relevant instead of every posting on the
+# board.
 
 sources:
   # ============================= TIER 1 =============================
@@ -46,6 +57,30 @@ sources:
   #   # Actions), never committed here. Uncomment once you have them —
   #   # left commented out because it's untested without credentials, not
   #   # because it doesn't work.
+
+  # ============================ TIER 1.5 =============================
+  - company: UPS
+    ats: jsonld
+    sitemap_url: https://www.jobs-ups.com/us/en/sitemap2.xml
+    url_pattern: "/job/"
+    category: Logistics & Transportation
+    max_pages: 80
+    domain_native: true
+    # domain_native is correct here (unlike the Muse aggregator entry
+    # above) for the same reason it's set on Uber Freight/Flexport in
+    # Tier 2: UPS's whole business already IS logistics/transportation,
+    # so an intern posting there shouldn't need the literal word
+    # "logistics" in its text — confirmed live that without this flag,
+    # the one real intern posting found ("Seasonal HR Intern") was
+    # filtered out because its own text never says "logistics" or
+    # "supply chain", despite the employer obviously being one.
+    #
+    # Phenom-People-hosted career site — not Greenhouse/Lever/Workday/
+    # Oracle, none of which this project's other connectors would have
+    # caught. Confirmed live: individual job pages carry full
+    # schema.org/JobPosting JSON-LD. sitemap2.xml (not sitemap1.xml,
+    # which is category/landing pages only) is what actually lists
+    # individual jobs — found by checking both, see docs/sourcing-model.md.
 
   # ============================= TIER 2 =============================
   # Verified working (Greenhouse):
@@ -90,13 +125,14 @@ sources:
     category: Logistics & Transportation
     domain_native: true
 
-  # Known to need per-company setup (Workday, Oracle Recruiting Cloud,
-  # SuccessFactors, iCIMS, Taleo) — most large industrials (Caterpillar,
-  # Cummins, Honeywell, P&G, UPS, PepsiCo, GE, Unilever...) run one of
-  # these. No stable public JSON API without the exact tenant/site slug,
-  # which varies per company and isn't guessable — see
-  # docs/adding-a-source.md for how to find it in ~2 minutes with browser
-  # devtools. Confirmed while building this: Honeywell runs Oracle
-  # Recruiting Cloud, not Workday — don't assume the ATS from the
-  # company's size or industry. Given Tier 1 now exists, adding these one
-  # by one is optional polish, not required for coverage.
+  # Still need setup, Workday specifically (Oracle Recruiting Cloud/
+  # SuccessFactors/iCIMS/Taleo companies should try Tier 1.5's jsonld
+  # connector first — check for a job sitemap before assuming you need a
+  # new vendor-specific connector class): Caterpillar, Cummins, Honeywell,
+  # P&G, PepsiCo, GE, Unilever all still need either a Workday
+  # tenant/site/wd_host (docs/adding-a-source.md) or a jsonld sitemap
+  # entry (docs/sourcing-model.md) — not yet checked which. Confirmed
+  # while building this: Honeywell runs Oracle Recruiting Cloud, not
+  # Workday — don't assume the ATS from the company's size or industry.
+  # Given Tier 1 + Tier 1.5 now exist, adding these one by one is
+  # optional polish, not required for coverage.

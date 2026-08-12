@@ -4,6 +4,7 @@ from .lever import LeverConnector
 from .workday import WorkdayConnector
 from .muse import MuseConnector
 from .adzuna import AdzunaConnector
+from .jsonld import JsonLdConnector
 
 CONNECTORS = {
     "greenhouse": GreenhouseConnector,
@@ -11,6 +12,7 @@ CONNECTORS = {
     "workday": WorkdayConnector,
     "muse": MuseConnector,
     "adzuna": AdzunaConnector,
+    "jsonld": JsonLdConnector,
 }
 
 __all__ = ["Posting", "Connector", "CONNECTORS"]

@@ -28,7 +28,9 @@ Two things beyond the static research:
   way (and what existing open-source projects do instead), and
   `docs/adding-a-source.md` to add a targeted company.
 - `scraper/` — the actual scraper (`scrape.py` + one connector per source
-  type: `muse`, `adzuna`, `greenhouse`, `lever`, `workday`). Run it with
+  type: `muse`, `adzuna` — aggregators; `jsonld` — generic schema.org
+  harvester, works on any career site regardless of ATS vendor;
+  `greenhouse`, `lever`, `workday` — vendor-specific). Run it with
   `python scraper/scrape.py` (needs `pip install -r scraper/requirements.txt`
   first).
 - `FEED.md` — auto-generated, human-readable current postings. Don't hand-edit.

@@ -1,4 +1,4 @@
-# Why two tiers, not one hardcoded list
+# Why three tiers, not one hardcoded list
 
 The first version of this scraper was one connector per named company —
 add Caterpillar, add Cummins, add P&G, keep going. That doesn't scale and
@@ -28,7 +28,7 @@ data before building further:
 
 ## What this project uses
 
-Two tiers, in `sources.yaml`:
+Three tiers, in `sources.yaml`, in the order to reach for them:
 
 **Tier 1 — aggregators.** One entry, many companies, no list to maintain.
 Currently: **The Muse's public API** (`scraper/connectors/muse.py`), which
@@ -39,17 +39,30 @@ GE Vernova, and Walmart internships with zero per-company setup. Adzuna
 aggregator, gated behind a free API key the repo doesn't ship (see the
 commented-out entry in `sources.yaml`).
 
-**Tier 2 — targeted per-company connectors.** Still useful, not replaced:
-higher precision for a company you're specifically targeting, and a
-fallback for anything an aggregator's own coverage misses. This is
-`scraper/connectors/{greenhouse,lever,workday}.py` plus
-`docs/adding-a-source.md`.
+**Tier 1.5 — generic schema.org/JobPosting harvester**
+(`scraper/connectors/jsonld.py`), openroles' actual technique: read a
+company's job sitemap for individual posting URLs, fetch each, and pull
+the `JobPosting` block out of its embedded JSON-LD. Still one entry per
+company (needs that company's sitemap URL), but the *connector code* is
+generic — it doesn't care which ATS vendor is underneath, unlike
+Greenhouse/Lever/Workday which each need their own connector class.
+Confirmed live on UPS's Phenom-People-hosted career site — an ATS none of
+this project's other connectors support — including a real "Seasonal HR
+Intern" posting. This is the thing to reach for first when adding a new
+company that isn't on Greenhouse/Lever/Workday, before writing a new
+vendor-specific connector: check `<company>/robots.txt` for a sitemap,
+find the one listing individual job URLs (not just category/landing
+pages — UPS publishes both, only one is useful), and see if a job page
+has `<script type="application/ld+json">...JobPosting...`.
 
-A generic schema.org/JobPosting harvester (openroles' actual technique)
-would be the natural Tier 1.5 — broader than any single aggregator API,
-works on any career page regardless of ATS vendor — but wasn't built here;
-it's a real follow-up, not a rejected idea, if Tier 1's two APIs turn out
-not to cover enough ground.
+**Tier 2 — vendor-specific per-company connectors.** Still useful, not
+replaced: highest precision for a company you're specifically targeting,
+and a fallback for the (rare) company that neither an aggregator indexes
+nor exposes a job sitemap. This is
+`scraper/connectors/{greenhouse,lever,workday}.py` plus
+`docs/adding-a-source.md`. Reach for Tier 1.5 before writing a new one of
+these — it only pays off when a company happens to already run
+Greenhouse, Lever, or Workday.
 
 ## A concrete lesson from building Tier 1
 
