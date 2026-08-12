@@ -8,10 +8,18 @@ INTERN_KEYWORDS = [
     "summer analyst",
 ]
 
+# Deliberately no bare "operations" — confirmed live against the Muse
+# aggregator that it's too generic to use as a domain signal: it matched
+# "Hospitality Operations" at a hotel company and "Business Operations
+# Project Intern" at TikTok just as readily as anything industrial, and
+# dropping it (60 -> 14 relevant Muse results in that test) cost zero
+# genuine hits since every real one also matched a more specific term
+# below. Compound phrases that happen to contain "operations" (e.g.
+# "manufacturing operations") stay, since those are specific rather than
+# generic.
 DOMAIN_KEYWORDS = [
     "supply chain",
     "logistics",
-    "operations",
     "procurement",
     "sourcing",
     "warehouse",

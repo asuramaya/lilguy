@@ -1,17 +1,54 @@
-# Sources the scraper polls. Each entry is one company's public ATS job
-# board. See scraper/connectors/ for what each `ats` value supports, and
-# docs/adding-a-source.md for how to find a new company's token.
+# Sources the scraper polls, in two tiers — see docs/sourcing-model.md for
+# the reasoning behind the split.
 #
-# domain_native: true means this company's whole business already is
-# ops/logistics/supply chain (a freight broker, a logistics platform) — its
-# internship postings are kept without requiring a domain keyword in the
-# title, since e.g. "Uber Freight Internship 2026" doesn't say "logistics".
-# Leave it unset (false) for large diversified companies (industrials,
-# CPG, retail) where most postings are unrelated and the keyword filter is
-# what keeps the feed relevant.
+# TIER 1 — AGGREGATORS: one entry, many companies. No per-company list to
+# maintain; new employers show up automatically as the aggregator indexes
+# them. This is the primary, general-purpose sourcing mechanism.
+#
+# TIER 2 — TARGETED: one entry per company's own ATS board. Higher
+# precision and freshness for a SPECIFIC company you care about (e.g. one
+# from companies.md you're seriously targeting), but doesn't scale — it's
+# a supplement, not the main strategy.
+#
+# domain_native: true skips the domain-keyword check in filters.py — for
+# TIER 1 entries because the aggregator's own query/category already did
+# that filtering; for TIER 2 entries because the company's whole business
+# already is logistics/supply chain (e.g. "Uber Freight Internship 2026"
+# never says "logistics" in the title). Leave it unset for a TIER 2
+# diversified company (industrials, CPG, retail) where the keyword filter
+# is what keeps the feed relevant instead of every posting on the board.
 
 sources:
-  # --- verified working (Greenhouse) ---
+  # ============================= TIER 1 =============================
+  - company: The Muse (aggregator — Business Operations)
+    ats: muse
+    category: Business Operations
+    category_label: Business Operations (aggregated)
+    level: Internship
+    # domain_native deliberately NOT set here, unlike a Tier 2 freight
+    # broker: confirmed live that Muse's own "Business Operations" category
+    # is broader than this project's scope (it pulled in hotel-admin and
+    # account-management roles alongside real supply-chain/procurement
+    # ones) — so the standard domain-keyword filter still applies on top
+    # of it rather than trusting the category label as sufficient on its
+    # own. No API key needed either way. Confirmed live: surfaces real
+    # postings across companies never hand-added to this file (Walmart,
+    # Jabil, Hitachi Energy...).
+
+  # - company: Adzuna (aggregator — supply chain / logistics / ops intern)
+  #   ats: adzuna
+  #   what: "supply chain intern OR logistics intern OR operations intern OR procurement intern"
+  #   category_label: Supply Chain / Logistics / Ops (aggregated)
+  #   country: us
+  #   domain_native: true
+  #   # Needs YOUR OWN free key: https://developer.adzuna.com/ — set
+  #   # ADZUNA_APP_ID / ADZUNA_APP_KEY as env vars (repo secrets in GitHub
+  #   # Actions), never committed here. Uncomment once you have them —
+  #   # left commented out because it's untested without credentials, not
+  #   # because it doesn't work.
+
+  # ============================= TIER 2 =============================
+  # Verified working (Greenhouse):
   - company: Koch Industries
     ats: greenhouse
     token: koch
@@ -46,19 +83,20 @@ sources:
     token: samsara
     category: Industrial Manufacturing
 
-  # --- verified working (Lever) ---
+  # Verified working (Lever):
   - company: Loadsmart
     ats: lever
     token: loadsmart
     category: Logistics & Transportation
     domain_native: true
 
-  # --- known to need per-company setup (Workday, Oracle Recruiting Cloud,
+  # Known to need per-company setup (Workday, Oracle Recruiting Cloud,
   # SuccessFactors, iCIMS, Taleo) — most large industrials (Caterpillar,
   # Cummins, Honeywell, P&G, UPS, PepsiCo, GE, Unilever...) run one of
   # these. No stable public JSON API without the exact tenant/site slug,
   # which varies per company and isn't guessable — see
   # docs/adding-a-source.md for how to find it in ~2 minutes with browser
   # devtools. Confirmed while building this: Honeywell runs Oracle
-  # Recruiting Cloud, not Workday — don't assume the ATS from the company's
-  # size or industry.
+  # Recruiting Cloud, not Workday — don't assume the ATS from the
+  # company's size or industry. Given Tier 1 now exists, adding these one
+  # by one is optional polish, not required for coverage.

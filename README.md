@@ -21,13 +21,16 @@ Two things beyond the static research:
 - `companies.md` — the full curated target list (~25 companies), grouped by
   category, with what's known about each program's size/structure/timing.
   This is the human research list — broader than what the scraper covers.
-- `sources.yaml` — the subset of those companies (plus a few logistics-tech
-  ones) with a working scraper connector. See `docs/adding-a-source.md` to
-  add more — most large industrials run an ATS (Workday, Oracle Recruiting
-  Cloud, SuccessFactors...) that needs a quick per-company lookup first.
-- `scraper/` — the actual scraper (`scrape.py` + one connector per ATS
-  type). Run it with `python scraper/scrape.py` (needs
-  `pip install -r scraper/requirements.txt` first).
+- `sources.yaml` — two tiers: broad **aggregators** (The Muse, optionally
+  Adzuna) that cover many companies with zero per-company setup, plus a
+  handful of **targeted** per-company connectors for higher precision on
+  specific employers. See `docs/sourcing-model.md` for why it's split this
+  way (and what existing open-source projects do instead), and
+  `docs/adding-a-source.md` to add a targeted company.
+- `scraper/` — the actual scraper (`scrape.py` + one connector per source
+  type: `muse`, `adzuna`, `greenhouse`, `lever`, `workday`). Run it with
+  `python scraper/scrape.py` (needs `pip install -r scraper/requirements.txt`
+  first).
 - `FEED.md` — auto-generated, human-readable current postings. Don't hand-edit.
 - `data/opportunities.json` — the machine-readable version of the same feed,
   with `first_seen` dates so you can see what's new.

@@ -23,6 +23,12 @@ jobs:
 
       - id: scrape
         run: python scraper/scrape.py
+        env:
+          # Only needed if you've uncommented the Adzuna entry in
+          # sources.yaml — add these as repo secrets (Settings -> Secrets
+          # and variables -> Actions), never commit real values.
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
         continue-on-error: true # a broken source shouldn't block a partial, honest update
 
       - name: Commit updated feed if anything changed
