@@ -53,8 +53,23 @@ custom web components rather than standard `<input>` elements, so the
 label/attribute matching this script uses doesn't find them. Extending
 coverage to Workday is a legitimate follow-up (inspect one real Workday
 application form's DOM and write selectors against its actual structure,
-the same way `docs/adding-a-source.md` describes for the scraper side) but
-wasn't built here rather than ship something that silently does nothing.
+the same way `docs/adding-a-source.md` describes for the scraper side).
+
+Actively attempted, not just deferred: this project now has a real
+Workday source (Unilever, `sources.yaml`), so Workday coverage here would
+close a real gap. Blocked on tooling, not effort — building it requires
+inspecting a live Workday application form's actual DOM in a browser
+session, which wasn't available when this was attempted. General
+knowledge suggests Workday forms consistently expose `data-automation-id`
+attributes (a stable pattern used across Workday-hosted sites, referenced
+in various public write-ups on scripting Workday applications) as a more
+reliable selector base than label-text matching — but that's an
+unverified claim from training knowledge, not something confirmed against
+a real page, and this project's own standard (see `CONTRIBUTING.md`) is
+that a claim like that doesn't ship until it's actually been checked.
+Next session with browser access: open a real Workday application page,
+confirm or refute the `data-automation-id` pattern, then extend
+`autofill.user.js` with a Workday-specific field matcher.
 
 Radio buttons and checkboxes (common for yes/no work-authorization
 questions) are intentionally skipped rather than guessed at — matching the
