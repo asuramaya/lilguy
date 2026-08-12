@@ -1,0 +1,54 @@
+# This fork's default filter, applied to data/all_postings.json to produce
+# FEED.md. It is NOT the only lens the raw data supports — copy this file
+# (e.g. `my-filters.yaml`), edit the lists below to whatever you actually
+# care about (software engineering, marketing, finance, healthcare...),
+# and run:
+#
+#   python scraper/build_feed.py --filters my-filters.yaml --out MY_FEED.md
+#
+# No re-scraping needed — data/all_postings.json already holds every
+# internship-shaped posting (title says "intern"/"internship"/"co-op") from
+# every source in sources.yaml, completely unfiltered by domain. This file
+# is just one particular lens on that same shared dataset.
+
+name: Operations / Logistics / Supply Chain
+
+# A posting passes if its title+description matches ANY of these
+# (case-insensitive, whole-word). Deliberately no bare "operations" —
+# confirmed live it's too generic (matched hotel-ops and TikTok
+# account-management postings via the Muse aggregator, and matched
+# Samsara's own "About Us" boilerplate mentioning "transportation" as an
+# industry they serve, on a Software Engineering posting) — dropping it
+# cost zero genuine hits since every real one also matched a more specific
+# term below.
+keywords_any:
+  - supply chain
+  - logistics
+  - procurement
+  - sourcing
+  - warehouse
+  - distribution
+  - inventory
+  - fulfillment
+  - manufacturing operations
+  - transportation
+  - freight
+
+# A posting is dropped if it matches any of these, even if it also
+# matched keywords_any or is a trusted company. Empty by default — add
+# terms here as you find noise specific to your own filter.
+exclude_keywords: []
+
+# Postings from these companies always pass, regardless of keywords_any —
+# their entire business already IS the target domain, so their own
+# postings often don't repeat the domain's own vocabulary (e.g. "Uber
+# Freight Internship 2026" never says "logistics"). Keep this in sync with
+# reality, not aspiration — a company only belongs here if you've actually
+# checked what it does.
+trusted_companies:
+  - Flexport
+  - project44
+  - FourKites
+  - Uber Freight
+  - Loadsmart
+  - UPS

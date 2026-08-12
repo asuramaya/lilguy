@@ -18,45 +18,43 @@
 # reach for Tier 1.5 first for a new company unless it happens to already
 # use one of the three vendors these connectors cover.
 #
-# domain_native: true skips the domain-keyword check in filters.py — for
-# aggregator entries because the query/category already did that
-# filtering (only set it if you've confirmed the category is actually
-# narrow enough — see the Muse entry's own comment for a case where it
-# wasn't); for a single-company entry because that company's whole
-# business already is logistics/supply chain (e.g. "Uber Freight
-# Internship 2026" never says "logistics" in the title). Leave it unset
-# for a diversified company (industrials, CPG, retail) where the keyword
-# filter is what keeps the feed relevant instead of every posting on the
-# board.
+# NOTE what's NOT here: any domain filtering (ops/logistics/supply-chain
+# or otherwise). This file's only job is "what internship-shaped postings
+# exist" — data/all_postings.json ends up with every one of them,
+# regardless of industry. WHICH of those you actually want is a filters.yaml
+# question (or your own copy of it), not a sources.yaml one — see
+# docs/sourcing-model.md and filters.yaml's own comments.
 
 sources:
   # ============================= TIER 1 =============================
-  - company: The Muse (aggregator — Business Operations)
+  - company: The Muse (aggregator — all categories)
     ats: muse
-    category: Business Operations
-    category_label: Business Operations (aggregated)
     level: Internship
-    # domain_native deliberately NOT set here, unlike a Tier 2 freight
-    # broker: confirmed live that Muse's own "Business Operations" category
-    # is broader than this project's scope (it pulled in hotel-admin and
-    # account-management roles alongside real supply-chain/procurement
-    # ones) — so the standard domain-keyword filter still applies on top
-    # of it rather than trusting the category label as sufficient on its
-    # own. No API key needed either way. Confirmed live: surfaces real
-    # postings across companies never hand-added to this file (Walmart,
-    # Jabil, Hitachi Energy...).
+    max_pages: 95
+    # No API key needed, no category restriction — pulls every
+    # internship-level posting The Muse has indexed (~8000 as of when
+    # this was written). max_pages is capped at 95, NOT for politeness —
+    # confirmed live that the API itself starts returning HTTP 400 for
+    # page >= ~96-99 regardless of total result count (tested: page 95
+    # -> 200, page 100 -> 400). That's an undocumented depth limit on
+    # their side, not a config error, so don't "fix" a future 400 here by
+    # raising max_pages past ~95. Confirmed live: surfaces real postings
+    # across companies never hand-added to this file (Walmart, Jabil,
+    # Hitachi Energy...) — and now spans every industry The Muse covers,
+    # not just ones this fork's own filters.yaml cares about, since that
+    # narrowing happens downstream.
 
-  # - company: Adzuna (aggregator — supply chain / logistics / ops intern)
+  # - company: Adzuna (aggregator — broad job search)
   #   ats: adzuna
-  #   what: "supply chain intern OR logistics intern OR operations intern OR procurement intern"
-  #   category_label: Supply Chain / Logistics / Ops (aggregated)
+  #   what: "intern OR internship"
   #   country: us
-  #   domain_native: true
   #   # Needs YOUR OWN free key: https://developer.adzuna.com/ — set
   #   # ADZUNA_APP_ID / ADZUNA_APP_KEY as env vars (repo secrets in GitHub
   #   # Actions), never committed here. Uncomment once you have them —
   #   # left commented out because it's untested without credentials, not
-  #   # because it doesn't work.
+  #   # because it doesn't work. `what` is intentionally broad here for
+  #   # the same reason the Muse entry above dropped its category filter —
+  #   # narrow with your own filters.yaml, not by narrowing the source.
 
   # ============================ TIER 1.5 =============================
   - company: UPS
@@ -65,16 +63,6 @@ sources:
     url_pattern: "/job/"
     category: Logistics & Transportation
     max_pages: 80
-    domain_native: true
-    # domain_native is correct here (unlike the Muse aggregator entry
-    # above) for the same reason it's set on Uber Freight/Flexport in
-    # Tier 2: UPS's whole business already IS logistics/transportation,
-    # so an intern posting there shouldn't need the literal word
-    # "logistics" in its text — confirmed live that without this flag,
-    # the one real intern posting found ("Seasonal HR Intern") was
-    # filtered out because its own text never says "logistics" or
-    # "supply chain", despite the employer obviously being one.
-    #
     # Phenom-People-hosted career site — not Greenhouse/Lever/Workday/
     # Oracle, none of which this project's other connectors would have
     # caught. Confirmed live: individual job pages carry full
@@ -93,25 +81,21 @@ sources:
     ats: greenhouse
     token: flexport
     category: Logistics & Transportation
-    domain_native: true
 
   - company: project44
     ats: greenhouse
     token: project44
     category: Logistics & Transportation
-    domain_native: true
 
   - company: FourKites
     ats: greenhouse
     token: fourkites
     category: Logistics & Transportation
-    domain_native: true
 
   - company: Uber Freight
     ats: greenhouse
     token: uberfreight
     category: Logistics & Transportation
-    domain_native: true
 
   - company: Samsara
     ats: greenhouse
@@ -123,7 +107,6 @@ sources:
     ats: lever
     token: loadsmart
     category: Logistics & Transportation
-    domain_native: true
 
   # Still need setup, Workday specifically (Oracle Recruiting Cloud/
   # SuccessFactors/iCIMS/Taleo companies should try Tier 1.5's jsonld

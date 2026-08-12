@@ -2,3 +2,8 @@
 __pycache__/
 *.pyc
 autofill/profile.json
+
+# Personal filter experiments — filters.yaml itself (the fork's shared
+# default) stays tracked; your own copies and their output don't need to be.
+my-*.yaml
+MY_FEED.md

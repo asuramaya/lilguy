@@ -1,67 +1,77 @@
-# Operations / Logistics / Supply Chain Internship Prospecting
+# Internship Opportunity Feed & Autofill
 
-A general-purpose, reusable resource for finding and tracking internships in
-**operations, logistics, and supply chain** at **large-to-mid sized industrial /
-business companies**. Built for the junior-year recruiting cycle (rising junior →
-senior). Designed to be forked or cloned by anyone targeting this internship
-category — a student at Texas A&M or anywhere else — not tied to one
-applicant's resume or background.
+A general-purpose, forkable toolkit for finding internships — built with an
+operations/logistics/supply-chain focus as its own default, but the
+underlying data and tooling aren't scoped to that: **the raw feed spans
+every industry, and what you actually see is controlled by a filter file
+you can copy and edit, not by scraper code you'd have to touch.** Designed
+to be forked or cloned by anyone — a student at Texas A&M or anywhere else,
+targeting any internship category — not tied to one applicant's resume,
+background, or interest.
 
-Two things beyond the static research:
-- **A live opportunity feed** (`FEED.md` / `data/opportunities.json`) that
-  scrapes real ATS job boards and updates itself daily via GitHub Actions —
-  fork this repo, turn on Actions, get postings as they appear with zero
-  server to run.
+Three things beyond the static research:
+- **A live, unfiltered opportunity feed** (`data/all_postings.json`) — every
+  internship-shaped posting from every source in `sources.yaml`, across
+  every industry, updated daily via GitHub Actions with zero server to run.
+- **Your own filtered view** (`filters.yaml` → `FEED.md`) — this fork's
+  default is ops/logistics/supply-chain, but it's one lens on the same
+  shared data. Copy `filters.yaml`, edit the keyword/company lists to
+  whatever you actually care about, run `build_feed.py` against your copy —
+  no re-scraping, no code changes.
 - **Application autofill** (`autofill/`) — a browser userscript that fills
   the repetitive fields on application forms from a stored profile, without
   ever auto-submitting for you.
 
 ## Layout
 
-- `companies.md` — the full curated target list (~25 companies), grouped by
-  category, with what's known about each program's size/structure/timing.
-  This is the human research list — broader than what the scraper covers.
-- `sources.yaml` — two tiers: broad **aggregators** (The Muse, optionally
-  Adzuna) that cover many companies with zero per-company setup, plus a
-  handful of **targeted** per-company connectors for higher precision on
-  specific employers. See `docs/sourcing-model.md` for why it's split this
-  way (and what existing open-source projects do instead), and
-  `docs/adding-a-source.md` to add a targeted company.
-- `scraper/` — the actual scraper (`scrape.py` + one connector per source
-  type: `muse`, `adzuna` — aggregators; `jsonld` — generic schema.org
-  harvester, works on any career site regardless of ATS vendor;
-  `greenhouse`, `lever`, `workday` — vendor-specific). Run it with
-  `python scraper/scrape.py` (needs `pip install -r scraper/requirements.txt`
-  first).
-- `FEED.md` — auto-generated, human-readable current postings. Don't hand-edit.
-- `data/opportunities.json` — the machine-readable version of the same feed,
-  with `first_seen` dates so you can see what's new.
-- `.github/workflows/scrape.yml` — runs the scraper daily and commits any
-  change to the feed. Works automatically once you fork/clone this into your
-  own GitHub repo and Actions is enabled — no server, no cost.
+- `sources.yaml` — where postings come from, in three tiers (aggregators →
+  generic JSON-LD harvester → vendor-specific connectors). See
+  `docs/sourcing-model.md` for why it's split this way, and
+  `docs/adding-a-source.md` to add a company. **This file has no domain
+  filtering in it** — it only decides what counts as "an internship posting
+  exists here," not "is this the kind I want."
+- `scraper/` — `scrape.py` (fetches everything, writes the raw store),
+  `build_feed.py` (applies a filter file to the raw store, writes a
+  rendered feed — this is what you run with your own filter), connectors/
+  (`muse`, `adzuna` — aggregators; `jsonld` — generic schema.org harvester,
+  works on any career site regardless of ATS vendor; `greenhouse`, `lever`,
+  `workday` — vendor-specific), `user_filter.py` (the filter-matching logic
+  `build_feed.py` uses). `pip install -r scraper/requirements.txt` first.
+- `filters.yaml` — this fork's default filter (ops/logistics/supply-chain
+  keywords + a trusted-company list). **Copy it, don't edit it in place**,
+  if you want your own view — see its own comments for the schema.
+- `data/all_postings.json` — the complete raw feed, unfiltered by domain,
+  with `first_seen` dates. This is the shared dataset every filter reads.
+- `FEED.md` — this fork's own rendered view (`filters.yaml` applied to the
+  raw store). Auto-generated by `scrape.py`; don't hand-edit.
+- `.github/workflows/scrape.yml` — runs `scrape.py` daily and commits any
+  change to `data/all_postings.json` + `FEED.md`. Works automatically once
+  you fork/clone this into your own GitHub repo and enable Actions.
 - `autofill/` — the application-autofill userscript, its profile schema, and
   the reasoning for why it fills but never submits. See `autofill/README.md`.
-- `timeline.md` — the annual recruiting calendar for this internship category.
+- `companies.md` — the original curated target list (~25 companies) for the
+  ops/logistics/supply-chain focus specifically, with what's known about
+  each program's size/structure/timing — human research, not scraper input.
+- `timeline.md` — the annual recruiting calendar for that same category.
 - `resources.md` — associations, search tactics, interview prep notes.
 - `applications/tracker.md` — copy this template per applicant to track status.
-- `prospects/` — one file per company once you're seriously targeting it —
-  job description text, culture notes, who you know there, referral paths.
-- `research/` — saved job postings, program details, anything pulled from the
-  web worth keeping past the tab closing.
+- `prospects/` — one file per company once you're seriously targeting it.
+- `research/` — saved job postings, program details worth keeping past the
+  tab closing.
 
 ## How to use this
 
-1. Skim `timeline.md` first — this category runs on a real calendar, and
-   showing up at the wrong month is the most common way to miss a program.
-2. Check `FEED.md` for what's live right now, and set up
-   `.github/workflows/scrape.yml` (fork the repo, enable Actions) so it
-   keeps updating without you having to remember to re-run it.
-3. Work `companies.md` top-down by category that fits your interest
-   (retail/distribution vs. CPG vs. industrial manufacturing vs. logistics
-   carriers vs. conglomerate rotational programs) — they recruit on different
-   schedules. Add any company you seriously want tracked to `sources.yaml`
-   (`docs/adding-a-source.md`).
-4. Set up `autofill/` once (`autofill/README.md`) so applications stop
-   costing you the same 15 minutes of retyping your own name and school.
-5. Copy `applications/tracker.md` and fill it in as applications go out.
-6. Drop deeper notes on any company you're seriously pursuing into `prospects/`.
+**If ops/logistics/supply-chain is actually your interest:** just read
+`FEED.md` — it's already this fork's default view. Set up
+`.github/workflows/scrape.yml` (fork the repo, enable Actions) so it keeps
+updating itself. Skim `timeline.md` for the recruiting calendar, work
+`companies.md` for the curated target list, set up `autofill/` once, track
+applications in `applications/tracker.md`.
+
+**If you want a different interest entirely:**
+1. `cp filters.yaml my-filters.yaml` and edit the `keywords_any` /
+   `trusted_companies` lists to whatever you actually care about.
+2. `python scraper/build_feed.py --filters my-filters.yaml --out MY_FEED.md`
+   — no re-scraping needed, the raw store already has every industry.
+3. Re-run that whenever `data/all_postings.json` updates (daily, via the
+   same GitHub Action). Nothing about `scraper/` needs to change.
