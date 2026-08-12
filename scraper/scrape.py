@@ -34,37 +34,46 @@ def load_sources() -> list[dict]:
     return config.get("sources", [])
 
 
-def fetch_all(sources: list[dict]) -> tuple[list, list[str]]:
+def fetch_all(sources: list[dict]) -> tuple[list, list[str], set]:
     all_postings = []
     errors = []
+    failed_entries = set()
     for entry in sources:
+        label = entry.get("company", "?")
         ats = entry.get("ats")
         connector_cls = CONNECTORS.get(ats)
         if connector_cls is None:
-            errors.append(f"{entry.get('company', '?')}: unknown ats '{ats}' (known: {list(CONNECTORS)})")
+            errors.append(f"{label}: unknown ats '{ats}' (known: {list(CONNECTORS)})")
+            failed_entries.add(label)
             continue
         try:
             postings = connector_cls().fetch(entry)
         except Exception as exc:  # noqa: BLE001 - one bad source must not kill the run
-            errors.append(f"{entry.get('company', '?')} ({ats}): {exc}")
+            errors.append(f"{label} ({ats}): {exc}")
+            failed_entries.add(label)
             continue
+        for p in postings:
+            p.source_entry = label
         relevant = [p for p in postings if is_internship(p.title)]
         all_postings.extend(relevant)
-        print(f"  {entry.get('company', '?'):35s} {len(postings):5d} fetched -> {len(relevant):4d} internship-shaped")
-    return all_postings, errors
+        print(f"  {label:35s} {len(postings):5d} fetched -> {len(relevant):4d} internship-shaped")
+    return all_postings, errors, failed_entries
 
 
 def main() -> int:
     sources = load_sources()
     print(f"Fetching {len(sources)} source(s)...")
-    fresh_postings, errors = fetch_all(sources)
+    fresh_postings, errors, failed_entries = fetch_all(sources)
 
     previous = load_opportunities(ALL_POSTINGS_FILE)
     seen_at = datetime.now(timezone.utc).isoformat()
-    new_store, newly_added = rebuild(previous, fresh_postings, seen_at)
+    new_store, newly_added = rebuild(previous, fresh_postings, seen_at, failed_entries)
     save_opportunities(ALL_POSTINGS_FILE, new_store)
 
-    print(f"\n{len(new_store)} open posting(s) in the raw store, {len(newly_added)} new this run.")
+    preserved = sum(1 for d in new_store.values() if d.get("source_entry") in failed_entries)
+    if preserved:
+        print(f"\n{preserved} posting(s) from {len(failed_entries)} failed source(s) carried forward unchanged (not treated as closed).")
+    print(f"{len(new_store)} open posting(s) in the raw store, {len(newly_added)} new this run.")
 
     # This fork's own default view, built from the same raw store anyone
     # else's build_feed.py --filters my-filters.yaml would read.

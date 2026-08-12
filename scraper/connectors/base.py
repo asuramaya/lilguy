@@ -16,6 +16,18 @@ class Posting:
     posted_at: Optional[str] = None  # ISO date string if the ATS provides one
     description_snippet: str = ""
     extra: dict = field(default_factory=dict)
+    # Which sources.yaml ENTRY this came from (its own `company:` label,
+    # e.g. "UPS", "The Muse (aggregator...)") — set by scrape.py's
+    # fetch_all() after fetch() returns, not by the connector itself.
+    # NOT the same thing as `source` (the ats TYPE, e.g. "greenhouse") —
+    # several entries can share an ats type but each is its own source
+    # for the purpose of "did fetching THIS one succeed this run." See
+    # store.py's rebuild() for why this matters: a source that fails
+    # outright must not have its previously-known postings silently
+    # treated as closed, and distinguishing "this entry's fetch failed"
+    # from "this entry's fetch succeeded and returned nothing" requires
+    # knowing which entry a stored posting actually came from.
+    source_entry: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -28,6 +40,7 @@ class Posting:
             "category": self.category,
             "posted_at": self.posted_at,
             "description_snippet": self.description_snippet,
+            "source_entry": self.source_entry,
         }
 
 

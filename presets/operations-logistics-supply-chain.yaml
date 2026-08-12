@@ -29,6 +29,8 @@ trusted_companies:
   - Uber Freight
   - Loadsmart
   - UPS
+  - C.H. Robinson
+  - Old Dominion Freight Line
 
 locations_include: []
 locations_exclude: []

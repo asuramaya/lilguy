@@ -27,22 +27,67 @@
 
 sources:
   # ============================= TIER 1 =============================
-  - company: The Muse (aggregator — all categories)
+  - company: The Muse (aggregator — every real category, queried separately)
     ats: muse
     level: Internship
     max_pages: 95
-    # No API key needed, no category restriction — pulls every
-    # internship-level posting The Muse has indexed (~8000 as of when
-    # this was written). max_pages is capped at 95, NOT for politeness —
-    # confirmed live that the API itself starts returning HTTP 400 for
-    # page >= ~96-99 regardless of total result count (tested: page 95
-    # -> 200, page 100 -> 400). That's an undocumented depth limit on
-    # their side, not a config error, so don't "fix" a future 400 here by
-    # raising max_pages past ~95. Confirmed live: surfaces real postings
-    # across companies never hand-added to this file (Walmart, Jabil,
-    # Hitachi Energy...) — and now spans every industry The Muse covers,
-    # not just ones this fork's own filters.yaml cares about, since that
-    # narrowing happens downstream.
+    # No API key needed. QUERIED PER CATEGORY rather than one blended
+    # query — confirmed live these are NOT equivalent: "Healthcare" alone
+    # has ~3500 internship-level postings, so a single blended query's
+    # first ~1900 results (the API's own pagination depth limit — see
+    # below) skewed overwhelmingly Healthcare, starving every other
+    # category to whatever scraps were left (Transportation and
+    # Logistics showed only 12 postings blended vs. its real total of 69
+    # queried directly). Every category below except Healthcare has a
+    # real total under the depth limit, so querying separately captures
+    # each one's FULL total instead of an arbitrary blended slice.
+    #
+    # max_pages: 95 is a hard ceiling, not politeness — confirmed live
+    # the API itself returns HTTP 400 for page >= ~96-99 of ANY query
+    # regardless of total result count (page 95 -> 200, page 100 -> 400).
+    # Only matters for Healthcare here (~3500 total, capped to ~1900);
+    # every other category's real total is well under the limit and
+    # returns in full regardless of this cap.
+    #
+    # This list was built by querying each candidate category directly
+    # and keeping every one with total > 0 (checked ~35 candidates,
+    # including several guesses that came back empty and were dropped —
+    # e.g. "Food and Beverage Production"). Re-verify totals periodically;
+    # The Muse's own taxonomy and what's indexed under it can drift.
+    categories:
+      - Healthcare
+      - Software Engineering
+      - Data and Analytics
+      - Human Resources and Recruitment
+      - Management
+      - Business Operations
+      - Science and Engineering
+      - Advertising and Marketing
+      - Education
+      - Accounting and Finance
+      - Transportation and Logistics
+      - Sales
+      - Project Management
+      - Product Management
+      - Unknown
+      - Design and UX
+      - Legal Services
+      - Food and Hospitality Services
+      - Account Management
+      - Administration and Office
+      - Computer and IT
+      - Manufacturing and Warehouse
+      - Media, PR, and Communications
+      - Arts
+      - Sports, Fitness, and Recreation
+      - Writing and Editing
+      - Entertainment and Travel Services
+      - Personal Care and Services
+      - Energy Generation and Mining
+      - Cleaning and Facilities
+      - Retail
+      - Customer Service
+      - Real Estate
 
   # - company: Adzuna (aggregator — broad job search)
   #   ats: adzuna
@@ -69,6 +114,24 @@ sources:
     # schema.org/JobPosting JSON-LD. sitemap2.xml (not sitemap1.xml,
     # which is category/landing pages only) is what actually lists
     # individual jobs — found by checking both, see docs/sourcing-model.md.
+
+  - company: RTX
+    ats: jsonld
+    sitemap_url: https://careers.rtx.com/global/en/sitemap_index.xml
+    url_pattern: "/job/"
+    category: Aerospace & Defense
+    max_pages: 150
+    # A sitemap-INDEX (9 sub-sitemaps, ~4500 job URLs combined) — the
+    # jsonld.py connector didn't originally expand these, treating the
+    # index's own <loc> entries (more .xml files) as if they were job
+    # pages; fixed to auto-expand one level of index nesting. Also the
+    # source that surfaced a real WAF/bot-detection issue: firing
+    # requests back-to-back with no pacing got intermittently 403'd —
+    # fixed with a small delay between every request in jsonld.py
+    # (REQUEST_DELAY_SECONDS), which is now applied to every jsonld
+    # source, not just this one. Confirmed real per-job JobPosting
+    # JSON-LD and at least one real intern posting visible in the
+    # sitemap itself (a SkillBridge DoD internship in Huntsville, AL).
 
   - company: PepsiCo
     ats: jsonld
@@ -147,6 +210,105 @@ sources:
     # tests/test_workday_connector.py. Any future Workday entry benefits
     # from that fix already being in place.
 
+  - company: GE Vernova
+    ats: workday
+    tenant: gevernova
+    wd_host: wd5
+    site: Vernova_ExternalSite
+    category: Industrial Manufacturing
+    max_pages: 120
+    # Found via WebSearch, verified live: 2159 total postings. Unlike The
+    # Muse, tested for a similar deep-pagination limit and found none
+    # (offset 2140 still returns 200) — max_pages here is a generous
+    # ceiling, not a discovered API constraint like the Muse entry's 95.
+
+  - company: GE Aerospace
+    ats: workday
+    tenant: geaerospace
+    wd_host: wd5
+    site: GE_ExternalSite
+    category: Industrial Manufacturing
+    max_pages: 60
+    # Same WebSearch-then-verify method. 440 total postings. Note: GE
+    # split into GE Aerospace and GE Vernova as separate independent
+    # companies in 2024 — companies.md's "General Electric (GE)" entry
+    # now maps to these two Workday tenants, not one.
+
+  - company: C.H. Robinson
+    ats: workday
+    tenant: chrobinson
+    wd_host: wd5
+    site: CHRobinson
+    category: Logistics & Transportation
+    max_pages: 30
+    # Found via WebSearch. 94 total postings. A genuine 3PL/freight
+    # broker — same category as Uber Freight/Flexport in the domain_native
+    # sense, added to filters.yaml's trusted_companies for that reason.
+
+  - company: Boeing (Internship Program)
+    ats: workday
+    tenant: boeing
+    wd_host: wd1
+    site: INTERN
+    category: Aerospace & Defense
+    max_pages: 30
+    # Found via WebSearch — Boeing runs a SEPARATE Workday site
+    # specifically for its internship program (as opposed to
+    # EXTERNAL_CAREERS, the general one), found in a search result URL
+    # almost by accident. 36 total postings, effectively 100% signal
+    # (every posting here already is "Boeing Summer 2027 Internship
+    # Program..."). Worth remembering as a pattern: some companies run a
+    # DEDICATED early-careers/intern Workday site distinct from their
+    # main one (Unilever does too — Unilever_Early_Careers vs.
+    # Unilever_Experienced_Professionals) — check for both when adding a
+    # new Workday company, the intern-specific one is often much higher
+    # signal density even when its total volume is lower.
+
+  - company: General Motors
+    ats: workday
+    tenant: generalmotors
+    wd_host: wd5
+    site: Careers_GM
+    category: Automotive
+    max_pages: 60
+    # Found via WebSearch after curl-only sitemap hunting on GM's own
+    # search-careers.gm.com came back empty (category/landing pages
+    # only, documented below) — same story as Unilever: a JS-rendered
+    # Workday site that sitemap-based discovery can't find on its own.
+    # 845 total postings, real internships confirmed ("Customs Intern",
+    # "Interior Design Intern", "Consumer Insight Intern").
+
+  - company: Old Dominion Freight Line
+    ats: workday
+    tenant: odfl
+    wd_host: wd1
+    site: ODFL_Careers
+    category: Logistics & Transportation
+    max_pages: 15
+    # Found via WebSearch. 236 total postings. An LTL freight carrier —
+    # domain_native in the same sense as C.H. Robinson/Uber Freight,
+    # added to filters.yaml's trusted_companies.
+
+  - company: General Mills
+    ats: workday
+    tenant: genmills
+    wd_host: wd1
+    site: GMI_External_Careers
+    category: CPG / Consumer Brands
+    max_pages: 15
+    # Found via WebSearch. 212 total postings. Diversified CPG, NOT
+    # domain-native — relies on the standard keyword filter like PepsiCo/
+    # Unilever/Walmart.
+
+  # Checked and found EMPTY, not just hard to find — worth knowing so a
+  # future session doesn't re-add these expecting results: FedEx's
+  # Workday tenant is real (fedex.wd1.myworkdayjobs.com, found via
+  # WebSearch) but both its FXE-US_External_Career_Site and
+  # FXF_External_Career_Site sites return total=0 for an empty search —
+  # not a config error (both return HTTP 200), the sites are just
+  # currently empty or the wrong site name for what's actually posted.
+  # Re-check periodically or find the actual populated site name.
+
   # Checked for a Tier 1.5 (jsonld) fit and RULED OUT — documented so a
   # future session doesn't repeat the same search:
   #   - Caterpillar, GM, P&G, J&J, Nestle, Deere: their public sitemaps
@@ -167,11 +329,19 @@ sources:
   #     anything sitemap-based — don't assume the ATS from a company's
   #     size or industry.
   #
-  # Still worth trying Workday specifically for (their careers sites are
-  # JS-rendered, so curl-only sitemap hunting doesn't find them — need a
-  # browser session to read the real XHR calls, see docs/adding-a-source.md):
-  # Cummins, PepsiCo's non-jsonld regions, Unilever, GE, 3M, Eaton, Parker
-  # Hannifin, ITW, FedEx, Union Pacific/BNSF, Ford, Toyota, Boeing,
-  # Lockheed Martin/RTX. Oracle Recruiting Cloud/SuccessFactors/iCIMS/Taleo
-  # remain fully unsupported (no connector built) — see
-  # docs/adding-a-source.md's "Unsupported ATS platforms" section.
+  # DONE via Workday (found by WebSearch for a real myworkdayjobs.com
+  # tenant, then verified with a raw POST — curl-only sitemap hunting
+  # can't find these, they're JS-rendered): Unilever, GE Vernova, GE
+  # Aerospace, General Motors, C.H. Robinson, Boeing (dedicated INTERN
+  # site), Old Dominion Freight Line, General Mills.
+  #
+  # Checked via WebSearch and found NO usable myworkdayjobs.com tenant:
+  # Cummins (only unrelated third-party childcare postings came up),
+  # Costco (no Workday hit at all — likely a different ATS).
+  #
+  # Still untried (no WebSearch attempt yet, or attempted and the search
+  # didn't surface a usable tenant): 3M, Eaton, Parker Hannifin, ITW,
+  # Union Pacific/BNSF, Ford, Toyota, Lockheed Martin. Oracle Recruiting
+  # Cloud/SuccessFactors/iCIMS/Taleo remain fully unsupported (no
+  # connector built) — see docs/adding-a-source.md's "Unsupported ATS
+  # platforms" section.

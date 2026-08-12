@@ -34,18 +34,23 @@ Three tiers, in `sources.yaml`, in the order to reach for them:
 Currently: **The Muse's public API** (`scraper/connectors/muse.py`), which
 needs no key and already indexes postings across companies never
 hand-added here — confirmed live pulling real Jabil, Hitachi Energy, BD,
-GE Vernova, and Walmart internships with zero per-company setup. As
-configured in `sources.yaml` it pulls with NO category restriction —
-every internship-level posting The Muse has indexed (~8000 postings,
-every industry) rather than pre-narrowing to one category — because
-domain relevance is now a `filters.yaml` question, not a sourcing one
-(see below). One real constraint found running it at that scale: the API
-itself starts returning HTTP 400 past roughly page 96-99 of any query
-regardless of how many total results exist — an undocumented depth limit,
-not a config error, which is why `max_pages: 95` in `sources.yaml` is a
-hard ceiling, not a politeness setting. Adzuna (`scraper/connectors/adzuna.py`)
-is wired up the same way as a second aggregator, gated behind a free API
-key the repo doesn't ship (see the commented-out entry in `sources.yaml`).
+GE Vernova, and Walmart internships with zero per-company setup. Queried
+**per category, not one blended query** — confirmed live these are NOT
+equivalent once a category's real total exceeds the API's own pagination
+depth limit (~1900 results): "Healthcare" alone has ~3500 internship-level
+postings, so a single blended query's first ~1900 results skewed
+overwhelmingly Healthcare and starved every smaller category (e.g.
+Transportation and Logistics showed 12 postings blended vs. 69 queried on
+its own). `sources.yaml`'s Muse entry lists ~33 real category names,
+found by querying each one directly and keeping every one with a nonzero
+total — domain relevance is still a `filters.yaml` question, not a
+sourcing one (see below), this is purely about not starving smaller
+categories of their fair share of the depth-limited query budget. The
+depth limit itself (`max_pages: 95` — the API returns HTTP 400 past
+roughly page 96-99 of ANY query) is a hard ceiling, not a politeness
+setting. Adzuna (`scraper/connectors/adzuna.py`) is wired up the same way
+as a second aggregator, gated behind a free API key the repo doesn't ship
+(see the commented-out entry in `sources.yaml`).
 
 **Tier 1.5 — generic schema.org/JobPosting harvester**
 (`scraper/connectors/jsonld.py`), openroles' actual technique: read a
@@ -61,7 +66,20 @@ company that isn't on Greenhouse/Lever/Workday, before writing a new
 vendor-specific connector: check `<company>/robots.txt` for a sitemap,
 find the one listing individual job URLs (not just category/landing
 pages — UPS publishes both, only one is useful), and see if a job page
-has `<script type="application/ld+json">...JobPosting...`.
+has `<script type="application/ld+json">...JobPosting...`. Two more
+things confirmed live building this out further: (1) `sitemap_url` can be
+a sitemap-INDEX (a sitemap of sitemaps) rather than a flat list of job
+URLs — RTX splits its ~4500 job postings across 9 numbered sub-sitemaps
+under one index, so `jsonld.py` auto-expands one level of index nesting
+rather than requiring a specific sub-sitemap to be hand-picked; (2) firing
+requests back-to-back with no pacing can trip a site's bot-detection even
+when the User-Agent isn't the issue — RTX's WAF intermittently returned
+403 under rapid sequential `requests` calls while the SAME URLs, SAME
+headers, worked fine via interactively-run `curl` (which naturally has
+pauses between calls); a small delay between every request
+(`REQUEST_DELAY_SECONDS` in `jsonld.py`) eliminated it. Treat this as a
+default expectation for any future Tier 1.5 source, not a one-off
+workaround for RTX specifically.
 
 **Tier 2 — vendor-specific per-company connectors.** Still useful, not
 replaced: highest precision for a company you're specifically targeting,
@@ -96,6 +114,49 @@ The fix was to split the two concerns cleanly:
   ops/logistics/supply-chain by default, but it's config, not code — copy
   it, point `build_feed.py` at your copy, get your own feed with zero
   re-scraping and zero code changes.
+
+## A source failing to fetch is not the same fact as a source reporting nothing
+
+The most serious bug found building this project, not a minor one: a
+single transient HTTP timeout — one bad request out of roughly 250 made
+for a full Muse sweep — caused the ENTIRE Muse connector call to raise an
+exception. `scrape.py`'s `fetch_all()` correctly excluded that source
+from this run's fresh postings (as designed — one broken source shouldn't
+corrupt what other sources return). The problem was one layer up:
+`store.py`'s `rebuild()` treats "not present in this run's fresh
+postings" as "this posting has closed" — which is the CORRECT read when a
+source successfully fetched and legitimately has fewer postings now, but
+was silently and catastrophically wrong here, because Muse's absence was
+due to a failed fetch, not a real change in what's posted. One network
+blip took the raw store from ~4200 postings to 98 in a single run.
+
+The fix, now in place: every `Posting` carries a `source_entry` field (set
+by `scrape.py` after `fetch()` returns, not by the connector itself) —
+which `sources.yaml` entry produced it, distinct from `source` (the ATS
+type, since several entries can share one). `fetch_all()` tracks which
+entries raised this run. `rebuild()` takes that set and, for any entry
+that failed, carries its previously-known postings forward UNCHANGED
+rather than treating their absence as closure. A source that fails to
+fetch now degrades to "stale until it succeeds again," never to "silently
+erased."
+
+A second, complementary fix addresses the Muse connector specifically,
+since it's the source making by far the most individual requests (one per
+category per page): each category's fetch is now retried on a transient
+network error before giving up, and if a category still fails after
+retries, only THAT category's contribution is skipped — the other ~32
+keep going — rather than one bad category taking down the whole run's
+Muse results. `MuseConnector.fetch()` only raises if literally every
+category failed, preserving "loud failure over silent success" for a
+genuinely broken config while no longer treating "loud" and "total" as
+the same thing.
+
+The general principle, worth carrying into anything added here later:
+**a pipeline stage's own resilience (retry, partial-failure isolation)
+and the DOWNSTREAM stage's ability to tell "fetch failed" apart from
+"fetch succeeded and found nothing" are two different, both-necessary
+defenses** — the first reduces how often failures happen, the second
+bounds the damage on whichever ones still do.
 
 ## A concrete lesson from building this
 

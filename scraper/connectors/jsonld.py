@@ -1,5 +1,6 @@
 import json
 import re
+import time
 
 import requests
 
@@ -10,6 +11,20 @@ LD_JSON_RE = re.compile(
     r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.DOTALL
 )
 LOC_RE = re.compile(r"<loc>([^<]+)</loc>")
+
+# Confirmed live against RTX's careers site: firing requests back-to-back
+# with zero pacing gets intermittently 403'd (a WAF/bot-detection burst
+# trigger, not a User-Agent block — plain curl with the SAME headers hit
+# the same URLs fine when run interactively, i.e. with natural pauses
+# between calls; the Python connector making rapid sequential requests
+# didn't). Adding a small delay between every outbound request eliminated
+# it entirely. Applied to every connector request (sitemap fetches AND
+# individual job-page fetches, since a single source can mean dozens to
+# hundreds of the latter) — this is a general reliability fix, not a
+# workaround specific to RTX, since any career site could have similar
+# bot-detection this project hasn't triggered yet just because it hasn't
+# been tested against it.
+REQUEST_DELAY_SECONDS = 0.4
 
 
 class JsonLdConnector(Connector):
@@ -36,6 +51,15 @@ class JsonLdConnector(Connector):
     which one actually lists individual job pages (several sites publish
     multiple sitemaps — page/category sitemaps as well as a job sitemap —
     and only the latter is useful here), and see what the job URLs share.
+
+    `sitemap_url` can point at a real sitemap OR a sitemap-index (a
+    sitemap of sitemaps) — confirmed live that some companies split job
+    listings across several numbered sitemaps under one index (RTX: 9
+    sub-sitemaps). Expanded automatically, one level of index nesting
+    (a sub-sitemap that's itself another index isn't followed further —
+    hasn't been needed yet; raise the depth cap in _collect_locs if it
+    ever is), capped at 25 sub-sitemaps so a runaway index can't turn one
+    source into an unbounded crawl.
     """
 
     name = "jsonld"
@@ -46,9 +70,8 @@ class JsonLdConnector(Connector):
         if not sitemap_url or not url_pattern:
             raise ValueError(f"jsonld entry for {entry.get('company')} needs both 'sitemap_url' and 'url_pattern'")
 
-        resp = requests.get(sitemap_url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (internship-feed-bot)"})
-        resp.raise_for_status()
-        job_urls = [u for u in LOC_RE.findall(resp.text) if url_pattern in u]
+        all_locs = self._collect_locs(sitemap_url)
+        job_urls = [u for u in all_locs if url_pattern in u]
         if not job_urls:
             raise ValueError(
                 f"jsonld sitemap for {entry.get('company')} ({sitemap_url}) returned 0 URLs matching "
@@ -63,9 +86,31 @@ class JsonLdConnector(Connector):
                 postings.append(posting)
         return postings
 
+    def _get(self, url: str, timeout: int):
+        resp = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0 (internship-feed-bot)"})
+        time.sleep(REQUEST_DELAY_SECONDS)
+        return resp
+
+    def _collect_locs(self, sitemap_url: str, depth: int = 0, max_sub_sitemaps: int = 25) -> list[str]:
+        resp = self._get(sitemap_url, timeout=20)
+        resp.raise_for_status()
+        locs = LOC_RE.findall(resp.text)
+
+        # A sitemap-index's <loc> entries are themselves sitemap files
+        # (all end in .xml); a real per-page sitemap's entries are actual
+        # pages, which essentially never do. If every entry looks like a
+        # sitemap, treat it as an index and expand one level.
+        looks_like_index = bool(locs) and all(loc.lower().endswith(".xml") for loc in locs)
+        if looks_like_index and depth < 1:
+            expanded = []
+            for sub in locs[:max_sub_sitemaps]:
+                expanded.extend(self._collect_locs(sub, depth + 1, max_sub_sitemaps))
+            return expanded
+        return locs
+
     def _fetch_one(self, url: str, entry: dict):
         try:
-            resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0 (internship-feed-bot)"})
+            resp = self._get(url, timeout=15)
             resp.raise_for_status()
         except requests.RequestException:
             return None  # one dead link in a 400-url sitemap shouldn't fail the whole source
