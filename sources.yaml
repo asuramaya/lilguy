@@ -152,13 +152,16 @@ sources:
   #   - Caterpillar, GM, P&G, J&J, Nestle, Deere: their public sitemaps
   #     are marketing/landing pages only, no individual job URLs.
   #   - Walmart, Schneider National: same — category pages, not per-job.
-  #   - J.B. Hunt: DOES have a real per-job sitemap
-  #     (careers.jbhunt.com/jobs-sitemap.xml, 377 real job URLs) but its
-  #     job pages use schema.org MICRODATA (itemscope/itemtype HTML
-  #     attributes), not JSON-LD — the jsonld.py connector only parses
-  #     <script type="application/ld+json">, so this needs either a new
-  #     microdata-parsing connector or an extension to jsonld.py, not
-  #     just a new sources.yaml entry. Left as a documented gap.
+  #   - J.B. Hunt: CORRECTED after re-checking — a prior version of this
+  #     comment claimed its job pages use schema.org microdata. That was
+  #     wrong: re-verified and the only microdata present is generic
+  #     (BreadcrumbList, ImageObject), no JobPosting markup of any kind.
+  #     It DOES have a real per-job sitemap
+  #     (careers.jbhunt.com/jobs-sitemap.xml, 377 real job URLs), but the
+  #     job pages themselves carry no structured data — likely rendered
+  #     client-side with nothing server-side to parse, same class of
+  #     problem as Honeywell/Caterpillar. No connector fits without a
+  #     browser session to find the real underlying API.
   #   - Amazon: no sitemap advertised in robots.txt at all.
   #   - Honeywell: confirmed Oracle Recruiting Cloud, not Workday or
   #     anything sitemap-based — don't assume the ATS from a company's
