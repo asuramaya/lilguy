@@ -70,6 +70,22 @@ sources:
     # which is category/landing pages only) is what actually lists
     # individual jobs — found by checking both, see docs/sourcing-model.md.
 
+  - company: PepsiCo
+    ats: jsonld
+    sitemap_url: https://www.pepsicojobs.com/sitemap1.xml
+    url_pattern: "/jobs/"
+    category: CPG / Consumer Brands
+    max_pages: 60
+    # A different vendor again (not Phenom, not Greenhouse/Lever/Workday)
+    # — confirmed live full JobPosting JSON-LD on a real posting, ~2900
+    # job URLs in the sitemap. Note the job URL 302-redirects
+    # (/jobs/<id> -> /main/jobs/<id>) before the JSON-LD shows up;
+    # jsonld.py's plain requests.get() follows redirects by default, so
+    # this needed no special handling, but it's why a page that looks
+    # empty in a redirect-naive check (curl without -L) isn't necessarily
+    # actually empty — always follow redirects before concluding a page
+    # has no JSON-LD.
+
   # ============================= TIER 2 =============================
   # Verified working (Greenhouse):
   - company: Koch Industries

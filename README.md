@@ -17,7 +17,10 @@ Three things beyond the static research:
   default is ops/logistics/supply-chain, but it's one lens on the same
   shared data. Copy `filters.yaml`, edit the keyword/company lists to
   whatever you actually care about, run `build_feed.py` against your copy —
-  no re-scraping, no code changes.
+  no re-scraping, no code changes. Seven interests already have a
+  ready-made, sanity-checked starting point in `presets/` (software
+  engineering, data & analytics, marketing, finance, HR, sales, plus the
+  default) — see `presets/README.md`.
 - **Application autofill** (`autofill/`) — a browser userscript that fills
   the repetitive fields on application forms from a stored profile, without
   ever auto-submitting for you.
@@ -40,6 +43,15 @@ Three things beyond the static research:
 - `filters.yaml` — this fork's default filter (ops/logistics/supply-chain
   keywords + a trusted-company list). **Copy it, don't edit it in place**,
   if you want your own view — see its own comments for the schema.
+- `presets/` — seven ready-made filter files for other interests (software
+  engineering, data & analytics, marketing, finance, HR, sales), each
+  checked against the real raw store before being added, not just written
+  and assumed to work.
+- `tests/` — pytest coverage for the filter-matching and store-dedup logic
+  (the two places a silent bug would be hardest to notice — a keyword
+  matcher or a dedup rule failing quietly just looks like "fewer
+  postings," not an error). `.github/workflows/test.yml` runs it on every
+  push/PR. `pip install -r requirements-dev.txt && pytest tests/`.
 - `data/all_postings.json` — the complete raw feed, unfiltered by domain,
   with `first_seen` dates. This is the shared dataset every filter reads.
 - `FEED.md` — this fork's own rendered view (`filters.yaml` applied to the
@@ -75,3 +87,11 @@ applications in `applications/tracker.md`.
    — no re-scraping needed, the raw store already has every industry.
 3. Re-run that whenever `data/all_postings.json` updates (daily, via the
    same GitHub Action). Nothing about `scraper/` needs to change.
+
+## Contributing
+
+MIT-licensed (`LICENSE`) — fork it, use it, change it. Want to add a
+source, a preset, or fix something? See `CONTRIBUTING.md` — it's specific
+about what "verified" means in this project (a config that was actually
+run against the live site, not just written and assumed to work) because
+that's where past mistakes here actually happened.

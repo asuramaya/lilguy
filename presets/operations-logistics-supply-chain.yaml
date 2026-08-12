@@ -1,0 +1,30 @@
+# A copy of the root filters.yaml, kept here so it's discoverable
+# alongside the other ready-made presets rather than being the one
+# filter you have to already know exists. If you edit this project's
+# default filter, keep this file in sync (or better: point build_feed.py
+# straight at ../filters.yaml and treat this as a stable reference copy).
+
+name: Operations / Logistics / Supply Chain
+
+keywords_any:
+  - supply chain
+  - logistics
+  - procurement
+  - sourcing
+  - warehouse
+  - distribution
+  - inventory
+  - fulfillment
+  - manufacturing operations
+  - transportation
+  - freight
+
+exclude_keywords: []
+
+trusted_companies:
+  - Flexport
+  - project44
+  - FourKites
+  - Uber Freight
+  - Loadsmart
+  - UPS
