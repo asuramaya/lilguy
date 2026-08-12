@@ -124,14 +124,51 @@ sources:
     token: loadsmart
     category: Logistics & Transportation
 
-  # Still need setup, Workday specifically (Oracle Recruiting Cloud/
-  # SuccessFactors/iCIMS/Taleo companies should try Tier 1.5's jsonld
-  # connector first — check for a job sitemap before assuming you need a
-  # new vendor-specific connector class): Caterpillar, Cummins, Honeywell,
-  # P&G, PepsiCo, GE, Unilever all still need either a Workday
-  # tenant/site/wd_host (docs/adding-a-source.md) or a jsonld sitemap
-  # entry (docs/sourcing-model.md) — not yet checked which. Confirmed
-  # while building this: Honeywell runs Oracle Recruiting Cloud, not
-  # Workday — don't assume the ATS from the company's size or industry.
-  # Given Tier 1 + Tier 1.5 now exist, adding these one by one is
-  # optional polish, not required for coverage.
+  # Verified working (Workday):
+  - company: Unilever
+    ats: workday
+    tenant: unilever
+    wd_host: wd3
+    site: Unilever_Experienced_Professionals
+    category: CPG / Consumer Brands
+    # Found via WebSearch (curl-only sitemap hunting can't find Workday
+    # sites — they're JS-rendered), then verified with a raw POST to the
+    # jobs API. 309 total postings, real internships among them
+    # ("Logistic Intern", "Revenue Management Intern", "Internship 26' -
+    # Customer Development"...). NOTE: Unilever also runs a separate
+    # Unilever_Early_Careers site on the same tenant/wd_host — tried it
+    # first, only 1 posting live at the time this was checked (seasonal),
+    # so Experienced_Professionals (which also lists internships) was
+    # used instead for actual volume. This is the FIRST Workday entry in
+    # this file and it caught a real connector bug: workday.py's own
+    # `total` field is only accurate on page 1 of a query (every page
+    # after reports total=0 despite still returning real results) —
+    # fixed in scraper/connectors/workday.py, regression-tested in
+    # tests/test_workday_connector.py. Any future Workday entry benefits
+    # from that fix already being in place.
+
+  # Checked for a Tier 1.5 (jsonld) fit and RULED OUT — documented so a
+  # future session doesn't repeat the same search:
+  #   - Caterpillar, GM, P&G, J&J, Nestle, Deere: their public sitemaps
+  #     are marketing/landing pages only, no individual job URLs.
+  #   - Walmart, Schneider National: same — category pages, not per-job.
+  #   - J.B. Hunt: DOES have a real per-job sitemap
+  #     (careers.jbhunt.com/jobs-sitemap.xml, 377 real job URLs) but its
+  #     job pages use schema.org MICRODATA (itemscope/itemtype HTML
+  #     attributes), not JSON-LD — the jsonld.py connector only parses
+  #     <script type="application/ld+json">, so this needs either a new
+  #     microdata-parsing connector or an extension to jsonld.py, not
+  #     just a new sources.yaml entry. Left as a documented gap.
+  #   - Amazon: no sitemap advertised in robots.txt at all.
+  #   - Honeywell: confirmed Oracle Recruiting Cloud, not Workday or
+  #     anything sitemap-based — don't assume the ATS from a company's
+  #     size or industry.
+  #
+  # Still worth trying Workday specifically for (their careers sites are
+  # JS-rendered, so curl-only sitemap hunting doesn't find them — need a
+  # browser session to read the real XHR calls, see docs/adding-a-source.md):
+  # Cummins, PepsiCo's non-jsonld regions, Unilever, GE, 3M, Eaton, Parker
+  # Hannifin, ITW, FedEx, Union Pacific/BNSF, Ford, Toyota, Boeing,
+  # Lockheed Martin/RTX. Oracle Recruiting Cloud/SuccessFactors/iCIMS/Taleo
+  # remain fully unsupported (no connector built) — see
+  # docs/adding-a-source.md's "Unsupported ATS platforms" section.

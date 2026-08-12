@@ -12,9 +12,13 @@ Read `docs/sourcing-model.md` first for the three-tier shape (aggregator →
 generic JSON-LD harvester → vendor-specific connector) and
 `docs/adding-a-source.md` for the concrete steps. The short version:
 
-1. Try Tier 1.5 first (`ats: jsonld` — works on any career site with a job
-   sitemap + schema.org/JobPosting markup) before writing new connector
-   code. Most companies you'd think to add turn out to work here.
+1. Run `python scraper/discover.py --company "..." <domain>` first — it
+   automates the Greenhouse/Lever/jsonld checks and tells you plainly when
+   it can't find anything (usually meaning a browser session is actually
+   needed, not that something's broken). Try Tier 1.5 (`ats: jsonld` —
+   works on any career site with a job sitemap + schema.org/JobPosting
+   markup) before writing new connector code. Most companies you'd think
+   to add turn out to work here.
 2. **Verify it before opening a PR** — run `python scraper/scrape.py` and
    confirm your new source shows a real `fetched -> internship-shaped`
    count, not a silent zero. A PR whose source config was never actually

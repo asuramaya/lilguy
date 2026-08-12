@@ -9,6 +9,7 @@ name: Operations / Logistics / Supply Chain
 keywords_any:
   - supply chain
   - logistics
+  - logistic
   - procurement
   - sourcing
   - warehouse
@@ -28,3 +29,7 @@ trusted_companies:
   - Uber Freight
   - Loadsmart
   - UPS
+
+locations_include: []
+locations_exclude: []
+max_age_days: null

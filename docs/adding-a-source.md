@@ -16,6 +16,19 @@ Whether it shows up in YOUR feed once it's in `data/all_postings.json` is
 a separate, later question answered by `filters.yaml` (or your own copy of
 it), not by anything here.
 
+## 0. Try the automated check first
+
+```
+python scraper/discover.py --company "Example Corp" careers.example.com
+```
+
+Probes Greenhouse/Lever token guesses and checks for a job sitemap with
+JobPosting markup (JSON-LD or microdata), and tells you plainly when it
+finds nothing — which usually means step 1 below (a browser session) is
+actually necessary, not that something's broken. It won't find Workday,
+Oracle Recruiting Cloud, or anything else that's JS-rendered — those
+still need the manual steps below.
+
 ## 1. Figure out which ATS a company uses
 
 Open the company's careers page in a normal browser and look at the URL

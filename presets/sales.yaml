@@ -12,3 +12,7 @@ keywords_any:
 exclude_keywords: []
 
 trusted_companies: []
+
+locations_include: []
+locations_exclude: []
+max_age_days: null

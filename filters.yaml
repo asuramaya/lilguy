@@ -24,6 +24,9 @@ name: Operations / Logistics / Supply Chain
 keywords_any:
   - supply chain
   - logistics
+  - logistic # word-boundary matching doesn't stem — "Logistic Intern"
+             # (singular) at Unilever didn't match "logistics" alone;
+             # confirmed live, see user_filter.py's own matching note.
   - procurement
   - sourcing
   - warehouse
@@ -52,3 +55,85 @@ trusted_companies:
   - Uber Freight
   - Loadsmart
   - UPS
+
+# Optional: keep only postings whose location matches one of these
+# (word-boundary, case-insensitive — same matching as keywords_any, so
+# "US" won't falsely match inside "Australia" the way a plain substring
+# check would). Empty by default = no location filtering at all; a lot of
+# the raw feed is non-US, so uncommenting something here meaningfully
+# changes the count.
+#
+# IMPORTANT if you want US-only: checked live against the real data and
+# "United States" as a keyword catches almost NOTHING — most US postings
+# (from the Muse aggregator especially) list location as "City, ST"
+# (e.g. "Bentonville, AR"), not "City, United States". Match on state
+# abbreviations instead, confirmed safe against 2000 real location
+# strings (no false positives — this field is clean structured data, not
+# free text, so "OR"/"IN"/"ME" don't collide with the words "or"/"in"/
+# "me" the way they would if matched against a title or description):
+locations_include: []
+# locations_include:
+#   - AL
+#   - AK
+#   - AZ
+#   - AR
+#   - CA
+#   - CO
+#   - CT
+#   - DE
+#   - FL
+#   - GA
+#   - HI
+#   - ID
+#   - IL
+#   - IN
+#   - IA
+#   - KS
+#   - KY
+#   - LA
+#   - ME
+#   - MD
+#   - MA
+#   - MI
+#   - MN
+#   - MS
+#   - MO
+#   - MT
+#   - NE
+#   - NV
+#   - NH
+#   - NJ
+#   - NM
+#   - NY
+#   - NC
+#   - ND
+#   - OH
+#   - OK
+#   - OR
+#   - PA
+#   - RI
+#   - SC
+#   - SD
+#   - TN
+#   - TX
+#   - UT
+#   - VT
+#   - VA
+#   - WA
+#   - WV
+#   - WI
+#   - WY
+#   - DC
+#   - United States # covers the minority of sources (confirmed: UPS's
+#                   # jsonld postings) that do spell it out
+#   - Remote
+
+# Optional: drop postings whose location matches one of these, even if
+# locations_include would otherwise let them through.
+locations_exclude: []
+
+# Optional: drop postings older than this many days, based on when THIS
+# scraper first saw them (`first_seen`) — not each source's own
+# `posted_at`, which isn't reliably comparable across sources (see
+# user_filter.py's own comment on why). null = no age filtering.
+max_age_days: null

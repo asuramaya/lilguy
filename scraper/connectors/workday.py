@@ -30,6 +30,9 @@ class WorkdayConnector(Connector):
         postings: list[Posting] = []
         offset = 0
         limit = 20
+        max_pages = entry.get("max_pages", 100)
+        total = None  # captured from page 1 only — see note below
+        page = 0
         while True:
             resp = requests.post(
                 url,
@@ -64,9 +67,19 @@ class WorkdayConnector(Connector):
                     )
                 )
 
-            total = data.get("total", len(batch))
+            # Confirmed live (Unilever's tenant): Workday's own `total`
+            # field is only reliable on the FIRST page of a query — every
+            # page after that reports total=0 even while still returning
+            # a full batch of real results. Re-reading `total` each loop
+            # (the original bug here) stopped pagination after page 2
+            # regardless of how many postings actually existed. Capture
+            # it once, on page 1, and drive the loop off that plus an
+            # empty-batch safety net instead.
+            if total is None:
+                total = data.get("total", len(batch))
+            page += 1
             offset += limit
-            if offset >= total or not batch:
+            if not batch or offset >= total or page >= max_pages:
                 break
 
         return postings
