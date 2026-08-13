@@ -38,7 +38,7 @@ Three things beyond the static research:
   rendered feed — this is what you run with your own filter), connectors/
   (`muse`, `adzuna` — aggregators; `jsonld` — generic schema.org harvester,
   works on any career site regardless of ATS vendor; `greenhouse`, `lever`,
-  `workday` — vendor-specific), `user_filter.py` (the filter-matching logic
+  `workday`, `oracle_recruiting` — vendor-specific), `user_filter.py` (the filter-matching logic
   `build_feed.py` uses). `pip install -r scraper/requirements.txt` first.
 - `filters.yaml` — this fork's default filter (ops/logistics/supply-chain
   keywords + a trusted-company list). **Copy it, don't edit it in place**,

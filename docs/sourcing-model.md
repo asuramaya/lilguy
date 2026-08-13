@@ -58,11 +58,11 @@ company's job sitemap for individual posting URLs, fetch each, and pull
 the `JobPosting` block out of its embedded JSON-LD. Still one entry per
 company (needs that company's sitemap URL), but the *connector code* is
 generic — it doesn't care which ATS vendor is underneath, unlike
-Greenhouse/Lever/Workday which each need their own connector class.
+Greenhouse/Lever/Workday/Oracle Recruiting Cloud, which each need their own connector class.
 Confirmed live on UPS's Phenom-People-hosted career site — an ATS none of
 this project's other connectors support — including a real "Seasonal HR
 Intern" posting. This is the thing to reach for first when adding a new
-company that isn't on Greenhouse/Lever/Workday, before writing a new
+company that isn't on Greenhouse/Lever/Workday/Oracle Recruiting Cloud, before writing a new
 vendor-specific connector: check `<company>/robots.txt` for a sitemap,
 find the one listing individual job URLs (not just category/landing
 pages — UPS publishes both, only one is useful), and see if a job page
@@ -85,10 +85,39 @@ workaround for RTX specifically.
 replaced: highest precision for a company you're specifically targeting,
 and a fallback for the (rare) company that neither an aggregator indexes
 nor exposes a job sitemap. This is
-`scraper/connectors/{greenhouse,lever,workday}.py` plus
+`scraper/connectors/{greenhouse,lever,workday,oracle_recruiting}.py` plus
 `docs/adding-a-source.md`. Reach for Tier 1.5 before writing a new one of
 these — it only pays off when a company happens to already run
-Greenhouse, Lever, or Workday.
+Greenhouse, Lever, Workday, or Oracle Recruiting Cloud.
+
+**Oracle Recruiting Cloud** (`oracle_recruiting.py`) was the biggest
+sourcing gap this project had — it powers Honeywell and is suspected
+(never confirmed) for several other large industrials/CPG companies. It
+has no public sitemap the `jsonld` connector could ever find, and unlike
+Workday its host is an opaque per-company hash (Honeywell's is
+`ibqbjb`), not a guessable subdomain — WebSearch, which found most of
+this project's Workday tenants, doesn't surface Oracle Recruiting Cloud
+hosts the same way. Finding it required an actual browser session
+reading real network requests (`recruitingCEJobRequisitions` in the
+DevTools Network tab), the same technique this project first used just
+to confirm Honeywell WASN'T on Workday. Its API returns a `TotalJobsCount`
+and an offset-paginated `requisitionList` with plain-text fields — no
+HTML to strip, no schema.org markup involved at all, a genuinely
+different JSON shape than every other connector here.
+
+**A "custom" careers site can still be a thin wrapper over a real ATS
+underneath** — worth checking before assuming a one-off connector is
+needed. J.B. Hunt's careers.jbhunt.com has its own bespoke-looking API
+(`ww5.jbhunt.com/api/careers/jobs/`, POST with an empty body), which
+looked at first like it would need its own dedicated connector for a
+platform nobody else uses. But that API's own response data included a
+`jobPostingExternalUrl` field pointing at
+`jbhunt.wd501.myworkdayjobs.com/...` — the real backend, underneath the
+custom branding, was ordinary Workday. Used the existing `workday.py`
+connector directly instead of writing a new one. The tell: look at what
+URL a "custom" API's own data points candidates toward applying — a
+company that built its own front-end skin still very often didn't build
+its own ATS backend.
 
 ## Sourcing vs. filtering are two different questions, on purpose
 

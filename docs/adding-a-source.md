@@ -1,15 +1,17 @@
 # Adding a company to `sources.yaml`
 
 Every company posts jobs through one ATS (applicant tracking system) or
-another. Three have public, unauthenticated JSON APIs the scraper can call
-directly: **Greenhouse**, **Lever**, and **Workday**. Almost everything
-else that cares about SEO also publishes **schema.org/JobPosting**
-structured data on individual job pages, findable via that company's own
-sitemap — that's the `jsonld` connector (see `docs/sourcing-model.md`'s
-Tier 1.5 section), and it's worth trying BEFORE assuming you need a new
-vendor-specific connector class. Only fall back to "not wired up yet"
-(Oracle Recruiting Cloud, SuccessFactors, iCIMS, Taleo, Workable, custom —
-see the bottom of this doc) once both have failed.
+another. Four have a connector here with a public, callable JSON API:
+**Greenhouse**, **Lever**, **Workday**, and **Oracle Recruiting Cloud**
+(the last found and verified via a live browser session, not something
+discoverable from the outside — see step 1). Almost everything else that
+cares about SEO also publishes **schema.org/JobPosting** structured data
+on individual job pages, findable via that company's own sitemap — that's
+the `jsonld` connector (see `docs/sourcing-model.md`'s Tier 1.5 section),
+and it's worth trying BEFORE assuming you need a new vendor-specific
+connector class. Only fall back to "not wired up yet" (SuccessFactors,
+iCIMS, Taleo, Workable, custom — see the bottom of this doc) once both
+have failed.
 
 Note this doc is about SOURCING — "does a posting exist here at all."
 Whether it shows up in YOUR feed once it's in `data/all_postings.json` is
@@ -42,9 +44,22 @@ once you land on a job listing or search page:
   `https://<tenant>.<wd_host>.myworkdayjobs.com/<site>`. `<wd_host>` is a
   pod name like `wd1`, `wd5`, `wd12` — you cannot guess it, read it off the
   URL.
+- **Oracle Recruiting Cloud**: URL contains `*.oraclecloud.com` — but you
+  won't see it just from the page URL (the careers page itself stays on
+  the company's own domain, e.g. `careers.honeywell.com`); you need
+  DevTools → Network to catch the actual API call, since there's no
+  guessable pattern the way Workday's tenant subdomain often is. Filter
+  Network for `recruitingCEJobRequisitions` — the request URL gives you
+  both values the connector needs: `host` (e.g.
+  `ibqbjb.fa.ocs.oraclecloud.com` for Honeywell — an opaque per-company
+  hash, not derivable from the company name) and `site_number` (a
+  `siteNumber=...` value inside the `finder` query param, e.g. `CX_1`).
+  Then find a real job's detail-page URL by clicking one in the site's
+  own UI (e.g. `https://careers.honeywell.com/en/sites/Honeywell/job/
+  <id>`) to get `job_detail_base`.
 - **Anything else** (careers page loads job data via some other domain,
-  e.g. `*.oraclecloud.com` for Oracle Recruiting Cloud, `*.successfactors.com`,
-  `*.icims.com`, `*.taleo.net`): not supported yet — see below.
+  e.g. `*.successfactors.com`, `*.icims.com`, `*.taleo.net`): not
+  supported yet — see below.
 
 If the URL alone isn't conclusive (a lot of companies proxy through their
 own custom domain), open DevTools → Network tab, filter for `jobs`, and
@@ -78,6 +93,16 @@ company's size, industry, or what you'd expect a similar company to use.
   tenant: examplecorp
   wd_host: wd1
   site: External
+  category: Industrial Manufacturing
+```
+
+**Oracle Recruiting Cloud:**
+```yaml
+- company: Example Corp
+  ats: oracle_recruiting
+  host: abcdefg.fa.ocs.oraclecloud.com
+  site_number: CX_1
+  job_detail_base: https://careers.examplecorp.com/en/sites/ExampleCorp/job
   category: Industrial Manufacturing
 ```
 
@@ -121,12 +146,14 @@ filtered view usually means its postings' text doesn't match any
 
 ## Unsupported ATS platforms
 
-Oracle Recruiting Cloud, SuccessFactors, iCIMS, and Taleo power a lot of the
-largest industrial/CPG employers and don't have a documented, stable public
-JSON API the way Greenhouse/Lever/Workday do, AND (unlike many companies)
-don't necessarily publish a job sitemap the `jsonld` connector could use
-either — each is more involved to reverse-engineer from DevTools and more
-likely to change shape without notice. Adding a connector for one is a
-legitimate contribution (`scraper/connectors/`, follow the pattern in
-`workday.py`) but wasn't built out here rather than ship something
+SuccessFactors, iCIMS, and Taleo power a lot of the largest industrial/CPG
+employers and don't have a documented, stable public JSON API the way
+Greenhouse/Lever/Workday/Oracle Recruiting Cloud do, AND (unlike many
+companies) don't necessarily publish a job sitemap the `jsonld` connector
+could use either — each is more involved to reverse-engineer from
+DevTools and more likely to change shape without notice. Adding a
+connector for one is a legitimate contribution (`scraper/connectors/`,
+follow the pattern in `oracle_recruiting.py` — the most recently added
+one, and the clearest recent example of "found via a live browser session,
+not guessed") but wasn't built out here rather than ship something
 unverified.

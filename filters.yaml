@@ -57,6 +57,7 @@ trusted_companies:
   - UPS
   - C.H. Robinson
   - Old Dominion Freight Line
+  - J.B. Hunt
 
 # Optional: keep only postings whose location matches one of these
 # (word-boundary, case-insensitive — same matching as keywords_any, so

@@ -31,6 +31,7 @@ trusted_companies:
   - UPS
   - C.H. Robinson
   - Old Dominion Freight Line
+  - J.B. Hunt
 
 locations_include: []
 locations_exclude: []
