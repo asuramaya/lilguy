@@ -80,15 +80,24 @@ WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
 # "Manufacturing companies of the United States" and "Freight transport
 # companies", found via the API's own list=allcategories prefix search,
 # not by guessing harder). Every category below returned real, current
-# company articles when checked (66 to 131 members each) -- private
+# company articles when checked (13 to 196 members each) -- private
 # carriers like AAA Cooper Transportation and Averitt Express among
 # them, exactly the gap SEC EDGAR's public-companies-only list leaves.
+# Checked and confirmed EMPTY/nonexistent under the obvious names, so a
+# future session doesn't re-try them: "Third-party logistics companies",
+# "Package delivery companies", "Companies in the railroad industry of
+# the United States", "Warehousing companies", "Supply chain management
+# companies" -- 0 members each, likely just not real category titles
+# (Wikipedia may cover these companies under a different category
+# entirely) rather than empty categories.
 RELEVANT_WIKIPEDIA_CATEGORIES = [
     "Trucking companies of the United States",
     "Logistics companies of the United States",
     "Logistics companies",
     "Manufacturing companies of the United States",
     "Freight transport companies",
+    "Shipping companies of the United States",
+    "Defense companies of the United States",
 ]
 
 

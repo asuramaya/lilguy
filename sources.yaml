@@ -499,10 +499,19 @@ sources:
   #     to read. A microdata-reading connector would be new code for a
   #     single confirmed company so far; not built for that reason alone.
   #
+  # Checked with a live browser session and RULED OUT:
+  #   - Ford: careers.ford.com runs Radancy's TalentBrew platform, not
+  #     Greenhouse/Lever/Workday/Oracle/jsonld. No sitemap advertised at
+  #     all, and robots.txt explicitly disallows /search-jobs/ — the
+  #     ONLY path that actually lists jobs. No jsonld fit exists to find
+  #     (nothing to enumerate individual job URLs from) and the site
+  #     itself asks not to be crawled there. Respecting that rather than
+  #     routing around it.
+  #
   # Still untried (guessed Workday tenant/site names 422'd or 404'd
   # without a clear signal either way — needs a live browser session
   # like Eaton/ITW/Oracle Recruiting Cloud got, not more guessing):
-  # Ford, Toyota, Lockheed Martin (also: Lockheed's own site says it's
+  # Toyota, Lockheed Martin (also: Lockheed's own site says it's
   # mid-migration to a new careers platform as of this check — worth
   # waiting out rather than chasing a moving target).
   #
