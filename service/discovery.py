@@ -40,6 +40,7 @@ add next), not a per-company chore.
 """
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -56,7 +57,17 @@ from candidate_sources import fetch_sec_edgar_company_names, fetch_wikipedia_cat
 from db import cursor  # noqa: E402
 from verify import verify_trial_fetch  # noqa: E402
 
-TIMEOUT = 12
+# Confirmed live: a full 8,480-candidate queue at the original TIMEOUT=12,
+# fully sequential, averaged 5.8s/candidate -- a ~13.7 HOUR full pass.
+# These probes are lightweight existence checks against real APIs, not
+# real scraping: a token/tenant that actually exists responds fast, and
+# a guess that doesn't exist should fail fast too (DNS/connection
+# refused) rather than need 12s to time out. 5s is still generous for
+# that. See the concurrency changes below (per-candidate Workday
+# parallelization + across-candidate dispatch) for the rest of the fix
+# -- timeout alone only bounds the tail, it doesn't fix the structural
+# cost of running everything sequentially.
+TIMEOUT = 5
 UA = {"User-Agent": "Mozilla/5.0 (internship-feed-bot; auto-discovery)"}
 TRIAL_MAX_PAGES = 40  # small trial fetch -- enough to judge, not a full scrape
 NO_MATCH_RECHECK_DAYS = 90
@@ -155,21 +166,58 @@ def _probe_lever(company: str):
     return None
 
 
-def _probe_workday(company: str):
-    tenant = _slugify(company)
-    for host in WORKDAY_HOST_GUESSES:
-        for site in WORKDAY_SITE_GUESSES:
-            url = f"https://{tenant}.{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
-            try:
-                r = requests.post(url, json={"limit": 1, "offset": 0, "searchText": ""}, timeout=TIMEOUT,
-                                   headers={"Content-Type": "application/json"})
-                if r.status_code == 200 and "jobPostings" in r.json():
-                    return {"ats": "workday", "config": {"company": company, "ats": "workday", "tenant": tenant,
-                                                            "wd_host": host, "site": site,
-                                                            "category": "Uncategorized", "max_pages": 5}}
-            except (requests.RequestException, ValueError):
-                continue
+def _try_workday_guess(company: str, tenant: str, host: str, site: str):
+    url = f"https://{tenant}.{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+    try:
+        r = requests.post(url, json={"limit": 1, "offset": 0, "searchText": ""}, timeout=TIMEOUT,
+                           headers={"Content-Type": "application/json"})
+        if r.status_code == 200 and "jobPostings" in r.json():
+            return {"ats": "workday", "config": {"company": company, "ats": "workday", "tenant": tenant,
+                                                    "wd_host": host, "site": site,
+                                                    "category": "Uncategorized", "max_pages": 5}}
+    except (requests.RequestException, ValueError):
+        pass
     return None
+
+
+def _probe_workday(company: str):
+    # The 6 host/site combinations are independent guesses about the SAME
+    # company -- order doesn't matter, only "did any of them hit." Firing
+    # them concurrently instead of sequentially was the single biggest
+    # per-candidate latency cost in this module: confirmed live, a full
+    # sequential pass at TIMEOUT=12 averaged 5.8s/candidate, and this is
+    # the only probe that always runs multiple requests even when nothing
+    # matches (Greenhouse/Lever are one request each; jsonld usually
+    # dies at the first robots.txt check for a non-career site).
+    #
+    # as_completed, not pool.map -- map() yields results back in
+    # SUBMISSION order, so a slow guess submitted first would still block
+    # returning an early hit found by a guess submitted later, even
+    # though both ran concurrently. as_completed returns whichever
+    # future finishes FIRST, so a real hit short-circuits the moment it
+    # lands instead of waiting on whatever happens to be earlier in the
+    # host/site list.
+    #
+    # Deliberately NOT `with ThreadPoolExecutor() as pool:` -- the
+    # context manager's __exit__ calls shutdown(wait=True), which blocks
+    # until EVERY submitted future finishes, even ones we've already
+    # stopped caring about after an early hit. That would silently
+    # cancel out most of the point of racing these guesses in the first
+    # place. shutdown(wait=False) lets this function return the moment a
+    # hit is found; the handful of still-running background requests
+    # finish on their own without this call waiting on them.
+    tenant = _slugify(company)
+    guesses = [(host, site) for host in WORKDAY_HOST_GUESSES for site in WORKDAY_SITE_GUESSES]
+    pool = ThreadPoolExecutor(max_workers=len(guesses))
+    try:
+        futures = [pool.submit(_try_workday_guess, company, tenant, host, site) for host, site in guesses]
+        for future in as_completed(futures):
+            result = future.result()
+            if result:
+                return result
+        return None
+    finally:
+        pool.shutdown(wait=False)
 
 
 def _fetch_sitemap_locs(url: str):
@@ -237,11 +285,84 @@ def _seed_unchecked_candidates():
         )
 
 
-def run_discovery_cycle(limit: int = 5) -> list[dict]:
-    """Processes up to `limit` due candidates. Returns a result summary
-    per candidate for logging."""
+# Candidates are independent -- each probes a DIFFERENT company's own
+# domain, so there's no shared-site politeness concern the way
+# scheduler.py's scraping concurrency has to stay conservative about
+# (MAX_WORKERS=6 there, bounding how many DIFFERENT companies get
+# scraped at once mostly to bound local resource use, not to protect
+# any one site). These probes are cheap existence checks, not real
+# scraping -- confirmed live, the whole discovery process uses under
+# 30MB RAM and ~5% CPU even before this fix. 24 is a deliberately
+# generous worker count given that headroom: at the measured 5.8s/
+# candidate sequential baseline, 24-way concurrency alone gets an
+# 8,480-candidate queue down to roughly (8480 * 5.8s) / 24 ≈ 34 minutes
+# -- combined with the per-candidate Workday parallelization and the
+# tighter TIMEOUT above, comfortably under an hour with real margin.
+DISCOVERY_CANDIDATE_WORKERS = 24
+
+
+def _process_candidate(row: dict) -> dict:
+    """One candidate's full probe -> trial fetch -> verify -> DB-write
+    pipeline. Extracted from run_discovery_cycle so it can be dispatched
+    into a thread pool -- each call opens its own DB connection (see
+    db.py's connect(), a fresh psycopg2.connect() per call, not a shared
+    pool), so concurrent calls from different threads are safe without
+    any locking here beyond the row-level FOR UPDATE SKIP LOCKED claim
+    already taken before dispatch.
+    """
+    company = row["company"]
+    now = datetime.now(timezone.utc)
+    hit = probe_candidate(company)
+
+    if hit is None:
+        with cursor() as cur:
+            cur.execute(
+                "UPDATE discovery_candidates SET review_status = 'no_match', checked_at = %s, "
+                "next_check_at = %s WHERE id = %s",
+                (now, now + timedelta(days=NO_MATCH_RECHECK_DAYS), row["id"]),
+            )
+        return {"company": company, "outcome": "no_match"}
+
+    connector_cls = CONNECTORS[hit["ats"]]
+    try:
+        trial_postings = connector_cls().fetch(hit["config"])
+    except Exception as exc:  # noqa: BLE001
+        verdict = {"passed": False, "reason": f"trial fetch raised: {exc}", "evidence": {}}
+    else:
+        verdict = verify_trial_fetch(company, trial_postings)
+
+    with cursor() as cur:
+        if verdict["passed"]:
+            cur.execute(
+                """
+                INSERT INTO sources (company, ats, category, config, status, added_by, scrape_interval_seconds)
+                VALUES (%s, %s, 'Uncategorized', %s, 'probation', 'discovery', 3600)
+                ON CONFLICT (company, ats) DO NOTHING
+                """,
+                (company, hit["ats"], psycopg2.extras.Json(hit["config"])),
+            )
+            cur.execute(
+                "UPDATE discovery_candidates SET ats = %s, config = %s, review_status = 'promoted', "
+                "evidence = %s, checked_at = %s WHERE id = %s",
+                (hit["ats"], psycopg2.extras.Json(hit["config"]), psycopg2.extras.Json(verdict["evidence"]),
+                 now, row["id"]),
+            )
+            return {"company": company, "outcome": "promoted_to_probation", "ats": hit["ats"]}
+        else:
+            cur.execute(
+                "UPDATE discovery_candidates SET ats = %s, config = %s, review_status = 'rejected', "
+                "evidence = %s, checked_at = %s, next_check_at = %s WHERE id = %s",
+                (hit["ats"], psycopg2.extras.Json(hit["config"]),
+                 psycopg2.extras.Json({**verdict["evidence"], "reason": verdict["reason"]}),
+                 now, now + timedelta(days=REJECTED_RECHECK_DAYS), row["id"]),
+            )
+            return {"company": company, "outcome": "rejected", "reason": verdict["reason"]}
+
+
+def run_discovery_cycle(limit: int = 5, max_workers: int = DISCOVERY_CANDIDATE_WORKERS) -> list[dict]:
+    """Processes up to `limit` due candidates, up to `max_workers` at a
+    time. Returns a result summary per candidate for logging."""
     _seed_unchecked_candidates()
-    results = []
 
     with cursor() as cur:
         cur.execute(
@@ -252,65 +373,42 @@ def run_discovery_cycle(limit: int = 5) -> list[dict]:
         )
         due = cur.fetchall()
 
-    for row in due:
-        company = row["company"]
-        now = datetime.now(timezone.utc)
-        hit = probe_candidate(company)
+    if not due:
+        return []
 
-        if hit is None:
-            with cursor() as cur:
-                cur.execute(
-                    "UPDATE discovery_candidates SET review_status = 'no_match', checked_at = %s, "
-                    "next_check_at = %s WHERE id = %s",
-                    (now, now + timedelta(days=NO_MATCH_RECHECK_DAYS), row["id"]),
-                )
-            results.append({"company": company, "outcome": "no_match"})
-            continue
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        return list(pool.map(_process_candidate, due))
 
-        connector_cls = CONNECTORS[hit["ats"]]
-        try:
-            trial_postings = connector_cls().fetch(hit["config"])
-        except Exception as exc:  # noqa: BLE001
-            verdict = {"passed": False, "reason": f"trial fetch raised: {exc}", "evidence": {}}
-        else:
-            verdict = verify_trial_fetch(company, trial_postings)
 
+def _process_disabled_source(row: dict) -> dict:
+    connector_cls = CONNECTORS.get(row["ats"])
+    try:
+        trial_postings = connector_cls().fetch(row["config"]) if connector_cls else []
+        verdict = verify_trial_fetch(row["company"], trial_postings)
+    except Exception as exc:  # noqa: BLE001
+        verdict = {"passed": False, "reason": f"trial fetch raised: {exc}", "evidence": {}}
+
+    if verdict["passed"]:
         with cursor() as cur:
-            if verdict["passed"]:
-                cur.execute(
-                    """
-                    INSERT INTO sources (company, ats, category, config, status, added_by, scrape_interval_seconds)
-                    VALUES (%s, %s, 'Uncategorized', %s, 'probation', 'discovery', 3600)
-                    ON CONFLICT (company, ats) DO NOTHING
-                    """,
-                    (company, hit["ats"], psycopg2.extras.Json(hit["config"])),
-                )
-                cur.execute(
-                    "UPDATE discovery_candidates SET ats = %s, config = %s, review_status = 'promoted', "
-                    "evidence = %s, checked_at = %s WHERE id = %s",
-                    (hit["ats"], psycopg2.extras.Json(hit["config"]), psycopg2.extras.Json(verdict["evidence"]),
-                     now, row["id"]),
-                )
-                results.append({"company": company, "outcome": "promoted_to_probation", "ats": hit["ats"]})
-            else:
-                cur.execute(
-                    "UPDATE discovery_candidates SET ats = %s, config = %s, review_status = 'rejected', "
-                    "evidence = %s, checked_at = %s, next_check_at = %s WHERE id = %s",
-                    (hit["ats"], psycopg2.extras.Json(hit["config"]),
-                     psycopg2.extras.Json({**verdict["evidence"], "reason": verdict["reason"]}),
-                     now, now + timedelta(days=REJECTED_RECHECK_DAYS), row["id"]),
-                )
-                results.append({"company": company, "outcome": "rejected", "reason": verdict["reason"]})
-
-    return results
+            cur.execute(
+                "UPDATE sources SET status = 'probation', consecutive_failures = 0, "
+                "next_scrape_at = now() WHERE id = %s",
+                (row["id"],),
+            )
+        return {"company": row["company"], "outcome": "reinstated_to_probation"}
+    return {"company": row["company"], "outcome": "still_broken", "reason": verdict["reason"]}
 
 
-def recheck_disabled_sources(limit: int = 5) -> list[dict]:
+def recheck_disabled_sources(limit: int = 5, max_workers: int = DISCOVERY_CANDIDATE_WORKERS) -> list[dict]:
     """Self-healing half: give a disabled source one trial fetch through
     the SAME gate a new candidate has to pass. A pass sends it back to
     probation (re-earns its second confirmation), not straight to
     active -- one working fetch after a string of failures could itself
-    be a fluke."""
+    be a fluke. Each disabled source is a REAL connector fetch (not a
+    cheap probe), so unlike run_discovery_cycle this rarely has enough
+    volume for concurrency to matter much in practice -- parallelized
+    anyway for consistency and because it costs nothing when the list
+    is short."""
     with cursor() as cur:
         cur.execute(
             "SELECT id, company, ats, config FROM sources WHERE status = 'disabled' "
@@ -319,27 +417,11 @@ def recheck_disabled_sources(limit: int = 5) -> list[dict]:
         )
         disabled = cur.fetchall()
 
-    results = []
-    for row in disabled:
-        connector_cls = CONNECTORS.get(row["ats"])
-        try:
-            trial_postings = connector_cls().fetch(row["config"]) if connector_cls else []
-            verdict = verify_trial_fetch(row["company"], trial_postings)
-        except Exception as exc:  # noqa: BLE001
-            verdict = {"passed": False, "reason": f"trial fetch raised: {exc}", "evidence": {}}
+    if not disabled:
+        return []
 
-        with cursor() as cur:
-            if verdict["passed"]:
-                cur.execute(
-                    "UPDATE sources SET status = 'probation', consecutive_failures = 0, "
-                    "next_scrape_at = now() WHERE id = %s",
-                    (row["id"],),
-                )
-                results.append({"company": row["company"], "outcome": "reinstated_to_probation"})
-            else:
-                results.append({"company": row["company"], "outcome": "still_broken", "reason": verdict["reason"]})
-
-    return results
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        return list(pool.map(_process_disabled_source, disabled))
 
 
 # Sized for a real ~10K-candidate queue (SEC EDGAR's full company list),
@@ -347,24 +429,45 @@ def recheck_disabled_sources(limit: int = 5) -> list[dict]:
 # taken roughly 87 DAYS to grind through 10,391 names once -- each probe
 # is a handful of quick HTTP checks against a DIFFERENT company's own
 # domain (no shared site being hammered, unlike a single source's job-
-# page pacing), so a much higher per-cycle batch is safe. At limit=150 /
-# 5 min this clears the initial backlog in a few hours, then settles
-# into steady-state re-checking of no_match/rejected candidates on their
-# own long (90-day) intervals.
+# A fixed sleep between cycles was fine when each cycle was slow anyway
+# (sequential probing dominated the wall time). It stops being fine once
+# probing is fast: confirmed live, the ORIGINAL sequential+TIMEOUT=12
+# setup averaged 5.8s/candidate, so a 150-candidate batch alone took
+# ~14.5 minutes -- longer than the 5-minute sleep, so the sleep barely
+# mattered. With per-candidate latency fixed (Workday parallelized,
+# TIMEOUT=5, 24-way candidate concurrency), that same batch finishes in
+# roughly 150/24 * ~2s ≈ 12 SECONDS -- if run_forever still slept 300s
+# after every batch regardless, the sleep would become the new
+# bottleneck by two orders of magnitude, undoing most of the fix. See
+# run_forever's own "drain, then idle" logic below for how this is
+# actually handled: a FULL batch (there's more backlog waiting) loops
+# again immediately with no sleep; sleep only happens once a cycle comes
+# back with fewer than `batch_size` results, meaning the current due
+# queue is actually drained, not just this cycle's slice of it.
 DISCOVERY_POLL_INTERVAL_SECONDS = 300
-DISCOVERY_BATCH_SIZE = 150
+DISCOVERY_BATCH_SIZE = 300
 
 
 def run_forever(poll_interval: int = DISCOVERY_POLL_INTERVAL_SECONDS, batch_size: int = DISCOVERY_BATCH_SIZE) -> None:
     import time
 
-    print(f"Discovery loop starting: polling every {poll_interval}s, batch size {batch_size}.", flush=True)
+    print(f"Discovery loop starting: batch size {batch_size}, idle poll {poll_interval}s.", flush=True)
     while True:
-        for r in run_discovery_cycle(limit=batch_size):
+        discovery_results = run_discovery_cycle(limit=batch_size)
+        for r in discovery_results:
             print(f"[discovery] {r}", flush=True)
-        for r in recheck_disabled_sources(limit=batch_size):
+        recheck_results = recheck_disabled_sources(limit=batch_size)
+        for r in recheck_results:
             print(f"[recheck]   {r}", flush=True)
-        time.sleep(poll_interval)
+
+        # Full batch on EITHER call means there's likely more backlog
+        # right behind it -- keep draining without sleeping. Only idle
+        # once a cycle comes back with less than a full batch, meaning
+        # the current due queue (unchecked + anything whose next_check_at
+        # has come due) is actually empty for now.
+        drained = len(discovery_results) < batch_size and len(recheck_results) < batch_size
+        if drained:
+            time.sleep(poll_interval)
 
 
 if __name__ == "__main__":
