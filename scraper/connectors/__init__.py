@@ -6,6 +6,7 @@ from .muse import MuseConnector
 from .adzuna import AdzunaConnector
 from .jsonld import JsonLdConnector
 from .oracle_recruiting import OracleRecruitingConnector
+from .usajobs import UsaJobsConnector
 
 CONNECTORS = {
     "greenhouse": GreenhouseConnector,
@@ -15,6 +16,7 @@ CONNECTORS = {
     "adzuna": AdzunaConnector,
     "jsonld": JsonLdConnector,
     "oracle_recruiting": OracleRecruitingConnector,
+    "usajobs": UsaJobsConnector,
 }
 
 __all__ = ["Posting", "Connector", "CONNECTORS"]

@@ -53,14 +53,25 @@ doesn't keep growing linearly as sources are added the way the
 sequential batch script's did.
 
 **discovery.py** is the "self-updating list" half. It can only probe
-companies it's told to try (`CANDIDATE_SEED` in the file, or any row
-someone else adds to `discovery_candidates`) — it discovers WHICH ats
-platform a named company uses automatically, it doesn't invent company
-names out of nothing. For each due candidate: try Greenhouse, then
-Lever, then a small bounded Workday tenant/site guess matrix, then a
-jsonld sitemap check, in that order (cheapest/most reliable first). A
-hit gets a REAL trial fetch through the matching connector, then has to
-pass `service/verify.py`'s gate before it's trusted at all.
+companies it's told to try — it discovers WHICH ats platform a named
+company uses automatically, it doesn't invent company names out of
+nothing. As of this writing, "told to try" means `service/
+candidate_sources.py`'s `fetch_sec_edgar_company_names()` — SEC EDGAR's
+own public `company_tickers.json`, 10,391 real company names, free, no
+API key, no signup, confirmed live. That's a real jump from this
+project's original 9-name hand-typed placeholder list, though it's
+worth being honest about its own limit: EDGAR only covers publicly
+traded US companies, so large private employers (a lot of trucking/
+freight carriers, for instance) aren't in it at all — see `candidate_
+sources.py`'s own module docstring for what else was researched and
+rejected (SIC-code industry filtering, genuinely too fragile on SEC's
+legacy search endpoint to depend on) and why full breadth was chosen
+over an industry-prioritized subset. For each due candidate: try
+Greenhouse, then Lever, then a small bounded Workday tenant/site guess
+matrix, then a jsonld sitemap check, in that order (cheapest/most
+reliable first). A hit gets a REAL trial fetch through the matching
+connector, then has to pass `service/verify.py`'s gate before it's
+trusted at all.
 
 ## Why auto-promotion needed a gate, not just "did the request succeed"
 
@@ -137,10 +148,14 @@ than a specific cloud platform's managed primitives.
   full scheduler replicas would each independently think they have
   `MAX_WORKERS` free slots). This project's source count doesn't need
   that yet.
-- **Broad automatic company discovery.** `CANDIDATE_SEED` still needs a
-  human (or a future job) to name companies to try — discovery
-  automates the "which ATS" question per named company, not "which
-  companies exist."
+- **Company names beyond SEC EDGAR's public-company list.** Discovery no
+  longer needs a human to type company names one at a time (SEC EDGAR's
+  10,391-name list handles that now), but it's still bounded by what
+  that ONE free source covers — large PRIVATE companies (many logistics/
+  trucking carriers among them) aren't in it. A second free source (a
+  public S&P 1500/Russell index constituent list was researched as a
+  smaller, sector-tagged supplement) is a real next step, not yet wired
+  in.
 - **Oracle Recruiting Cloud / Eightfold / Phenom-style discovery.**
   Those platforms use opaque per-company hosts that plain HTTP probing
   can't guess — every one found in this project so far (Honeywell,

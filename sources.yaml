@@ -101,6 +101,26 @@ sources:
   #   # the same reason the Muse entry above dropped its category filter —
   #   # narrow with your own filters.yaml, not by narrowing the source.
 
+  # - company: USAJobs (US federal government's own job board)
+  #   ats: usajobs
+  #   keyword: intern
+  #   category_label: "Government / Public Sector"
+  #   max_pages: 10
+  #   # A direct-source aggregator in the sense that matters here:
+  #   # postings come straight from federal hiring agencies (DoD, DoT,
+  #   # GSA, USDA, etc. all run real ops/logistics/supply-chain
+  #   # functions), not resold by a third party. Free, no cost, 2-minute
+  #   # email signup at https://developer.usajobs.gov/ — set
+  #   # USAJOBS_API_KEY and USAJOBS_USER_AGENT (the email you registered
+  #   # with — USAJobs requires this as a literal header) as env vars.
+  #   # Left commented out for a STRONGER reason than Adzuna above: this
+  #   # project holds no USAJobs key at all, so scraper/connectors/
+  #   # usajobs.py's field mapping is built from public API
+  #   # documentation, not confirmed against a real live response — see
+  #   # its own docstring. Uncomment only after someone with a real key
+  #   # has verified the field mapping against live data, per this
+  #   # project's verify-before-shipping standard.
+
   # ============================ TIER 1.5 =============================
   - company: UPS
     ats: jsonld

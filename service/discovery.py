@@ -25,12 +25,18 @@ Two loops live here:
   used to work" doesn't mean the fetch that "fixed" it isn't itself
   another fluke.
 
-Discovery can only probe companies it's been TOLD to try (CANDIDATE_SEED
-below, or rows added to discovery_candidates some other way) -- it finds
+Discovery can only probe companies it's been TOLD to try -- it finds
 which ATS a named company uses automatically, it does not invent company
 names from nothing. That distinction matters: the automation this
 project asked for is "no human needed to APPROVE a hit," not "no human
-ever names a company to check."
+ever names a company to check." As of this file, "told to try" means
+SEC EDGAR's own public company-tickers list -- 10,391 real company
+names, free, no API key, no signup (see candidate_sources.py) -- rather
+than a hand-typed list someone has to keep extending by hand. That list
+IS still a human-curated input in one sense (someone chose "public
+companies with a US ticker" as the pool), but growing it from here on
+is a research/infrastructure question (which free, public bulk list to
+add next), not a per-company chore.
 """
 import re
 import sys
@@ -46,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from connectors import CONNECTORS  # noqa: E402
 
+from candidate_sources import fetch_sec_edgar_company_names  # noqa: E402
 from db import cursor  # noqa: E402
 from verify import verify_trial_fetch  # noqa: E402
 
@@ -55,12 +62,39 @@ TRIAL_MAX_PAGES = 40  # small trial fetch -- enough to judge, not a full scrape
 NO_MATCH_RECHECK_DAYS = 90
 REJECTED_RECHECK_DAYS = 90
 
-# Companies to probe. This is the one part of "self-updating" that still
-# needs a human (or a future job) to seed -- see the module docstring.
-# Names already covered in sources.yaml don't need to be here; this list
-# is deliberately just the backlog flagged there as "still untried."
-CANDIDATE_SEED = ["Ford", "Toyota", "Lockheed Martin", "Cummins", "Caterpillar",
-                   "Deere", "Nucor", "Emerson Electric", "Rockwell Automation"]
+# The real candidate feed: every company SEC EDGAR has a ticker on file
+# for (10,391 real names, confirmed live) -- see candidate_sources.py for
+# why this is the source, what was tried and rejected (SIC-code industry
+# filtering), and its own honestly-stated coverage gap (public companies
+# only). Deliberately NOT fetched at import time -- `import discovery`
+# must stay a pure, network-free operation (tests import this module on
+# every run; a module-level network call would make every test run slow
+# and flaky against SEC's uptime, not just the tests that actually
+# exercise seeding). _load_candidate_seed() is called lazily, inside
+# _seed_unchecked_candidates(), only when a real seeding pass runs.
+# A small hand-picked fallback covers SEC EDGAR being unreachable (e.g.
+# offline dev, SEC downtime) so discovery still has SOMETHING to work
+# with rather than silently seeding nothing.
+FALLBACK_CANDIDATE_SEED = ["Ford", "Toyota", "Lockheed Martin", "Cummins", "Caterpillar",
+                            "Deere", "Nucor", "Emerson Electric", "Rockwell Automation"]
+
+
+def _load_candidate_seed() -> list[str]:
+    try:
+        names = fetch_sec_edgar_company_names()
+        if names:
+            return names
+    except Exception as exc:  # noqa: BLE001 - seeding must not crash the whole loop
+        print(f"[discovery] SEC EDGAR candidate fetch failed ({exc}), using fallback seed list", flush=True)
+    return FALLBACK_CANDIDATE_SEED
+
+
+# None means "not overridden" -- _seed_unchecked_candidates() calls
+# _load_candidate_seed() fresh each time. Tests set this directly via
+# monkeypatch to inject a fixed list without touching the network (see
+# tests/service/test_discovery.py) -- same pattern as before, just no
+# longer evaluated at import time.
+CANDIDATE_SEED = None
 
 # Small, bounded guess matrices -- NOT exhaustive. Confirmed live this
 # session that blind Workday guessing has a low hit rate (Ford/Toyota/
@@ -171,12 +205,23 @@ def probe_candidate(company: str) -> dict | None:
 
 
 def _seed_unchecked_candidates():
+    # Re-fetched every cycle rather than cached -- SEC EDGAR's own list
+    # grows as companies IPO, so this naturally picks up new entrants
+    # over time. Cheap to repeat: ON CONFLICT DO NOTHING makes re-seeding
+    # an already-known company a no-op, and the whole batch goes in as
+    # ONE query (psycopg2.extras.execute_values), not one round trip per
+    # company -- with a real ~10K-name feed instead of the original
+    # 9-name hardcoded list, a per-row INSERT loop here would have meant
+    # ~10K network round trips every single discovery cycle.
+    seed = CANDIDATE_SEED if CANDIDATE_SEED is not None else _load_candidate_seed()
+    if not seed:
+        return
     with cursor() as cur:
-        for company in CANDIDATE_SEED:
-            cur.execute(
-                "INSERT INTO discovery_candidates (company) VALUES (%s) ON CONFLICT (company) DO NOTHING",
-                (company,),
-            )
+        psycopg2.extras.execute_values(
+            cur,
+            "INSERT INTO discovery_candidates (company) VALUES %s ON CONFLICT (company) DO NOTHING",
+            [(c,) for c in seed],
+        )
 
 
 def run_discovery_cycle(limit: int = 5) -> list[dict]:
@@ -284,17 +329,27 @@ def recheck_disabled_sources(limit: int = 5) -> list[dict]:
     return results
 
 
-DISCOVERY_POLL_INTERVAL_SECONDS = 1800  # 30 min -- probing is network-bound but low-volume, no need to poll as tightly as scheduler.py
+# Sized for a real ~10K-candidate queue (SEC EDGAR's full company list),
+# not the original 9-name placeholder. limit=5 every 30 min would have
+# taken roughly 87 DAYS to grind through 10,391 names once -- each probe
+# is a handful of quick HTTP checks against a DIFFERENT company's own
+# domain (no shared site being hammered, unlike a single source's job-
+# page pacing), so a much higher per-cycle batch is safe. At limit=150 /
+# 5 min this clears the initial backlog in a few hours, then settles
+# into steady-state re-checking of no_match/rejected candidates on their
+# own long (90-day) intervals.
+DISCOVERY_POLL_INTERVAL_SECONDS = 300
+DISCOVERY_BATCH_SIZE = 150
 
 
-def run_forever(poll_interval: int = DISCOVERY_POLL_INTERVAL_SECONDS) -> None:
+def run_forever(poll_interval: int = DISCOVERY_POLL_INTERVAL_SECONDS, batch_size: int = DISCOVERY_BATCH_SIZE) -> None:
     import time
 
-    print(f"Discovery loop starting: polling every {poll_interval}s.", flush=True)
+    print(f"Discovery loop starting: polling every {poll_interval}s, batch size {batch_size}.", flush=True)
     while True:
-        for r in run_discovery_cycle(limit=5):
+        for r in run_discovery_cycle(limit=batch_size):
             print(f"[discovery] {r}", flush=True)
-        for r in recheck_disabled_sources(limit=5):
+        for r in recheck_disabled_sources(limit=batch_size):
             print(f"[recheck]   {r}", flush=True)
         time.sleep(poll_interval)
 

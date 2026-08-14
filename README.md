@@ -36,9 +36,10 @@ Three things beyond the static research:
 - `scraper/` — `scrape.py` (fetches everything, writes the raw store),
   `build_feed.py` (applies a filter file to the raw store, writes a
   rendered feed — this is what you run with your own filter), connectors/
-  (`muse`, `adzuna` — aggregators; `jsonld` — generic schema.org harvester,
-  works on any career site regardless of ATS vendor; `greenhouse`, `lever`,
-  `workday`, `oracle_recruiting` — vendor-specific), `user_filter.py` (the filter-matching logic
+  (`muse`, `adzuna`, `usajobs` — aggregators; `jsonld` — generic schema.org
+  harvester, works on any career site regardless of ATS vendor;
+  `greenhouse`, `lever`, `workday`, `oracle_recruiting` — vendor-specific),
+  `user_filter.py` (the filter-matching logic
   `build_feed.py` uses). `pip install -r scraper/requirements.txt` first.
 - `filters.yaml` — this fork's default filter (ops/logistics/supply-chain
   keywords + a trusted-company list). **Copy it, don't edit it in place**,
