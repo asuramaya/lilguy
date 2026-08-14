@@ -357,6 +357,71 @@ sources:
     # confirmed); each still needs its own host/site_number found the
     # same way, a browser session, not a shortcut.
 
+  - company: 3M
+    ats: workday
+    tenant: 3m
+    wd_host: wd1
+    site: Search
+    category: Industrial Manufacturing
+    max_pages: 35
+    # Found via WebSearch (3m.wd1.myworkdayjobs.com), then the site name
+    # itself had to be read off the live page's own HTML (siteId:
+    # "Search" — NOT the "en-US" locale segment in the URL, which looks
+    # like a plausible site name but 404s against the API). 646 total
+    # postings, real internships confirmed (China, Brazil, and US roles
+    # mixed in) — diversified industrial, NOT domain-native, relies on
+    # the standard keyword filter.
+
+  - company: Eaton
+    ats: jsonld
+    sitemap_url: https://eaton.eightfold.ai/careers/sitemap_index.xml?domain=eaton.com
+    url_pattern: "/careers/job/"
+    category: Industrial Manufacturing
+    max_pages: 500
+    # NOT Workday (checked and ruled out — Eaton's own myworkdayjobs.com
+    # guesses 422'd). Its real careers site (eaton.com/.../careers.html)
+    # hands off to eaton.eightfold.ai — Eightfold.ai, an AI-driven ATS
+    # this project has no dedicated connector for and doesn't need one:
+    # its sitemap is a proper index (2 sub-sitemaps, auto-expanded) and
+    # individual job pages carry full schema.org/JobPosting JSON-LD, so
+    # the generic jsonld.py connector covers it with zero new code. Also
+    # the source that surfaced a real jsonld.py bug: its sub-sitemap
+    # URLs carry a trailing query string (?domain=eaton.com), which
+    # broke the index-detection check's naive `.endswith(".xml")` — see
+    # jsonld.py's own comment. 2236 total job URLs in the sitemap (500 of
+    # those actually fetched per run — see the note at the end of this
+    # file on why jsonld sources sample rather than fetch every URL),
+    # confirmed real internship ("Production/Operations Intern
+    # (Manufacturing)", mentions Logistics/EHS/CI cross-functional work
+    # in its own description).
+
+  - company: ITW
+    ats: jsonld
+    sitemap_url: https://careers.itw.com/us/en/sitemap_index.xml
+    url_pattern: "/job/"
+    category: Industrial Manufacturing
+    max_pages: 700
+    # Phenom-People-hosted (same platform as UPS) — found via a live
+    # browser session (network tab showed cdn.phenompeople.com assets),
+    # confirmed via curl afterward. Sitemap is a proper index (2 sub-
+    # sitemaps, auto-expanded); job pages carry schema.org/JobPosting
+    # JSON-LD, though with unusual attribute ordering on the <script>
+    # tag itself (nonce before type) — the jsonld.py regex already
+    # handles arbitrary attribute order, so no code change was needed,
+    # just confirmation it actually applied here. ~676 individual job
+    # URLs in the sitemap (small enough to fetch in full, unlike Eaton) —
+    # confirmed real internship ("Quality Engineer Intern", Mokena, IL)
+    # plus a dedicated /c/intern-jobs and /c/sourcing-supply-chain-jobs
+    # landing page in the sitemap itself. Also caught a real config
+    # mistake here, not just a connector bug: max_pages for a jsonld
+    # source caps individual JOB PAGES fetched, not paginated API
+    # batches the way it does for workday/oracle_recruiting entries —
+    # an initial max_pages: 15 (copied from a workday-shaped instinct)
+    # sampled only the first 15 of ~676 URLs and found zero interns by
+    # chance, which looked like an empty source until a live scrape run
+    # surfaced "15 fetched -> 0 internship-shaped" and prompted a
+    # re-check of what max_pages actually caps for this connector.
+
   # Checked for a Tier 1.5 (jsonld) fit and RULED OUT — documented so a
   # future session doesn't repeat the same search:
   #   - Caterpillar, GM, P&G, J&J, Nestle, Deere: their public sitemaps
@@ -373,28 +438,64 @@ sources:
   #     size or industry. NOW COVERED, see the oracle_recruiting entry
   #     above (this was only a sourcing dead-end for Tier 1.5/jsonld
   #     specifically, not for the project overall).
+  #   - Eaton, ITW: initially assumed Workday-shaped like their peers —
+  #     both actually turned out to already be jsonld/Tier-1.5 fits
+  #     (Eightfold.ai and Phenom-People respectively). NOW COVERED, see
+  #     their entries above.
   #
   # DONE via Workday (found by WebSearch for a real myworkdayjobs.com
   # tenant, then verified with a raw POST — curl-only sitemap hunting
   # can't find these, they're JS-rendered): Unilever, GE Vernova, GE
   # Aerospace, General Motors, C.H. Robinson, Boeing (dedicated INTERN
-  # site), Old Dominion Freight Line, General Mills.
+  # site), Old Dominion Freight Line, General Mills, 3M.
   #
   # Checked via WebSearch and found NO usable myworkdayjobs.com tenant:
   # Cummins (only unrelated third-party childcare postings came up),
   # Costco (no Workday hit at all — likely a different ATS).
   #
-  # Still untried (no WebSearch attempt yet, or attempted and the search
-  # didn't surface a usable tenant): 3M, Eaton, Parker Hannifin, ITW,
-  # Union Pacific/BNSF, Ford, Toyota, Lockheed Martin.
+  # Checked and RULED OUT for now — not missing coverage this project can
+  # currently reach, not just "not yet tried":
+  #   - Parker Hannifin: careers site (Talemetry-hosted, on
+  #     parkercareers.ttcportals.com) is behind Cloudflare's managed
+  #     challenge — a plain `requests` GET gets served a JS challenge
+  #     page, not real content, even for the plain robots.txt. Real
+  #     ops/logistics/supply-chain postings ARE there (confirmed via a
+  #     live browser session — several "Intern Supply Chain" roles, a
+  #     dedicated Supply Chain/Logistics job-family filter) but this
+  #     project's scraper is deliberately plain-`requests`-only (no
+  #     headless-browser dependency, so it stays lightweight and runs
+  #     unmodified in GitHub Actions CI) — out of reach without adding
+  #     that dependency, which is a bigger architectural call than one
+  #     more source is worth. Revisit if the project ever adds headless-
+  #     browser fetching for some other reason.
+  #   - Union Pacific: up.jobs runs SuccessFactors (SAP) — a platform
+  #     this project has no connector for (see docs/adding-a-source.md's
+  #     "Unsupported ATS platforms"). Its job pages DO have structured
+  #     job data, but as schema.org microdata (itemtype/itemprop
+  #     attributes), not JSON-LD — the same shape J.B. Hunt's page
+  #     turned out to have before its real Workday backend was found.
+  #     jsonld.py only reads <script type="application/ld+json">, by
+  #     design (see its own module docstring) — no per-job JSON-LD here
+  #     to read. A microdata-reading connector would be new code for a
+  #     single confirmed company so far; not built for that reason alone.
+  #
+  # Still untried (guessed Workday tenant/site names 422'd or 404'd
+  # without a clear signal either way — needs a live browser session
+  # like Eaton/ITW/Oracle Recruiting Cloud got, not more guessing):
+  # Ford, Toyota, Lockheed Martin (also: Lockheed's own site says it's
+  # mid-migration to a new careers platform as of this check — worth
+  # waiting out rather than chasing a moving target).
   #
   # ATS platform coverage as of this entry: Greenhouse, Lever, Workday,
-  # Oracle Recruiting Cloud (oracle_recruiting.py — new, see the
-  # Honeywell entry above), plus the generic jsonld.py (any vendor with a
-  # job sitemap) and two aggregators (Muse, Adzuna). SuccessFactors and
-  # iCIMS/Taleo remain fully unsupported (no connector built) — see
-  # docs/adding-a-source.md's "Unsupported ATS platforms" section. Any
-  # company suspected of running Oracle Recruiting Cloud (P&G, Caterpillar,
-  # Cummins were guessed but never confirmed) needs its own host/
-  # site_number found via a live browser session — WebSearch doesn't
-  # surface these the way it does Workday tenants.
+  # Oracle Recruiting Cloud (oracle_recruiting.py), plus the generic
+  # jsonld.py (any vendor with a job sitemap — now confirmed across at
+  # least 4 different underlying platforms: Phenom People, Eightfold.ai,
+  # and whatever RTX/UPS's own vendors are) and two aggregators (Muse,
+  # Adzuna). SuccessFactors, iCIMS/Taleo, and Cloudflare-shielded sites
+  # remain fully unsupported (no connector built, in the Cloudflare case
+  # by design) — see docs/adding-a-source.md's "Unsupported ATS
+  # platforms" section. Any company suspected of running Oracle
+  # Recruiting Cloud (P&G, Caterpillar, Cummins were guessed but never
+  # confirmed) needs its own host/site_number found via a live browser
+  # session — WebSearch doesn't surface these the way it does Workday
+  # tenants.

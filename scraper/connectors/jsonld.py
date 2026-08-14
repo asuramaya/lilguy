@@ -12,6 +12,17 @@ LD_JSON_RE = re.compile(
 )
 LOC_RE = re.compile(r"<loc>([^<]+)</loc>")
 
+
+def _addr_field(value):
+    # schema.org allows addressCountry etc. to be either a plain string
+    # ("US") or a nested Country/AdministrativeArea object with its own
+    # "name" — confirmed live on Eaton's Eightfold-hosted JobPosting JSON-
+    # LD, which uses the nested-object form and crashed a plain ", ".join
+    # over the raw values.
+    if isinstance(value, dict):
+        return value.get("name", "")
+    return value
+
 # Confirmed live against RTX's careers site: firing requests back-to-back
 # with zero pacing gets intermittently 403'd (a WAF/bot-detection burst
 # trigger, not a User-Agent block — plain curl with the SAME headers hit
@@ -91,16 +102,42 @@ class JsonLdConnector(Connector):
         time.sleep(REQUEST_DELAY_SECONDS)
         return resp
 
+    def _get_sitemap_with_retry(self, url: str, timeout: int, attempts: int = 3):
+        # A sitemap fetch failing kills the ENTIRE source (unlike a single
+        # job page, which _fetch_one already tolerates) — confirmed live
+        # on RTX, where one transient 403 on a sub-sitemap during a run
+        # dropped the whole source despite the request-pacing fix already
+        # in place. Same shape as the Muse per-category retry: one bad
+        # request shouldn't be fatal when a short retry would likely
+        # succeed.
+        last_exc = None
+        for attempt in range(attempts):
+            try:
+                resp = self._get(url, timeout=timeout)
+                resp.raise_for_status()
+                return resp
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt < attempts - 1:
+                    time.sleep(1.5 * (attempt + 1))
+        raise last_exc
+
     def _collect_locs(self, sitemap_url: str, depth: int = 0, max_sub_sitemaps: int = 25) -> list[str]:
-        resp = self._get(sitemap_url, timeout=20)
-        resp.raise_for_status()
+        resp = self._get_sitemap_with_retry(sitemap_url, timeout=20)
         locs = LOC_RE.findall(resp.text)
 
         # A sitemap-index's <loc> entries are themselves sitemap files
         # (all end in .xml); a real per-page sitemap's entries are actual
         # pages, which essentially never do. If every entry looks like a
-        # sitemap, treat it as an index and expand one level.
-        looks_like_index = bool(locs) and all(loc.lower().endswith(".xml") for loc in locs)
+        # sitemap, treat it as an index and expand one level. Check the
+        # URL's path, not the raw string — confirmed live on Eaton's
+        # Eightfold-hosted sitemap, whose sub-sitemap URLs carry a
+        # trailing query string (".../sitemap.xml?domain=eaton.com"),
+        # which made a naive `.endswith(".xml")` always false and left
+        # the index's own 2 URLs being read as if they were job pages.
+        looks_like_index = bool(locs) and all(
+            loc.lower().split("?", 1)[0].endswith(".xml") for loc in locs
+        )
         if looks_like_index and depth < 1:
             expanded = []
             for sub in locs[:max_sub_sitemaps]:
@@ -127,7 +164,11 @@ class JsonLdConnector(Connector):
             loc = data.get("jobLocation") or {}
             address = loc.get("address", {}) if isinstance(loc, dict) else {}
             location = ", ".join(
-                filter(None, [address.get("addressLocality"), address.get("addressRegion"), address.get("addressCountry")])
+                filter(None, [
+                    _addr_field(address.get("addressLocality")),
+                    _addr_field(address.get("addressRegion")),
+                    _addr_field(address.get("addressCountry")),
+                ])
             )
             job_id = (data.get("identifier") or {}).get("value", url)
 
