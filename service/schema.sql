@@ -66,11 +66,36 @@ CREATE TABLE IF NOT EXISTS postings (
     category             TEXT NOT NULL DEFAULT '',
     posted_at            TEXT,
     description_snippet  TEXT NOT NULL DEFAULT '',
-    status               TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'closed')),
+    -- 'duplicate' exists because the SAME real posting can legitimately
+    -- arrive via two different sources -- e.g. an aggregator (Muse)
+    -- already surfaces a company, then discovery.py later promotes that
+    -- same company's own direct ATS connector. Both would otherwise show
+    -- as separate 'open' rows for the same real internship. See
+    -- service/dedup.py -- it's a distinct status from 'closed' on
+    -- purpose: a duplicate posting is still genuinely open somewhere,
+    -- just not the canonical row to SHOW, and dedup.py's sweep is
+    -- stateless/idempotent so a posting can move between 'open' and
+    -- 'duplicate' as the situation changes without ever touching
+    -- 'closed' (which only scheduler.py's close-on-absence logic sets).
+    status               TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'duplicate', 'closed')),
+    -- Precedence-normalized (company, title, location) -- see
+    -- service/dedup.py's normalize() for exactly how. NULL/empty is
+    -- valid (dedup.py's sweep simply ignores those rows) rather than
+    -- required, so a posting with too little normalizable text never
+    -- blocks an insert.
+    dedup_key            TEXT,
+    -- Set only when status = 'duplicate' -- points at the canonical
+    -- (higher-precedence, or equal-precedence-but-first-seen) posting
+    -- for the same dedup_key. Self-referential FK, not enforced NOT
+    -- NULL: a posting starts with duplicate_of = NULL and only gets
+    -- one assigned by a dedup sweep finding a real collision.
+    duplicate_of         TEXT REFERENCES postings(id) ON DELETE SET NULL,
     first_seen           TIMESTAMPTZ NOT NULL,
     last_seen            TIMESTAMPTZ NOT NULL,
     closed_at            TIMESTAMPTZ
 );
+
+CREATE INDEX IF NOT EXISTS idx_postings_dedup_key ON postings (dedup_key) WHERE dedup_key IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS idx_postings_status ON postings (status);
 CREATE INDEX IF NOT EXISTS idx_postings_source_entry ON postings (source_entry);

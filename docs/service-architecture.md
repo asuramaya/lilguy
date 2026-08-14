@@ -122,6 +122,54 @@ SAME gate a brand-new candidate faces; a pass sends it back to
 `probation` (re-earning its confirmation, not trusted immediately) since
 one working fetch after a string of failures could itself be a fluke.
 
+## Cross-source deduplication
+
+Once discovery promotes a company to its own direct connector, that
+company's postings can arrive via TWO paths at once — an aggregator
+(Muse) that already indexed it, and the new direct source. Nothing in
+the per-source upsert catches this (it only ever looks at one source's
+fresh postings at a time). `service/dedup.py` closes the gap with a
+normalized `dedup_key` (company + title + location, legal-suffix- and
+punctuation-insensitive) and a stateless, idempotent sweep: rank every
+group of same-key postings by source precedence (a company's own direct
+ATS connector outranks an aggregator; ties broken by whichever this
+project saw first), keep the top-ranked one `open`, mark the rest
+`duplicate`. Stateless matters here — the sweep recomputes the winner
+from scratch every run, so if the canonical posting later closes, the
+next sweep naturally promotes the best remaining duplicate back to
+`open` with no special-case code for that transition. `scheduler.py`
+runs it once per cycle, after that cycle's upserts.
+
+## Reconciling with the batch pipeline
+
+`scraper/scrape.py`'s git-committed `data/all_postings.json`/`FEED.md`
+and the live service's Postgres `postings` table are two independent
+systems that will drift apart with no automatic sync. Deliberately not
+solved by picking a winner — `service/export_to_batch_store.py` proves
+the two are reconcilable BY CONSTRUCTION (it reads live Postgres and
+writes the exact same JSON shape `store.py` already produces, verified
+by literally running the exported file through `build_feed.py`'s own
+`build_and_write()` in `tests/service/test_export_to_batch_store.py`)
+without deciding WHEN it should run. That's a deployment-cadence
+question (a cron container? manual? on every promotion?), and this
+project isn't deciding deployment yet — see the standing decision on
+hyper-docker + a `cupid` handoff over Osiris mail, once that phase
+starts.
+
+## Tuning the verification gate with real data
+
+`verify.py`'s thresholds were reasoned from specific failures found by
+hand this session, not measured against real discovery results — there
+weren't any yet when they were set. `service/analyze_discovery_evidence.py`
+reads back the evidence every `verify_trial_fetch()` call already writes
+into `discovery_candidates.evidence` and buckets it by outcome (rejection
+reasons tallied, `name_similarity`/`intern_count` distributions split
+promoted-vs-rejected, and a join against `sources` showing how many
+first-gate "promoted" candidates actually went on to confirm to
+`active`). Doesn't change any threshold itself — turns "does 0.5 feel
+about right" into something answerable once the discovery loop has
+actually run for a while.
+
 ## Running it
 
 ```
@@ -148,14 +196,14 @@ than a specific cloud platform's managed primitives.
   full scheduler replicas would each independently think they have
   `MAX_WORKERS` free slots). This project's source count doesn't need
   that yet.
-- **Company names beyond SEC EDGAR's public-company list.** Discovery no
-  longer needs a human to type company names one at a time (SEC EDGAR's
-  10,391-name list handles that now), but it's still bounded by what
-  that ONE free source covers — large PRIVATE companies (many logistics/
-  trucking carriers among them) aren't in it. A second free source (a
-  public S&P 1500/Russell index constituent list was researched as a
-  smaller, sector-tagged supplement) is a real next step, not yet wired
-  in.
+- **Candidate breadth beyond SEC EDGAR + Wikipedia categories.** Two free
+  sources now feed discovery (10,391 public companies from EDGAR, ~260
+  more from Wikipedia's trucking/logistics/manufacturing/freight
+  category listings — the latter reaching real PRIVATE carriers like
+  AAA Cooper Transportation and Averitt Express that EDGAR structurally
+  can't). Still not exhaustive — a public S&P 1500/Russell index
+  constituent list, and more/different Wikipedia categories, are real
+  next steps, not yet wired in.
 - **Oracle Recruiting Cloud / Eightfold / Phenom-style discovery.**
   Those platforms use opaque per-company hosts that plain HTTP probing
   can't guess — every one found in this project so far (Honeywell,

@@ -66,3 +66,71 @@ def fetch_sec_edgar_company_names() -> list[str]:
     # Keys are stringified indices ("0", "1", ...), not meaningful -- the
     # actual records are the values.
     return [row["title"] for row in data.values() if row.get("title")]
+
+
+WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
+
+# Verified live, one at a time, via the categorymembers API -- NOT
+# guessed article/category titles. Guessing was tried and burned time
+# earlier this project (docs/service-architecture.md's own history):
+# "List of trucking companies"-style titles 404 more often than they
+# hit, because Wikipedia's actual category names don't always match the
+# obvious phrasing (there is no "Category:American manufacturing
+# companies" or "Category:Freight forwarders" -- the real names are
+# "Manufacturing companies of the United States" and "Freight transport
+# companies", found via the API's own list=allcategories prefix search,
+# not by guessing harder). Every category below returned real, current
+# company articles when checked (66 to 131 members each) -- private
+# carriers like AAA Cooper Transportation and Averitt Express among
+# them, exactly the gap SEC EDGAR's public-companies-only list leaves.
+RELEVANT_WIKIPEDIA_CATEGORIES = [
+    "Trucking companies of the United States",
+    "Logistics companies of the United States",
+    "Logistics companies",
+    "Manufacturing companies of the United States",
+    "Freight transport companies",
+]
+
+
+def fetch_wikipedia_category_companies(categories: list[str] = None) -> list[str]:
+    """Company names from Wikipedia category listings via the MediaWiki
+    `list=categorymembers` API -- a structured, paginated, free, no-key
+    endpoint, not a scrape of rendered category-page HTML. This is what
+    makes it reliable where guessing article/category titles wasn't (see
+    module-level comment on RELEVANT_WIKIPEDIA_CATEGORIES): the API
+    either returns real members of a real category, or an empty list for
+    a category that doesn't exist by that exact name -- no HTML to
+    misparse, no guessing whether a 404 means "no such page" or
+    "temporary error."
+
+    Defaults to RELEVANT_WIKIPEDIA_CATEGORIES; pass your own list to
+    pull a different set (e.g. a fork focused on a different industry).
+    Wikipedia article titles sometimes carry a disambiguating suffix
+    like "(company)" -- left as-is rather than stripped, since
+    discovery.py's own probes normalize names into ATS-guess slugs
+    anyway and a literal suffix doing no harm there beats silently
+    mangling a title that needed it to stay unambiguous.
+    """
+    categories = categories if categories is not None else RELEVANT_WIKIPEDIA_CATEGORIES
+    names: list[str] = []
+    for category in categories:
+        cmcontinue = None
+        while True:
+            params = {
+                "action": "query",
+                "list": "categorymembers",
+                "cmtitle": f"Category:{category}",
+                "cmlimit": 500,
+                "cmnamespace": 0,  # articles only -- excludes the category's own subcategory/talk pages
+                "format": "json",
+            }
+            if cmcontinue:
+                params["cmcontinue"] = cmcontinue
+            resp = requests.get(WIKIPEDIA_API_URL, params=params, headers=UA, timeout=TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+            names.extend(m["title"] for m in data.get("query", {}).get("categorymembers", []) if m.get("title"))
+            cmcontinue = data.get("continue", {}).get("cmcontinue")
+            if not cmcontinue:
+                break
+    return names

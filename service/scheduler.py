@@ -48,6 +48,7 @@ from connectors import CONNECTORS  # noqa: E402
 from filters import is_internship  # noqa: E402
 
 from db import cursor  # noqa: E402
+from dedup import compute_dedup_key, run_dedup_sweep  # noqa: E402
 
 MAX_WORKERS = 6
 POLL_INTERVAL_SECONDS = 30
@@ -99,10 +100,15 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
     failed fetch never reaches this function at all.
     """
     fresh_ids = [p.id for p in postings]
+    # Closes from BOTH 'open' and 'duplicate' -- a posting a dedup sweep
+    # previously demoted to 'duplicate' still needs to close when its own
+    # source stops returning it, same as an 'open' one would. Leaving
+    # 'duplicate' out of this WHERE would strand it in that status
+    # forever once its source drops it.
     cur.execute(
         """
         UPDATE postings SET status = 'closed', closed_at = %s
-        WHERE source_entry = %s AND status = 'open' AND NOT (id = ANY(%s))
+        WHERE source_entry = %s AND status IN ('open', 'duplicate') AND NOT (id = ANY(%s))
         """,
         (seen_at, source_entry, fresh_ids or [""]),
     )
@@ -110,24 +116,30 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
 
     new_count = 0
     for p in postings:
+        dedup_key = compute_dedup_key(p.company, p.title, p.location)
         cur.execute(
             """
             INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
                                    ats, category, posted_at, description_snippet, status,
-                                   first_seen, last_seen)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s)
+                                   dedup_key, first_seen, last_seen)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 location = EXCLUDED.location,
                 url = EXCLUDED.url,
                 description_snippet = EXCLUDED.description_snippet,
-                status = 'open',
-                closed_at = NULL,
+                dedup_key = EXCLUDED.dedup_key,
+                -- Reopen only if it was 'closed' -- a 'duplicate' status
+                -- is service/dedup.py's call, not this upsert's; forcing
+                -- it back to 'open' here would just fight the next sweep
+                -- and produce status churn every cycle for no reason.
+                status = CASE WHEN postings.status = 'closed' THEN 'open' ELSE postings.status END,
+                closed_at = CASE WHEN postings.status = 'closed' THEN NULL ELSE postings.closed_at END,
                 last_seen = EXCLUDED.last_seen
             """,
             (
                 p.id, source_id, source_entry, p.company, p.title, p.location, p.url,
-                p.source, p.category, p.posted_at, p.description_snippet, seen_at, seen_at,
+                p.source, p.category, p.posted_at, p.description_snippet, dedup_key, seen_at, seen_at,
             ),
         )
         if cur.rowcount == 1:
@@ -251,6 +263,13 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
                               f"relevant={r['relevant']:3d} new={r['new']:3d} closed={r['closed']:3d}{tag}", flush=True)
                     else:
                         print(f"  {r['company']:30s} FAILED  {r['error']}", flush=True)
+                # Only after a batch that actually wrote something --
+                # the sweep is one cheap idempotent SQL statement, but an
+                # empty cycle (nothing due) has nothing new to re-rank.
+                with cursor() as cur:
+                    changed = run_dedup_sweep(cur)
+                if changed:
+                    print(f"  dedup sweep: {changed} posting(s) changed open/duplicate status", flush=True)
             time.sleep(poll_interval)
 
 

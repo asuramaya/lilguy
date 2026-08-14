@@ -52,7 +52,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from connectors import CONNECTORS  # noqa: E402
 
-from candidate_sources import fetch_sec_edgar_company_names  # noqa: E402
+from candidate_sources import fetch_sec_edgar_company_names, fetch_wikipedia_category_companies  # noqa: E402
 from db import cursor  # noqa: E402
 from verify import verify_trial_fetch  # noqa: E402
 
@@ -62,31 +62,44 @@ TRIAL_MAX_PAGES = 40  # small trial fetch -- enough to judge, not a full scrape
 NO_MATCH_RECHECK_DAYS = 90
 REJECTED_RECHECK_DAYS = 90
 
-# The real candidate feed: every company SEC EDGAR has a ticker on file
-# for (10,391 real names, confirmed live) -- see candidate_sources.py for
-# why this is the source, what was tried and rejected (SIC-code industry
-# filtering), and its own honestly-stated coverage gap (public companies
-# only). Deliberately NOT fetched at import time -- `import discovery`
-# must stay a pure, network-free operation (tests import this module on
-# every run; a module-level network call would make every test run slow
-# and flaky against SEC's uptime, not just the tests that actually
+# The real candidate feed: SEC EDGAR's public-company ticker list
+# (10,391 names) PLUS Wikipedia's category listings for trucking/
+# logistics/manufacturing/freight (a few hundred more, reaching real
+# PRIVATE companies EDGAR structurally can't) -- see candidate_
+# sources.py for what each covers, what was tried and rejected for each
+# (SIC-code industry filtering for EDGAR, guessed category titles for
+# Wikipedia), and their own honestly-stated coverage gaps. Deliberately
+# NOT fetched at import time -- `import discovery` must stay a pure,
+# network-free operation (tests import this module on every run; a
+# module-level network call would make every test run slow and flaky
+# against either source's uptime, not just the tests that actually
 # exercise seeding). _load_candidate_seed() is called lazily, inside
 # _seed_unchecked_candidates(), only when a real seeding pass runs.
-# A small hand-picked fallback covers SEC EDGAR being unreachable (e.g.
-# offline dev, SEC downtime) so discovery still has SOMETHING to work
-# with rather than silently seeding nothing.
+# A small hand-picked fallback covers BOTH sources being unreachable
+# (e.g. offline dev) so discovery still has SOMETHING to work with
+# rather than silently seeding nothing.
 FALLBACK_CANDIDATE_SEED = ["Ford", "Toyota", "Lockheed Martin", "Cummins", "Caterpillar",
                             "Deere", "Nucor", "Emerson Electric", "Rockwell Automation"]
 
 
 def _load_candidate_seed() -> list[str]:
+    # Two independent sources, each fault-tolerant on its own -- SEC
+    # EDGAR reaches public companies, Wikipedia's category listings reach
+    # real PRIVATE companies EDGAR structurally can't (see candidate_
+    # sources.py's own docstrings for what each does and doesn't cover).
+    # Falls back to the hardcoded list only if BOTH fail, so one source
+    # having a bad day doesn't zero out the whole seed the way it would
+    # if this were a single try/except around a single call.
+    names: list[str] = []
     try:
-        names = fetch_sec_edgar_company_names()
-        if names:
-            return names
+        names.extend(fetch_sec_edgar_company_names())
     except Exception as exc:  # noqa: BLE001 - seeding must not crash the whole loop
-        print(f"[discovery] SEC EDGAR candidate fetch failed ({exc}), using fallback seed list", flush=True)
-    return FALLBACK_CANDIDATE_SEED
+        print(f"[discovery] SEC EDGAR candidate fetch failed ({exc})", flush=True)
+    try:
+        names.extend(fetch_wikipedia_category_companies())
+    except Exception as exc:  # noqa: BLE001
+        print(f"[discovery] Wikipedia candidate fetch failed ({exc})", flush=True)
+    return names or FALLBACK_CANDIDATE_SEED
 
 
 # None means "not overridden" -- _seed_unchecked_candidates() calls
