@@ -70,6 +70,16 @@ Three things beyond the static research:
 - `prospects/` — one file per company once you're seriously targeting it.
 - `research/` — saved job postings, program details worth keeping past the
   tab closing.
+- `service/` — an optional, self-hosted, DB-backed version of the same
+  sourcing logic: continuous concurrent scraping (each source on its own
+  cadence, not one daily sequential batch) plus a self-updating source
+  list (automated ATS discovery, gated by a repeated-verification check
+  instead of a human review step) and a live `/feed` HTTP API instead of
+  a git-committed Markdown file. Doesn't replace `scraper/scrape.py` /
+  `FEED.md` — runs alongside it for anyone who wants genuinely real-time
+  freshness. `docker compose up -d --build` and see
+  `docs/service-architecture.md` for the full design and why it's built
+  this way.
 
 ## How to use this
 

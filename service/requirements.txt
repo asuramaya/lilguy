@@ -1,0 +1,10 @@
+# Deliberately separate from the batch pipeline's own light footprint
+# (scraper/ only needs requests + pyyaml) -- the live service adds a
+# database driver and a web framework, and scraper/connectors/*.py stays
+# usable standalone (e.g. via scraper/scrape.py, or scraper/discover.py)
+# without pulling any of this in.
+psycopg2-binary>=2.9
+fastapi>=0.110
+uvicorn[standard]>=0.29
+requests>=2.31
+pyyaml>=6.0

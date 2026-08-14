@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: internships
+      POSTGRES_PASSWORD: internships
+      POSTGRES_DB: internships
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U internships"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+    # One-shot: creates the schema and imports sources.yaml, then exits.
+    # scheduler/api/discovery all depend on this completing successfully
+    # rather than each trying to create the schema themselves.
+    command: python service/migrate_sources_yaml.py
+    restart: "no"
+
+  scheduler:
+    build: .
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+    command: python service/scheduler.py
+    restart: unless-stopped
+
+  discovery:
+    build: .
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+    command: python service/discovery.py
+    restart: unless-stopped
+
+  api:
+    build: .
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+    command: uvicorn service.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
