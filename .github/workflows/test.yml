@@ -38,3 +38,48 @@ jobs:
       - run: python -m py_compile scraper/*.py scraper/connectors/*.py service/*.py
 
       - run: python -m pytest tests/ -v
+
+  compose-smoke:
+    # Builds and runs the actual docker-compose.yml stack an operator
+    # would deploy -- catches breakage the Python-level tests above can't:
+    # a bad Dockerfile, a missing dependency baked into the image but not
+    # requirements.txt, the migrate->scheduler/discovery/api dependency
+    # chain not actually working, or the ${POSTGRES_PASSWORD:?...}
+    # required-variable guard rejecting a well-formed .env for the wrong
+    # reason. Runs `docker compose up` for real, the same command in
+    # docs/service-architecture.md's "Running it" section, not a
+    # simulation of it.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write a throwaway .env
+        run: echo "POSTGRES_PASSWORD=ci-smoke-test-password-not-a-real-secret" > .env
+
+      - name: Bring the full stack up
+        run: docker compose up -d --build
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8000/health; then
+              echo "healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "api never became healthy" >&2
+          exit 1
+
+      - name: Confirm /feed and /sources respond (migrate/scheduler actually ran)
+        run: |
+          curl -sf http://127.0.0.1:8000/feed | head -c 500
+          curl -sf http://127.0.0.1:8000/sources | head -c 500
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
