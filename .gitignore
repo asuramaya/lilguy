@@ -7,3 +7,9 @@ autofill/profile.json
 # default) stays tracked; your own copies and their output don't need to be.
 my-*.yaml
 MY_FEED.md
+
+# Real secrets for the docker-compose deployment (POSTGRES_PASSWORD, and
+# eventually the optional ADZUNA_/USAJOBS_ API keys) -- .env.example
+# documents the shape, this file holds the actual generated values and
+# must never be committed. See docs/service-architecture.md.
+.env

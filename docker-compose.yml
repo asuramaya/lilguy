@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: internships
-      POSTGRES_PASSWORD: internships
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: internships
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -12,6 +12,16 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   migrate:
     build: .
@@ -19,12 +29,26 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD}@postgres:5432/internships
     # One-shot: creates the schema and imports sources.yaml, then exits.
     # scheduler/api/discovery all depend on this completing successfully
-    # rather than each trying to create the schema themselves.
+    # rather than each trying to create the schema themselves. Re-runs on
+    # every `up`, not just the first -- migrate_sources_yaml.py stays
+    # idempotent (ON CONFLICT DO NOTHING throughout) specifically so that
+    # re-run is a no-op instead of a data problem masquerading as a
+    # deploy problem.
     command: python service/migrate_sources_yaml.py
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   scheduler:
     build: .
@@ -32,9 +56,19 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD}@postgres:5432/internships
     command: python service/scheduler.py
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   discovery:
     build: .
@@ -42,9 +76,19 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD}@postgres:5432/internships
     command: python service/discovery.py
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
     build: .
@@ -52,11 +96,28 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://internships:internships@postgres:5432/internships
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD}@postgres:5432/internships
     command: uvicorn service.api:app --host 0.0.0.0 --port 8000
+    # Loopback-only -- "8000:8000" binds every interface, including the
+    # tailnet. Reachability from outside this host comes from a
+    # tailscale-serve mapping in front (https://<host>.<tailnet>/ ->
+    # 127.0.0.1:8000), never from a published port. Bind every container
+    # port to 127.0.0.1 and let the reverse proxy do the exposing --
+    # "8000:8000" and "127.0.0.1:8000:8000" look nearly identical and
+    # differ enormously.
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   pgdata:

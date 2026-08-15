@@ -64,6 +64,42 @@ def test_candidate_that_passes_verification_goes_to_probation(monkeypatch):
     assert row["added_by"] == "discovery"
 
 
+def test_promoted_candidate_is_never_re_selected_as_due(monkeypatch):
+    # Regression: the promotion UPDATE never set next_check_at, which
+    # defaults to now() at insert time -- "due if next_check_at <= now()"
+    # was therefore ALWAYS true for a promoted row, so a second
+    # run_discovery_cycle() call would re-probe it, and any transient
+    # no-hit result overwrote 'promoted' back to 'no_match'/'rejected'
+    # for a company that was by then a confirmed active source. Caught
+    # live by restoring a real backup and finding confirmed-active
+    # companies (Penumbra Inc, Shield AI, VTEX) mislabeled 'no_match' in
+    # discovery_candidates despite `sources.status = 'active'` being
+    # correct the whole time.
+    monkeypatch.setattr(discovery, "CANDIDATE_SEED", ["Acme Corp"])
+
+    def fake_greenhouse_probe(company):
+        return {"ats": "greenhouse", "config": {"company": company, "ats": "greenhouse", "token": "acme"}}
+
+    monkeypatch.setattr(discovery, "PROBES", [fake_greenhouse_probe])
+    real_postings = [fake_posting("gh:acme:1", "Acme Corp", "Supply Chain Intern"),
+                      fake_posting("gh:acme:2", "Acme Corp", "Finance Intern")]
+    monkeypatch.setitem(discovery.CONNECTORS, "greenhouse",
+                         lambda: SimpleNamespace(fetch=lambda cfg: real_postings))
+
+    first = discovery.run_discovery_cycle(limit=5)
+    assert first == [{"company": "Acme Corp", "outcome": "promoted_to_probation", "ats": "greenhouse"}]
+
+    # If the promoted probe (still wired to succeed) got called again,
+    # a second cycle would report 'promoted_to_probation' again too --
+    # the real assertion is that it ISN'T selected as due at all.
+    second = discovery.run_discovery_cycle(limit=5)
+    assert second == []
+
+    with db.cursor() as cur:
+        cur.execute("SELECT review_status FROM discovery_candidates WHERE company = 'Acme Corp'")
+        assert cur.fetchone()["review_status"] == "promoted"
+
+
 def test_candidate_that_fails_verification_is_rejected_not_promoted(monkeypatch):
     # Simulates a tenant/site guess that resolves cleanly (a real HTTP
     # hit) but belongs to a different company -- the exact failure mode

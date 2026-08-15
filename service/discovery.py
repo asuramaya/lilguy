@@ -365,9 +365,24 @@ def run_discovery_cycle(limit: int = 5, max_workers: int = DISCOVERY_CANDIDATE_W
     _seed_unchecked_candidates()
 
     with cursor() as cur:
+        # 'promoted' is deliberately EXCLUDED, not just "not due yet" --
+        # a promoted candidate's fate from here on lives in `sources.
+        # status` (probation -> active or rejected, handled by
+        # scheduler.py), not in this table. Confirmed live as a real
+        # bug, not a hypothetical: the promotion UPDATE never set
+        # next_check_at, which defaults to now() at insert time --
+        # `next_check_at <= now()` was therefore ALWAYS true for a
+        # promoted row, so it kept getting re-selected as "due" forever.
+        # A later re-probe returning no hit (a transient failure, a rate
+        # limit, anything) then overwrote review_status back to
+        # 'no_match'/'rejected' for a company that was, by then, a
+        # confirmed ACTIVE source -- corrupting the audit trail (the
+        # actual `sources` row and its data were unaffected, this only
+        # broke discovery_candidates' own record of what happened).
         cur.execute(
             "SELECT id, company FROM discovery_candidates "
-            "WHERE review_status IN ('unchecked') OR next_check_at <= now() "
+            "WHERE review_status = 'unchecked' "
+            "   OR (review_status IN ('no_match', 'rejected') AND next_check_at <= now()) "
             "ORDER BY next_check_at LIMIT %s FOR UPDATE SKIP LOCKED",
             (limit,),
         )
