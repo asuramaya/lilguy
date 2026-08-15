@@ -11,7 +11,7 @@
 # every source in sources.yaml, completely unfiltered by domain. This file
 # is just one particular lens on that same shared dataset.
 
-name: Operations / Logistics / Supply Chain
+name: Supply Chain
 
 # A posting passes if its title+description matches ANY of these
 # (case-insensitive, whole-word). Deliberately no bare "operations" —

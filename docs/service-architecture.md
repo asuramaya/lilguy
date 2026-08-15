@@ -170,6 +170,48 @@ first-gate "promoted" candidates actually went on to confirm to
 about right" into something answerable once the discovery loop has
 actually run for a while.
 
+## Categorizing discovery-promoted sources
+
+`discovery.py`'s probes (Greenhouse/Lever/Workday-guess/jsonld) confirm a
+company has a real, matching career site — they have no way to know what
+industry that company is actually in, so every auto-promoted source lands
+with `category = 'Uncategorized'` (see the literal in each `_try_*` probe
+function). This is deliberate, not a bug: guessing a category from a
+company name would be exactly the kind of unverified claim this project's
+own standard rules out.
+
+Categorizing is a periodic manual pass, not a one-time fix — find the
+backlog with:
+
+```sql
+SELECT company FROM sources WHERE category = 'Uncategorized' ORDER BY company;
+```
+
+Research each company's real business (this session used WebSearch to
+confirm, not guessed from the name), then update BOTH `category` and
+`config->>'category'` — the connector reads category from `config` at
+scrape time (see `scraper/connectors/base.py`), so only updating the
+`category` column changes what `/sources` reports without changing what
+new postings actually get tagged as:
+
+```sql
+UPDATE sources
+SET category = 'Defense Technology',
+    config = jsonb_set(config, '{category}', '"Defense Technology"')
+WHERE company = 'Shield AI';
+```
+
+Categories should be one specific thing, not a slash- or ampersand-joined
+combination of two — "Freight Brokerage" and "Freight Forwarding" are
+different businesses (C.H. Robinson vs. Flexport) that both used to sit
+under one generic "Logistics & Transportation" bucket; splitting by real
+business model is more useful than it looks with only ~40 sources, because
+each source *is* a meaningful fraction of the list. Compound names stay
+only where they're a real, standard sector name (`Aerospace & Defense`,
+`Freight & Trucking`) rather than two unrelated things stitched together
+for convenience (the old `CPG / Consumer Brands` was the latter — renamed
+to plain `Consumer Packaged Goods`).
+
 ## Running it
 
 ```

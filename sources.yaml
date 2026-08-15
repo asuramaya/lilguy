@@ -126,7 +126,7 @@ sources:
     ats: jsonld
     sitemap_url: https://www.jobs-ups.com/us/en/sitemap2.xml
     url_pattern: "/job/"
-    category: Logistics & Transportation
+    category: Package Delivery
     max_pages: 80
     # Phenom-People-hosted career site — not Greenhouse/Lever/Workday/
     # Oracle, none of which this project's other connectors would have
@@ -157,7 +157,7 @@ sources:
     ats: jsonld
     sitemap_url: https://www.pepsicojobs.com/sitemap1.xml
     url_pattern: "/jobs/"
-    category: CPG / Consumer Brands
+    category: Consumer Packaged Goods
     max_pages: 60
     # A different vendor again (not Phenom, not Greenhouse/Lever/Workday)
     # — confirmed live full JobPosting JSON-LD on a real posting, ~2900
@@ -179,33 +179,33 @@ sources:
   - company: Flexport
     ats: greenhouse
     token: flexport
-    category: Logistics & Transportation
+    category: Freight Forwarding
 
   - company: project44
     ats: greenhouse
     token: project44
-    category: Logistics & Transportation
+    category: Supply Chain Visibility Software
 
   - company: FourKites
     ats: greenhouse
     token: fourkites
-    category: Logistics & Transportation
+    category: Supply Chain Visibility Software
 
   - company: Uber Freight
     ats: greenhouse
     token: uberfreight
-    category: Logistics & Transportation
+    category: Freight Brokerage
 
   - company: Samsara
     ats: greenhouse
     token: samsara
-    category: Industrial Manufacturing
+    category: Industrial IoT Software
 
   # Verified working (Lever):
   - company: Loadsmart
     ats: lever
     token: loadsmart
-    category: Logistics & Transportation
+    category: Freight Brokerage
 
   # Verified working (Workday):
   - company: Unilever
@@ -213,7 +213,7 @@ sources:
     tenant: unilever
     wd_host: wd3
     site: Unilever_Experienced_Professionals
-    category: CPG / Consumer Brands
+    category: Consumer Packaged Goods
     # Found via WebSearch (curl-only sitemap hunting can't find Workday
     # sites — they're JS-rendered), then verified with a raw POST to the
     # jobs API. 309 total postings, real internships among them
@@ -235,7 +235,7 @@ sources:
     tenant: gevernova
     wd_host: wd5
     site: Vernova_ExternalSite
-    category: Industrial Manufacturing
+    category: Power & Electrical Equipment
     max_pages: 120
     # Found via WebSearch, verified live: 2159 total postings. Unlike The
     # Muse, tested for a similar deep-pagination limit and found none
@@ -247,7 +247,7 @@ sources:
     tenant: geaerospace
     wd_host: wd5
     site: GE_ExternalSite
-    category: Industrial Manufacturing
+    category: Aerospace & Defense
     max_pages: 60
     # Same WebSearch-then-verify method. 440 total postings. Note: GE
     # split into GE Aerospace and GE Vernova as separate independent
@@ -259,7 +259,7 @@ sources:
     tenant: chrobinson
     wd_host: wd5
     site: CHRobinson
-    category: Logistics & Transportation
+    category: Freight Brokerage
     max_pages: 30
     # Found via WebSearch. 94 total postings. A genuine 3PL/freight
     # broker — same category as Uber Freight/Flexport in the domain_native
@@ -303,7 +303,7 @@ sources:
     tenant: odfl
     wd_host: wd1
     site: ODFL_Careers
-    category: Logistics & Transportation
+    category: Freight & Trucking
     max_pages: 15
     # Found via WebSearch. 236 total postings. An LTL freight carrier —
     # domain_native in the same sense as C.H. Robinson/Uber Freight,
@@ -314,7 +314,7 @@ sources:
     tenant: genmills
     wd_host: wd1
     site: GMI_External_Careers
-    category: CPG / Consumer Brands
+    category: Consumer Packaged Goods
     max_pages: 15
     # Found via WebSearch. 212 total postings. Diversified CPG, NOT
     # domain-native — relies on the standard keyword filter like PepsiCo/
@@ -325,7 +325,7 @@ sources:
     tenant: jbhunt
     wd_host: wd501
     site: Careers
-    category: Logistics & Transportation
+    category: Freight & Trucking
     max_pages: 25
     # Found a genuinely different way than everything else here: J.B.
     # Hunt's OWN custom career site (careers.jbhunt.com) has its own
@@ -362,7 +362,7 @@ sources:
     host: ibqbjb.fa.ocs.oraclecloud.com
     site_number: CX_1
     job_detail_base: https://careers.honeywell.com/en/sites/Honeywell/job
-    category: Industrial Manufacturing
+    category: Aerospace & Defense
     max_pages: 55
     # Found via a live browser session (DevTools -> Network while
     # browsing careers.honeywell.com), not WebSearch — Oracle Recruiting
@@ -396,7 +396,7 @@ sources:
     ats: jsonld
     sitemap_url: https://eaton.eightfold.ai/careers/sitemap_index.xml?domain=eaton.com
     url_pattern: "/careers/job/"
-    category: Industrial Manufacturing
+    category: Power & Electrical Equipment
     max_pages: 500
     # NOT Workday (checked and ruled out — Eaton's own myworkdayjobs.com
     # guesses 422'd). Its real careers site (eaton.com/.../careers.html)

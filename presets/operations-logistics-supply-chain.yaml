@@ -4,7 +4,7 @@
 # default filter, keep this file in sync (or better: point build_feed.py
 # straight at ../filters.yaml and treat this as a stable reference copy).
 
-name: Operations / Logistics / Supply Chain
+name: Supply Chain
 
 keywords_any:
   - supply chain
