@@ -87,9 +87,23 @@ WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
 # future session doesn't re-try them: "Third-party logistics companies",
 # "Package delivery companies", "Companies in the railroad industry of
 # the United States", "Warehousing companies", "Supply chain management
-# companies" -- 0 members each, likely just not real category titles
-# (Wikipedia may cover these companies under a different category
-# entirely) rather than empty categories.
+# companies", "Railroads of the United States", "Distribution (business)",
+# "Intermodal freight transport companies", "Freight forwarders",
+# "Warehousing", "Food distribution companies of the United States" --
+# 0 members each, likely just not real category titles (Wikipedia may
+# cover these companies under a different category entirely) rather than
+# empty categories.
+#
+# Second pass (task #14, growing candidate breadth beyond the original
+# logistics-only set): every industry below runs a real physical supply
+# chain and is a plausible source of ops/logistics/supply-chain intern
+# roles even though the company's primary industry label isn't
+# "logistics" itself -- an aerospace or automotive manufacturer, a
+# pharma company, a miner, all need the same warehousing/procurement/
+# fulfillment functions this fork's default filter targets. Member
+# counts confirmed live via the categorymembers API before adding:
+# Cargo airlines (59), Aerospace (276), Automotive (53), Retail (161),
+# Pharmaceutical (230), Chemical (193), Mining (62).
 RELEVANT_WIKIPEDIA_CATEGORIES = [
     "Trucking companies of the United States",
     "Logistics companies of the United States",
@@ -98,6 +112,13 @@ RELEVANT_WIKIPEDIA_CATEGORIES = [
     "Freight transport companies",
     "Shipping companies of the United States",
     "Defense companies of the United States",
+    "Cargo airlines of the United States",
+    "Aerospace companies of the United States",
+    "Automotive companies of the United States",
+    "Retail companies of the United States",
+    "Pharmaceutical companies of the United States",
+    "Chemical companies of the United States",
+    "Mining companies of the United States",
 ]
 
 

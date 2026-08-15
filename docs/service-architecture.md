@@ -232,13 +232,18 @@ practice just because the nightly dump "worked."
   `MAX_WORKERS` free slots). This project's source count doesn't need
   that yet.
 - **Candidate breadth beyond SEC EDGAR + Wikipedia categories.** Two free
-  sources now feed discovery (10,391 public companies from EDGAR, ~260
-  more from Wikipedia's trucking/logistics/manufacturing/freight
-  category listings — the latter reaching real PRIVATE carriers like
-  AAA Cooper Transportation and Averitt Express that EDGAR structurally
-  can't). Still not exhaustive — a public S&P 1500/Russell index
-  constituent list, and more/different Wikipedia categories, are real
-  next steps, not yet wired in.
+  sources feed discovery: 10,391 public companies from EDGAR, plus
+  ~1,300 more from Wikipedia's trucking/logistics/manufacturing/freight/
+  aerospace/automotive/retail/pharma/chemical/mining category listings
+  (the latter reaching real PRIVATE carriers like AAA Cooper
+  Transportation and Averitt Express that EDGAR structurally can't).
+  Still not exhaustive — a public S&P 1500/Russell index constituent
+  list is a real next step, not yet wired in (both are effectively
+  paywalled as machine-readable data outside a handful of already-
+  EDGAR-covered large caps; the freely-scrapable Wikipedia "constituents
+  of the S&P 500" table is almost entirely public companies already in
+  the EDGAR set, so it wasn't worth adding for the private-company gap
+  specifically).
 - **Oracle Recruiting Cloud / Eightfold / Phenom-style discovery.**
   Those platforms use opaque per-company hosts that plain HTTP probing
   can't guess — every one found in this project so far (Honeywell,
