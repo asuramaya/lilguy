@@ -6,159 +6,411 @@
 <title>Internship Feed</title>
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #171a21;
-    --border: #2a2f3a;
-    --text: #e6e8eb;
-    --dim: #9aa2b1;
-    --accent: #4f8cff;
-    --green: #2e7d32;
-    --amber: #b8860b;
-    --red: #b03a3a;
+    --canvas: #0d0d0c;
+    --row: #161512;
+    --row-hover: #1e1c17;
+    --border: #2b2823;
+    --border-strong: #3a362e;
+    --ink: #f0ede4;
+    --ink-secondary: #a39d8c;
+    --ink-tertiary: #6d6858;
+    --accent: #e8952a;
+    --accent-dim: #b87423;
+    --ok: #4a9b6e;
+    --warn: #c8933f;
+    --bad: #c85a42;
   }
+
   * { box-sizing: border-box; }
+
   body {
     margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    background: var(--bg);
-    color: var(--text);
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
+
+  .mono {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
   header {
-    padding: 16px 24px;
+    padding: 20px 28px 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  .header-top {
     display: flex;
     align-items: baseline;
-    gap: 12px;
+    justify-content: space-between;
+    gap: 16px;
     flex-wrap: wrap;
+    padding-bottom: 16px;
   }
-  header h1 { font-size: 18px; margin: 0; }
-  header .sub { color: var(--dim); font-size: 13px; }
+
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+  }
+
+  .brand .tag {
+    font-size: 11px;
+    color: var(--ink-tertiary);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    letter-spacing: 0.02em;
+  }
+
+  .status-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--ink-secondary);
+  }
+
+  .status-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--ink-tertiary);
+    box-shadow: 0 0 0 3px rgba(109, 104, 88, 0.15);
+    flex-shrink: 0;
+  }
+
+  .status-dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(74, 155, 110, 0.15); }
+  .status-dot.bad { background: var(--bad); box-shadow: 0 0 0 3px rgba(200, 90, 66, 0.15); }
+
   nav {
     display: flex;
-    gap: 4px;
-    padding: 0 24px;
-    border-bottom: 1px solid var(--border);
+    gap: 24px;
   }
+
   nav button {
+    display: block;
+    padding: 10px 2px 12px;
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    color: var(--ink-tertiary);
     background: none;
     border: none;
-    color: var(--dim);
-    padding: 10px 14px;
-    font-size: 13px;
-    cursor: pointer;
     border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
   }
-  nav button.active { color: var(--text); border-bottom-color: var(--accent); }
-  main { padding: 20px 24px; max-width: 1100px; margin: 0 auto; }
-  .controls {
+
+  nav button.active { color: var(--ink); border-bottom-color: var(--accent); }
+  nav button:not(.active):hover { color: var(--ink-secondary); }
+
+  main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 20px 28px 60px;
+  }
+
+  .toolbar {
     display: flex;
     gap: 10px;
-    flex-wrap: wrap;
+    align-items: center;
     margin-bottom: 16px;
+    flex-wrap: wrap;
   }
-  .controls input, .controls select {
-    background: var(--panel);
+
+  .toolbar .field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--row);
     border: 1px solid var(--border);
-    color: var(--text);
+    border-radius: 4px;
     padding: 7px 10px;
-    border-radius: 6px;
+  }
+
+  .toolbar .field.grow { flex: 1; min-width: 220px; }
+
+  .toolbar input, .toolbar select {
+    background: none;
+    border: none;
+    color: var(--ink);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    width: 100%;
+  }
+
+  .toolbar input::placeholder { color: var(--ink-tertiary); }
+
+  .toolbar .field-icon {
+    color: var(--ink-tertiary);
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+
+  .result-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    color: var(--ink-tertiary);
+    font-size: 12px;
+    margin-bottom: 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .result-line strong {
+    color: var(--ink-secondary);
+    font-weight: 500;
+  }
+
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--canvas);
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-tertiary);
+    padding: 0 12px 10px;
+    border-bottom: 1px solid var(--border-strong);
+    white-space: nowrap;
+  }
+
+  thead th.sortable { cursor: pointer; user-select: none; }
+  thead th.sortable:hover { color: var(--ink-secondary); }
+  thead th.num { text-align: right; }
+
+  .sort-caret { color: var(--accent); margin-left: 3px; }
+
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:hover { background: var(--row-hover); }
+  tbody td { padding: 11px 12px; vertical-align: top; }
+
+  .title-cell a {
+    color: var(--ink);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .title-cell a:hover { color: var(--accent); }
+
+  .company-cell { color: var(--ink-secondary); white-space: nowrap; }
+  .location-cell { color: var(--ink-tertiary); font-size: 12.5px; white-space: nowrap; }
+
+  .swatch-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--ink-secondary);
+    padding: 3px 8px 3px 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .swatch-tag::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 1px;
+    background: var(--accent-dim);
+    flex-shrink: 0;
+  }
+
+  .status-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .status-cell::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+  .status-active::before, .status-promoted::before, .status-open::before { background: var(--ok); }
+  .status-active, .status-promoted, .status-open { color: var(--ok); }
+  .status-probation::before, .status-unchecked::before { background: var(--warn); }
+  .status-probation, .status-unchecked { color: var(--warn); }
+  .status-disabled::before, .status-rejected::before { background: var(--bad); }
+  .status-disabled, .status-rejected { color: var(--bad); }
+  .status-no_match::before { background: var(--ink-tertiary); }
+  .status-no_match { color: var(--ink-tertiary); }
+
+  .age-cell { color: var(--ink-tertiary); font-size: 12px; text-align: right; white-space: nowrap; }
+  .age-fresh { color: var(--ok); }
+
+  .num-cell { text-align: right; }
+
+  .empty {
+    color: var(--ink-tertiary);
+    padding: 48px 0;
+    text-align: center;
     font-size: 13px;
   }
-  .controls input[type="text"] { flex: 1; min-width: 180px; }
-  .count { color: var(--dim); font-size: 13px; margin-bottom: 12px; }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 12px 16px;
-    margin-bottom: 10px;
+
+  footer {
+    max-width: 1180px;
+    margin: 32px auto 0;
+    padding: 16px 28px 40px;
+    border-top: 1px solid var(--border);
+    color: var(--ink-tertiary);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
   }
-  .card-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-  .card-top a { color: var(--text); font-weight: 600; text-decoration: none; font-size: 15px; }
-  .card-top a:hover { color: var(--accent); }
-  .company { color: var(--dim); font-size: 13px; margin-top: 2px; }
-  .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-  .tag {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: #222634;
-    color: var(--dim);
-    border: 1px solid var(--border);
-  }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
-  th { color: var(--dim); font-weight: 500; }
-  .status-active { color: var(--green); }
-  .status-probation { color: var(--amber); }
-  .status-disabled, .status-rejected { color: var(--red); }
-  .status-promoted { color: var(--green); }
-  .status-no_match { color: var(--dim); }
-  .status-open { color: var(--green); }
-  .empty { color: var(--dim); padding: 30px 0; text-align: center; }
-  footer { text-align: center; color: var(--dim); font-size: 12px; padding: 24px; }
-  footer a { color: var(--dim); }
+  footer a { color: var(--ink-tertiary); }
+  footer a:hover { color: var(--accent); }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Internship Feed</h1>
-  <span class="sub" id="health-sub">checking API…</span>
+  <div class="header-top">
+    <div class="brand">
+      <h1>Internship Feed</h1>
+      <span class="tag">/ ops · logistics · supply chain</span>
+    </div>
+    <div class="status-line">
+      <span class="status-dot" id="health-dot"></span>
+      <span id="health-sub">checking API&hellip;</span>
+    </div>
+  </div>
+  <nav>
+    <button data-tab="feed" class="active">Feed</button>
+    <button data-tab="sources">Sources</button>
+    <button data-tab="candidates">Discovery</button>
+  </nav>
 </header>
-
-<nav>
-  <button data-tab="feed" class="active">Feed</button>
-  <button data-tab="sources">Sources</button>
-  <button data-tab="candidates">Discovery</button>
-</nav>
 
 <main>
 
   <section id="tab-feed">
-    <div class="controls">
-      <select id="preset"></select>
-      <input type="text" id="search" placeholder="Filter by title or company…">
+    <div class="toolbar">
+      <div class="field">
+        <span class="field-icon">preset</span>
+        <select id="preset"></select>
+      </div>
+      <div class="field grow">
+        <span class="field-icon">/</span>
+        <input type="text" id="search" placeholder="Filter by title or company&hellip;">
+      </div>
     </div>
-    <div class="count" id="feed-count"></div>
-    <div id="feed-list"></div>
+    <div class="result-line">
+      <span id="feed-count"></span>
+      <span id="feed-sort-line">sorted by posted date, newest first</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="sortable" data-sort="title">Title</th>
+            <th class="sortable" data-sort="company">Company</th>
+            <th class="sortable" data-sort="location">Location</th>
+            <th>Category</th>
+            <th class="sortable num" data-sort="first_seen">Posted</th>
+          </tr>
+        </thead>
+        <tbody id="feed-body"></tbody>
+      </table>
+    </div>
   </section>
 
   <section id="tab-sources" style="display:none">
-    <div class="controls">
-      <input type="text" id="source-search" placeholder="Filter by company…">
+    <div class="toolbar">
+      <div class="field grow">
+        <span class="field-icon">/</span>
+        <input type="text" id="source-search" placeholder="Filter by company&hellip;">
+      </div>
     </div>
-    <table>
-      <thead><tr><th>Company</th><th>ATS</th><th>Category</th><th>Status</th><th>Added by</th><th>Failures</th><th>Last scraped</th></tr></thead>
-      <tbody id="sources-body"></tbody>
-    </table>
+    <div class="result-line">
+      <span id="sources-count"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>ATS</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Added by</th>
+            <th class="num">Failures</th>
+            <th class="num">Last scraped</th>
+          </tr>
+        </thead>
+        <tbody id="sources-body"></tbody>
+      </table>
+    </div>
   </section>
 
   <section id="tab-candidates" style="display:none">
-    <div class="controls">
-      <select id="candidate-status">
-        <option value="">All statuses</option>
-        <option value="promoted">Promoted</option>
-        <option value="rejected">Rejected</option>
-        <option value="no_match">No match</option>
-        <option value="unchecked">Unchecked</option>
-      </select>
-      <input type="text" id="candidate-search" placeholder="Filter by company…">
+    <div class="toolbar">
+      <div class="field">
+        <span class="field-icon">status</span>
+        <select id="candidate-status">
+          <option value="">All</option>
+          <option value="promoted">Promoted</option>
+          <option value="rejected">Rejected</option>
+          <option value="no_match">No match</option>
+          <option value="unchecked">Unchecked</option>
+        </select>
+      </div>
+      <div class="field grow">
+        <span class="field-icon">/</span>
+        <input type="text" id="candidate-search" placeholder="Filter by company&hellip;">
+      </div>
     </div>
-    <div class="count" id="candidates-count"></div>
-    <table>
-      <thead><tr><th>Company</th><th>ATS guess</th><th>Status</th><th>Checked</th></tr></thead>
-      <tbody id="candidates-body"></tbody>
-    </table>
+    <div class="result-line">
+      <span id="candidates-count"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Company</th>
+            <th>ATS guess</th>
+            <th>Status</th>
+            <th class="num">Checked</th>
+          </tr>
+        </thead>
+        <tbody id="candidates-body"></tbody>
+      </table>
+    </div>
   </section>
 
 </main>
 
 <footer>
-  Sourced directly from company career sites — no third-party job-board
-  aggregator in the loop. <a href="/feed" target="_blank">/feed</a> ·
-  <a href="/sources" target="_blank">/sources</a> ·
-  <a href="/candidates" target="_blank">/candidates</a>
+  <span>Sourced directly from company career sites &mdash; no third-party job-board aggregator in the loop.</span>
+  <span><a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a></span>
 </footer>
 
 <script>
@@ -198,9 +450,14 @@ function timeAgo(iso) {
   return Math.floor(secs / 86400) + "d ago";
 }
 
+function emptyRow(colspan, message) {
+  return `<tr><td colspan="${colspan}"><div class="empty">${escapeHtml(message)}</div></td></tr>`;
+}
+
 // --- feed tab ---------------------------------------------------------
 
 let feedPostings = [];
+let feedSort = { key: "first_seen", dir: -1 };
 
 async function loadFeed() {
   const preset = presetSelect.value;
@@ -210,48 +467,72 @@ async function loadFeed() {
     const res = await fetch(url);
     const data = await res.json();
     if (data.error) {
-      document.getElementById("feed-list").innerHTML = `<div class="empty">${escapeHtml(data.error)}</div>`;
+      document.getElementById("feed-body").innerHTML = emptyRow(5, data.error);
       document.getElementById("feed-count").textContent = "";
       return;
     }
     feedPostings = data.postings || [];
     renderFeed();
   } catch (e) {
-    document.getElementById("feed-list").innerHTML = `<div class="empty">Couldn't reach the API — is the service running?</div>`;
+    document.getElementById("feed-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
     document.getElementById("feed-count").textContent = "";
   }
 }
 
+function sortRows(rows, key, dir) {
+  return [...rows].sort((a, b) => {
+    const av = a[key] ?? "";
+    const bv = b[key] ?? "";
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+}
+
 function renderFeed() {
   const q = document.getElementById("search").value.trim().toLowerCase();
-  const filtered = q
+  let filtered = q
     ? feedPostings.filter(p =>
         (p.title || "").toLowerCase().includes(q) ||
         (p.company || "").toLowerCase().includes(q))
     : feedPostings;
+  filtered = sortRows(filtered, feedSort.key, feedSort.dir);
 
-  document.getElementById("feed-count").textContent =
-    `${filtered.length} of ${feedPostings.length} open posting${feedPostings.length === 1 ? "" : "s"}`;
+  document.getElementById("feed-count").innerHTML =
+    `<strong>${filtered.length}</strong> of ${feedPostings.length} open posting${feedPostings.length === 1 ? "" : "s"}`;
 
-  const list = document.getElementById("feed-list");
+  document.querySelectorAll('#tab-feed th.sortable').forEach(th => {
+    const caret = th.querySelector(".sort-caret");
+    if (caret) caret.remove();
+    if (th.dataset.sort === feedSort.key) {
+      th.insertAdjacentHTML("beforeend", `<span class="sort-caret">${feedSort.dir === 1 ? "▲" : "▼"}</span>`);
+    }
+  });
+
+  const body = document.getElementById("feed-body");
   if (!filtered.length) {
-    list.innerHTML = `<div class="empty">No postings match.</div>`;
+    body.innerHTML = emptyRow(5, feedPostings.length ? "No postings match that filter." : "No open postings sourced yet.");
     return;
   }
-  list.innerHTML = filtered.map(p => `
-    <div class="card">
-      <div class="card-top">
-        <a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a>
-        <span class="tag">${escapeHtml(timeAgo(p.first_seen))}</span>
-      </div>
-      <div class="company">${escapeHtml(p.company)}${p.location ? " · " + escapeHtml(p.location) : ""}</div>
-      <div class="meta">
-        ${p.category ? `<span class="tag">${escapeHtml(p.category)}</span>` : ""}
-        ${p.source ? `<span class="tag">${escapeHtml(p.source)}</span>` : ""}
-      </div>
-    </div>
+  body.innerHTML = filtered.map(p => `
+    <tr>
+      <td class="title-cell"><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a></td>
+      <td class="company-cell">${escapeHtml(p.company)}</td>
+      <td class="location-cell mono">${escapeHtml(p.location || "—")}</td>
+      <td>${p.category ? `<span class="swatch-tag">${escapeHtml(p.category)}</span>` : ""}</td>
+      <td class="age-cell mono">${escapeHtml(timeAgo(p.first_seen))}</td>
+    </tr>
   `).join("");
 }
+
+document.querySelectorAll('#tab-feed th.sortable').forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.sort;
+    feedSort.dir = feedSort.key === key ? -feedSort.dir : (key === "first_seen" ? -1 : 1);
+    feedSort.key = key;
+    renderFeed();
+  });
+});
 
 // --- sources tab --------------------------------------------------------
 
@@ -267,17 +548,21 @@ async function loadSources() {
 function renderSources() {
   const q = document.getElementById("source-search").value.trim().toLowerCase();
   const filtered = q ? sourceRows.filter(s => (s.company || "").toLowerCase().includes(q)) : sourceRows;
-  document.getElementById("sources-body").innerHTML = filtered.map(s => `
+
+  document.getElementById("sources-count").innerHTML =
+    `<strong>${filtered.length}</strong> of ${sourceRows.length} sources`;
+
+  document.getElementById("sources-body").innerHTML = filtered.length ? filtered.map(s => `
     <tr>
-      <td>${escapeHtml(s.company)}</td>
-      <td>${escapeHtml(s.ats)}</td>
-      <td>${escapeHtml(s.category || "")}</td>
-      <td class="status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</td>
-      <td>${escapeHtml(s.added_by)}</td>
-      <td>${s.consecutive_failures}</td>
-      <td>${timeAgo(s.last_scraped_at)}</td>
+      <td class="company-cell">${escapeHtml(s.company)}</td>
+      <td class="mono">${escapeHtml(s.ats)}</td>
+      <td class="location-cell">${escapeHtml(s.category || "—")}</td>
+      <td><span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span></td>
+      <td class="location-cell">${escapeHtml(s.added_by)}</td>
+      <td class="num-cell mono">${s.consecutive_failures}</td>
+      <td class="age-cell mono">${escapeHtml(timeAgo(s.last_scraped_at))}</td>
     </tr>
-  `).join("") || `<tr><td colspan="7" class="empty">No sources.</td></tr>`;
+  `).join("") : emptyRow(7, "No sources.");
 }
 
 // --- candidates tab -------------------------------------------------------
@@ -298,17 +583,17 @@ function renderCandidates() {
   if (q) filtered = filtered.filter(c => (c.company || "").toLowerCase().includes(q));
   if (statusFilter) filtered = filtered.filter(c => c.review_status === statusFilter);
 
-  document.getElementById("candidates-count").textContent =
-    `${filtered.length} of ${candidateRows.length} candidates`;
+  document.getElementById("candidates-count").innerHTML =
+    `<strong>${filtered.length}</strong> of ${candidateRows.length} candidates`;
 
-  document.getElementById("candidates-body").innerHTML = filtered.slice(0, 500).map(c => `
+  document.getElementById("candidates-body").innerHTML = filtered.length ? filtered.slice(0, 500).map(c => `
     <tr>
-      <td>${escapeHtml(c.company)}</td>
-      <td>${escapeHtml(c.ats || "")}</td>
-      <td class="status-${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</td>
-      <td>${timeAgo(c.checked_at)}</td>
+      <td class="company-cell">${escapeHtml(c.company)}</td>
+      <td class="mono">${escapeHtml(c.ats || "—")}</td>
+      <td><span class="status-cell status-${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</span></td>
+      <td class="age-cell mono">${escapeHtml(timeAgo(c.checked_at))}</td>
     </tr>
-  `).join("") || `<tr><td colspan="4" class="empty">No candidates.</td></tr>`;
+  `).join("") : emptyRow(4, candidateRows.length ? "No candidates match that filter." : "No candidates yet.");
 }
 
 // --- tabs / wiring --------------------------------------------------------
@@ -337,9 +622,11 @@ document.getElementById("candidate-search").addEventListener("input", renderCand
 document.getElementById("candidate-status").addEventListener("change", renderCandidates);
 
 fetch("/health").then(r => r.json()).then(d => {
-  document.getElementById("health-sub").textContent = d.ok ? "live" : "unhealthy";
+  document.getElementById("health-sub").textContent = d.ok ? "API live" : "API unhealthy";
+  document.getElementById("health-dot").classList.add(d.ok ? "ok" : "bad");
 }).catch(() => {
-  document.getElementById("health-sub").textContent = "unreachable";
+  document.getElementById("health-sub").textContent = "API unreachable";
+  document.getElementById("health-dot").classList.add("bad");
 });
 
 loaded.feed = true;
