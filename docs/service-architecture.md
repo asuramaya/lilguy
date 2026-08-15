@@ -188,6 +188,41 @@ up with `docker compose up -d` on any host with Docker, which is the
 whole point of building this as a self-hosted container stack rather
 than a specific cloud platform's managed primitives.
 
+## Backups
+
+The `pgdata` volume was NOT backed up before this was added — only the git
+repo was (via an hourly bundle), which covers code and `sources.yaml` but
+none of the live `postings` / `discovery_candidates` state. Two scripts fix
+that:
+
+```
+scripts/backup_postgres.sh        # cron this nightly on the deploy host
+scripts/restore_test_backup.sh    # run weekly (or before trusting a backup
+                                   # for a real recovery) -- restores the
+                                   # latest dump into a throwaway container
+                                   # and diffs row counts against live
+```
+
+`backup_postgres.sh` writes `pg_dump` output to `/var/backups/internships/`,
+which the host's existing TrueNAS pull already collects — no separate
+off-host transport needed. It refuses to keep a suspiciously small dump
+(a truncated file is worse than no file: it passes an "it exists" check
+while being useless).
+
+Crontab on the deploy host (`crontab -e` as the `agent` user):
+
+```
+0 3 * * *  /srv/internships/scripts/backup_postgres.sh  >> /var/log/internships-backup.log 2>&1
+0 4 * * 0  /srv/internships/scripts/restore_test_backup.sh >> /var/log/internships-backup.log 2>&1
+```
+
+**"The dump wrote" and "the dump restores" are different claims** — this
+project already found a real bug (a promoted source's `next_check_at`
+never being set, corrupting `discovery_candidates` audit state) purely by
+restoring a real backup and querying it, not by trusting that `pg_dump`
+exiting 0 meant the data was sound. Don't skip the restore-test script in
+practice just because the nightly dump "worked."
+
 ## What this explicitly does NOT do (yet)
 
 - **Horizontal scaling of the scheduler.** One `scheduler.py` process is
