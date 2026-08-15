@@ -55,21 +55,27 @@ coverage to Workday is a legitimate follow-up (inspect one real Workday
 application form's DOM and write selectors against its actual structure,
 the same way `docs/adding-a-source.md` describes for the scraper side).
 
-Actively attempted, not just deferred: this project now has a real
-Workday source (Unilever, `sources.yaml`), so Workday coverage here would
-close a real gap. Blocked on tooling, not effort — building it requires
-inspecting a live Workday application form's actual DOM in a browser
-session, which wasn't available when this was attempted. General
-knowledge suggests Workday forms consistently expose `data-automation-id`
-attributes (a stable pattern used across Workday-hosted sites, referenced
-in various public write-ups on scripting Workday applications) as a more
-reliable selector base than label-text matching — but that's an
-unverified claim from training knowledge, not something confirmed against
-a real page, and this project's own standard (see `CONTRIBUTING.md`) is
-that a claim like that doesn't ship until it's actually been checked.
-Next session with browser access: open a real Workday application page,
-confirm or refute the `data-automation-id` pattern, then extend
-`autofill.user.js` with a Workday-specific field matcher.
+Actively attempted twice now, not just deferred: this project has several
+real Workday sources (ConocoPhillips, GE Vernova, GE Aerospace,
+C.H. Robinson, Unilever — `sources.yaml`), so Workday coverage here would
+close a real gap.
+
+**Second attempt (2026-08-15), browser access available, still blocked —
+this time by Workday itself, not by tooling.** Tried four live application
+URLs across four distinct Workday hosts our own sources actually use
+(`conocophillips.wd1`, `chrobinson.wd5`, `unilever.wd3`,
+`gevernova.wd501`) — every single one redirected to
+`community.workday.com/maintenance-page`, Workday's own platform-wide
+maintenance page, not a per-tenant error. Retried `chrobinson.wd5` a
+second time a few minutes later; same result. This reads as a genuine
+Workday-side maintenance window affecting the whole `myworkdayjobs.com`
+platform at the time of the attempt, not a broken URL or a guessed
+tenant/host — the same tenant/host values our own `discovery.py` already
+confirmed live (they're `active` sources with successful scrape history).
+Real inspection of a live form's DOM still hasn't happened; the
+`data-automation-id` claim from the first attempt remains unverified.
+**Next session: just retry the same four URLs (or any `sources.yaml`
+Workday entry) — this is very likely a transient outage, not a dead end.**
 
 Radio buttons and checkboxes (common for yes/no work-authorization
 questions) are intentionally skipped rather than guessed at — matching the
