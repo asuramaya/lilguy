@@ -182,6 +182,18 @@ curl localhost:8000/candidates                               # discovery evidenc
 docker compose logs -f scheduler                              # watch it fetch in real time
 ```
 
+Open `http://localhost:8000/` in a browser for a minimal read-only UI over
+those same three endpoints (`service/api.py` mounts `service/static/`) —
+a Feed tab (preset switcher + client-side title/company search over open
+postings), a Sources tab (per-source status/failure table), and a
+Discovery tab (candidate review status, filterable). Deliberately plain
+HTML/CSS/vanilla JS, no build step and no npm dependency — it's fetched
+by the browser at runtime from whatever origin served the page, so
+nothing needs rebuilding when the data changes. This is the entire
+frontend this project has; it's read-only by design (no create/edit/
+delete anywhere), matching the project's own "sourcing is automated,
+applying is a human decision" stance from `autofill/README.md`.
+
 Everything lives in one Postgres container + `pgdata` volume — bring it
 down with `docker compose down` (add `-v` to also drop the data) and back
 up with `docker compose up -d` on any host with Docker, which is the

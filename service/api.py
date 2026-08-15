@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Query
+from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scraper"))
 sys.path.insert(0, str(Path(__file__).parent))
@@ -27,6 +28,7 @@ from db import cursor  # noqa: E402
 ROOT = Path(__file__).parent.parent
 PRESETS_DIR = ROOT / "presets"
 DEFAULT_FILTERS_FILE = ROOT / "filters.yaml"
+STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="Internship feed", description="Live feed of sourced internship postings.")
 
@@ -99,3 +101,13 @@ def candidates():
             "FROM discovery_candidates ORDER BY checked_at DESC NULLS FIRST"
         )
         return {"candidates": cur.fetchall()}
+
+
+# Registered last on purpose -- Starlette matches routes in registration
+# order, so the explicit /health, /feed, /sources, /candidates routes
+# above always win first. This mount only catches what's left ("/" and
+# any other static asset path), serving service/static/index.html as a
+# minimal read-only UI over the same three JSON endpoints. No separate
+# build step / npm dependency -- plain HTML+JS, fetched at runtime from
+# whatever origin the page itself was served from.
+app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
