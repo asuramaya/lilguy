@@ -93,6 +93,25 @@ def sources():
         return {"sources": cur.fetchall()}
 
 
+@app.get("/events")
+def events(limit: int = Query(50, le=500)):
+    """Backs the frontend's 'N new since you last looked' indicator (see
+    docs/service-architecture.md's 'Staying informed' section for why this
+    exists instead of an email/webhook notifier -- no persistent process
+    exists to drive one, and this project holds no SMTP/webhook
+    credentials to send with). Written by scheduler.py (source disabled),
+    discovery.py (promoted / reinstated), and scripts/restore_test_backup.sh
+    (backup verification result) -- see service/schema.sql's own comment
+    on the events table for what does and doesn't get logged here.
+    """
+    with cursor() as cur:
+        cur.execute(
+            "SELECT id, kind, company, detail, created_at FROM events ORDER BY created_at DESC LIMIT %s",
+            (limit,),
+        )
+        return {"events": [_row_to_filter_dict(r) for r in cur.fetchall()]}
+
+
 @app.get("/duplicates")
 def duplicates(limit: int = Query(500, le=5000)):
     """Audit view over what dedup.py's sweep actually caught -- deliberately

@@ -131,3 +131,23 @@ CREATE TABLE IF NOT EXISTS scrape_runs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_scrape_runs_source ON scrape_runs (source_id, started_at DESC);
+
+-- A small, deliberately simple activity log for the "did something
+-- notable just happen" question -- a new source promoted, an existing
+-- one going dark after repeated failures, a backup restore-test result.
+-- Not a general audit trail (scrape_runs and discovery_candidates.
+-- evidence already cover the detailed history for their own domains) --
+-- this exists so the frontend can show "N new since you last looked"
+-- without the operator having to dig through the Sources/Discovery
+-- tabs by hand. See docs/service-architecture.md's "Staying informed"
+-- section for why this exists instead of an email/webhook notifier.
+CREATE TABLE IF NOT EXISTS events (
+    id                   BIGSERIAL PRIMARY KEY,
+    kind                 TEXT NOT NULL
+                         CHECK (kind IN ('promoted', 'disabled', 'reinstated', 'backup_restore_test')),
+    company              TEXT,              -- NULL for backup_restore_test, which isn't about one source
+    detail               TEXT NOT NULL,     -- short human-readable summary, e.g. "promoted via greenhouse"
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at DESC);

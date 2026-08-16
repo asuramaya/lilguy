@@ -92,6 +92,79 @@
   .status-dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(74, 155, 110, 0.15); }
   .status-dot.bad { background: var(--bad); box-shadow: 0 0 0 3px rgba(200, 90, 66, 0.15); }
 
+  .events-wrap { position: relative; }
+
+  .events-badge {
+    /* Always laid out (never display:none), so .events-wrap never
+       collapses to a zero-width flex item and drags the panel's
+       position:absolute anchor point off to some other spot in the
+       header -- confirmed live, that's exactly what display:none caused
+       here: the panel rendered clipped off the viewport edge because its
+       positioned ancestor had shrunk to nothing once the badge (its only
+       in-flow content) was hidden. opacity+pointer-events keep the same
+       "invisible until there's something to show" behavior without
+       destabilizing layout. */
+    visibility: hidden;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .events-badge.visible { visibility: visible; }
+  .events-badge:hover { background: rgba(232, 149, 42, 0.08); }
+
+  .events-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 380px;
+    max-width: calc(100vw - 48px);
+    max-height: 420px;
+    overflow-y: auto;
+    background: var(--row);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 8px;
+    z-index: 10;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  }
+  .events-panel.open { display: block; }
+
+  .events-panel .event-row {
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12.5px;
+  }
+  .events-panel .event-row + .event-row { border-top: 1px solid var(--border); }
+  .events-panel .event-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    margin-bottom: 3px;
+  }
+  .events-panel .event-kind::before { content: ""; width: 6px; height: 6px; border-radius: 1px; }
+  .events-panel .event-kind.k-promoted { color: var(--ok); }
+  .events-panel .event-kind.k-promoted::before { background: var(--ok); }
+  .events-panel .event-kind.k-reinstated { color: var(--ok); }
+  .events-panel .event-kind.k-reinstated::before { background: var(--ok); }
+  .events-panel .event-kind.k-disabled { color: var(--bad); }
+  .events-panel .event-kind.k-disabled::before { background: var(--bad); }
+  .events-panel .event-kind.k-backup_restore_test { color: var(--ink-secondary); }
+  .events-panel .event-kind.k-backup_restore_test::before { background: var(--ink-tertiary); }
+  .events-panel .event-detail { color: var(--ink-secondary); }
+  .events-panel .event-time { color: var(--ink-tertiary); font-size: 11px; margin-top: 2px; }
+
   nav {
     display: flex;
     gap: 24px;
@@ -299,6 +372,10 @@
       <span class="tag">/ ops · logistics · supply chain</span>
     </div>
     <div class="status-line">
+      <div class="events-wrap">
+        <button class="events-badge" id="events-badge"></button>
+        <div class="events-panel" id="events-panel"></div>
+      </div>
       <span class="status-dot" id="health-dot"></span>
       <span id="health-sub">checking API&hellip;</span>
     </div>
@@ -721,6 +798,67 @@ fetch("/health").then(r => r.json()).then(d => {
 }).catch(() => {
   document.getElementById("health-sub").textContent = "API unreachable";
   document.getElementById("health-dot").classList.add("bad");
+});
+
+// --- events indicator ---------------------------------------------------
+//
+// "Proactive" without a persistent process or SMTP/webhook credentials to
+// drive one -- see docs/service-architecture.md's "Staying informed"
+// section. This surfaces new sources promoted/disabled/reinstated and
+// backup restore-test results the moment the page loads, instead of
+// requiring anyone to dig through the Sources/Discovery tabs by hand.
+// "Seen" state lives in localStorage (per-browser, not server-side) --
+// good enough for a single-operator tool; a multi-viewer deployment would
+// need this tracked server-side instead.
+
+const EVENTS_LAST_SEEN_KEY = "internship-feed-events-last-seen";
+
+async function loadEvents() {
+  try {
+    const res = await fetch("/events?limit=50");
+    const data = await res.json();
+    const eventRows = data.events || [];
+    const lastSeen = localStorage.getItem(EVENTS_LAST_SEEN_KEY);
+    const unseen = lastSeen ? eventRows.filter(e => e.created_at > lastSeen) : eventRows;
+
+    const badge = document.getElementById("events-badge");
+    if (unseen.length > 0) {
+      badge.textContent = `${unseen.length} new`;
+      badge.classList.add("visible");
+    }
+
+    const KIND_LABEL = {
+      promoted: "New source", disabled: "Source disabled",
+      reinstated: "Source recovered", backup_restore_test: "Backup check",
+    };
+    const panel = document.getElementById("events-panel");
+    panel.innerHTML = eventRows.length ? eventRows.map(e => `
+      <div class="event-row">
+        <div class="event-kind k-${escapeHtml(e.kind)}">${escapeHtml(KIND_LABEL[e.kind] || e.kind)}${e.company ? " &middot; " + escapeHtml(e.company) : ""}</div>
+        <div class="event-detail">${escapeHtml(e.detail)}</div>
+        <div class="event-time mono">${escapeHtml(timeAgo(e.created_at))}</div>
+      </div>
+    `).join("") : `<div class="empty">Nothing logged yet.</div>`;
+
+    badge.addEventListener("click", () => {
+      panel.classList.toggle("open");
+      if (panel.classList.contains("open") && eventRows.length) {
+        localStorage.setItem(EVENTS_LAST_SEEN_KEY, eventRows[0].created_at);
+        badge.classList.remove("visible");
+      }
+    });
+  } catch (e) {
+    // Events are a nice-to-have indicator, not core functionality --
+    // fail silently rather than showing an error state over this.
+  }
+}
+loadEvents();
+
+document.addEventListener("click", (ev) => {
+  const wrap = document.querySelector(".events-wrap");
+  if (wrap && !wrap.contains(ev.target)) {
+    document.getElementById("events-panel").classList.remove("open");
+  }
 });
 
 loaded.feed = true;

@@ -399,6 +399,10 @@ def _process_candidate(row: dict) -> dict:
                 (hit["ats"], psycopg2.extras.Json(hit["config"]), psycopg2.extras.Json(verdict["evidence"]),
                  now, row["id"]),
             )
+            cur.execute(
+                "INSERT INTO events (kind, company, detail) VALUES ('promoted', %s, %s)",
+                (company, f"auto-promoted to probation via {hit['ats']}"),
+            )
             return {"company": company, "outcome": "promoted_to_probation", "ats": hit["ats"]}
         else:
             cur.execute(
@@ -461,6 +465,10 @@ def _process_disabled_source(row: dict) -> dict:
                 "UPDATE sources SET status = 'probation', consecutive_failures = 0, "
                 "next_scrape_at = now() WHERE id = %s",
                 (row["id"],),
+            )
+            cur.execute(
+                "INSERT INTO events (kind, company, detail) VALUES ('reinstated', %s, %s)",
+                (row["company"], "recovered after being disabled, back to probation"),
             )
         return {"company": row["company"], "outcome": "reinstated_to_probation"}
     return {"company": row["company"], "outcome": "still_broken", "reason": verdict["reason"]}

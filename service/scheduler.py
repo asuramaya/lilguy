@@ -241,6 +241,17 @@ def run_one(source: dict) -> dict:
                     """,
                     (new_status, failures, error, finished_at, source["id"]),
                 )
+                # This query only ever selects 'probation'/'active' sources
+                # (see run_forever's WHERE clause) -- a disabled source
+                # never lands back here until discovery.py's
+                # recheck_disabled_sources reinstates it, so this branch
+                # fires exactly once per disable, not once per subsequent
+                # failed-and-still-disabled poll.
+                if new_status == "disabled" and source["status"] != "disabled":
+                    cur.execute(
+                        "INSERT INTO events (kind, company, detail) VALUES ('disabled', %s, %s)",
+                        (source["company"], f"{failures} consecutive failures, last error: {error}"),
+                    )
         result.update(error=error)
 
     return result

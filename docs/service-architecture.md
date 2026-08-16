@@ -277,6 +277,29 @@ restoring a real backup and querying it, not by trusting that `pg_dump`
 exiting 0 meant the data was sound. Don't skip the restore-test script in
 practice just because the nightly dump "worked."
 
+## Staying informed
+
+Considered and rejected: an email/webhook notifier that pushes on a new
+source promotion, a source going `disabled`, or a backup restore-test
+result, so nobody has to check by hand. Not built, for a concrete reason
+rather than lack of effort — there's no persistent process positioned to
+send it. The `scheduler`/`discovery` containers have no SMTP or webhook
+credentials (and adding them means new secrets to manage for a marginal
+win), and a Claude Code cron job is session-bound and would silently stop
+firing when that session ends, which is worse than no notifier at all —
+it would look like monitoring while actually monitoring nothing.
+
+What's built instead: an `events` table (`service/schema.sql`) that
+`scheduler.py`, `discovery.py`, and `scripts/restore_test_backup.sh` write
+to directly, a `/events` API endpoint, and a badge in the frontend header
+that shows "N new" the moment the page loads (unseen state tracked in
+`localStorage`, so it resets per browser). This is "proactive" in the one
+sense actually achievable without new infrastructure — surfaced
+immediately on load instead of requiring a dig through the Sources/
+Discovery tabs — not a true push notification. If this project ever adds
+its own SMTP credentials for another reason, revisit wiring `events` rows
+into an actual outbound notifier at that point.
+
 ## What this explicitly does NOT do (yet)
 
 - **Horizontal scaling of the scheduler.** One `scheduler.py` process is
