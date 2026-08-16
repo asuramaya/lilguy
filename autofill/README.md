@@ -76,12 +76,23 @@ and inspected its actual DOM. Two things confirmed live, not assumed:
    near-zero-size field is never something a human is meant to fill in
    regardless of which ATS renders it.
 
-Not yet inspected: the personal-info step past account creation (dropdowns
-for country/state/work authorization, which Workday's design system likely
-renders as custom combobox widgets needing click-to-open handling rather
-than a plain `<select>`) — reaching it requires creating a real Workday
-account, which is out of scope for inspection. If dropdown fills don't
-work on a real form, that's the next thing to check.
+**Permanently blocked, not just deferred: the personal-info step past
+account creation** (dropdowns for country/state/work authorization, which
+Workday's design system likely renders as custom combobox widgets needing
+click-to-open handling rather than a plain `<select>`). Confirmed live
+(2026-08-16, this session, real browser access available) that there is
+no guest/no-account path through Workday's own "Start Your Application"
+flow — all three options (Autofill with Resume / Apply Manually / Use My
+Last Application) route through account creation first, and creating an
+account is explicitly prohibited for an automated agent regardless of
+approval, no exceptions. This isn't an effort gap to revisit with more
+browser access — it needs a **human** to create a real Workday account by
+hand, reach the personal-info step, and either share what
+`data-automation-id`/DOM structure they see there, or test the userscript
+against it directly and report back what does/doesn't fill correctly. If
+dropdown fills don't work once tested against a real form, that's the
+next thing to fix — but the account-creation step itself is a wall this
+project's tooling can't get past on its own.
 
 Radio buttons and checkboxes (common for yes/no work-authorization
 questions) are intentionally skipped rather than guessed at — matching the
