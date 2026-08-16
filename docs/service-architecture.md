@@ -212,6 +212,45 @@ only where they're a real, standard sector name (`Aerospace & Defense`,
 for convenience (the old `CPG / Consumer Brands` was the latter — renamed
 to plain `Consumer Packaged Goods`).
 
+**At more than a handful of companies, do this with a saved workflow
+instead of by hand.** `.claude/workflows/categorize-sources.js` is a
+reusable Claude Code workflow (not a one-off script written into a
+session's scratch space) — it fans out one agent per ~20-token batch,
+each doing real web research per company (never guessing from the token
+alone), and returns `{token, company_name, category, note}` for every
+company, including an honest `"Unidentified"` for ones no agent could
+confirm rather than a fabricated guess. Apply the result with
+`scripts/apply_categorization.py`, which is careful about the same
+things a hand-written SQL pass should be: per-row transactions (one
+collision can't roll back 400 good updates), and a check against
+existing `(company, ats)` pairs before any rename — confirmed live this
+matters (see git history: cleaning up a real batch surfaced 6 genuine
+duplicate sources scraping the same company twice under different
+casing, and 2 look-alike collisions that turned out to be legitimately
+separate boards, not duplicates — the collision check is what caught the
+difference instead of silently merging or crashing).
+
+```
+# 1. Pull the current backlog
+psql ... -c "SELECT company FROM sources WHERE category='Uncategorized' ORDER BY company;"
+
+# 2. Run the workflow (from a Claude Code session in this repo)
+Workflow({name: "categorize-sources", args: ["acme", "beta", ...]})
+# save the returned array as results.json
+
+# 3. Apply it
+DATABASE_URL=... python3 scripts/apply_categorization.py results.json
+```
+
+This backlog isn't a one-time debt — every discovery promotion lands
+`Uncategorized` by design (see above), so it grows continuously as
+discovery finds new companies. There's no persistent process able to run
+this on its own cadence (a Claude Code cron job is session-bound and
+would silently stop firing — see the "Staying informed" section above
+for why the same constraint ruled out a similar always-on notifier) — so
+this stays something a human triggers periodically, just with the actual
+research work no longer needing to be redesigned from scratch each time.
+
 ## Running it
 
 ```
