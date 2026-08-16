@@ -318,6 +318,10 @@
         <span class="field-icon">preset</span>
         <select id="preset"></select>
       </div>
+      <div class="field">
+        <span class="field-icon">category</span>
+        <select id="feed-category"><option value="">All</option></select>
+      </div>
       <div class="field grow">
         <span class="field-icon">/</span>
         <input type="text" id="search" placeholder="Filter by title or company&hellip;">
@@ -345,6 +349,10 @@
 
   <section id="tab-sources" style="display:none">
     <div class="toolbar">
+      <div class="field">
+        <span class="field-icon">category</span>
+        <select id="source-category"><option value="">All</option></select>
+      </div>
       <div class="field grow">
         <span class="field-icon">/</span>
         <input type="text" id="source-search" placeholder="Filter by company&hellip;">
@@ -454,6 +462,19 @@ function emptyRow(colspan, message) {
   return `<tr><td colspan="${colspan}"><div class="empty">${escapeHtml(message)}</div></td></tr>`;
 }
 
+// Repopulates a category <select> from whatever categories are actually
+// present in the current rows, instead of a hardcoded list -- the set
+// changes as sources get added/recategorized, so a static list would
+// silently drift out of sync. Keeps the current selection if it still
+// exists in the new option set.
+function populateCategoryOptions(selectEl, rows) {
+  const categories = [...new Set(rows.map(r => r.category).filter(Boolean))].sort();
+  const current = selectEl.value;
+  selectEl.innerHTML = '<option value="">All</option>' +
+    categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  if (categories.includes(current)) selectEl.value = current;
+}
+
 // --- feed tab ---------------------------------------------------------
 
 let feedPostings = [];
@@ -472,6 +493,7 @@ async function loadFeed() {
       return;
     }
     feedPostings = data.postings || [];
+    populateCategoryOptions(document.getElementById("feed-category"), feedPostings);
     renderFeed();
   } catch (e) {
     document.getElementById("feed-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
@@ -491,11 +513,14 @@ function sortRows(rows, key, dir) {
 
 function renderFeed() {
   const q = document.getElementById("search").value.trim().toLowerCase();
-  let filtered = q
-    ? feedPostings.filter(p =>
-        (p.title || "").toLowerCase().includes(q) ||
-        (p.company || "").toLowerCase().includes(q))
-    : feedPostings;
+  const category = document.getElementById("feed-category").value;
+  let filtered = feedPostings;
+  if (category) filtered = filtered.filter(p => p.category === category);
+  if (q) {
+    filtered = filtered.filter(p =>
+      (p.title || "").toLowerCase().includes(q) ||
+      (p.company || "").toLowerCase().includes(q));
+  }
   filtered = sortRows(filtered, feedSort.key, feedSort.dir);
 
   document.getElementById("feed-count").innerHTML =
@@ -542,12 +567,16 @@ async function loadSources() {
   const res = await fetch("/sources");
   const data = await res.json();
   sourceRows = data.sources || [];
+  populateCategoryOptions(document.getElementById("source-category"), sourceRows);
   renderSources();
 }
 
 function renderSources() {
   const q = document.getElementById("source-search").value.trim().toLowerCase();
-  const filtered = q ? sourceRows.filter(s => (s.company || "").toLowerCase().includes(q)) : sourceRows;
+  const category = document.getElementById("source-category").value;
+  let filtered = sourceRows;
+  if (category) filtered = filtered.filter(s => s.category === category);
+  if (q) filtered = filtered.filter(s => (s.company || "").toLowerCase().includes(q));
 
   document.getElementById("sources-count").innerHTML =
     `<strong>${filtered.length}</strong> of ${sourceRows.length} sources`;
@@ -617,7 +646,9 @@ document.querySelectorAll("nav button").forEach(btn => {
 
 presetSelect.addEventListener("change", loadFeed);
 document.getElementById("search").addEventListener("input", renderFeed);
+document.getElementById("feed-category").addEventListener("change", renderFeed);
 document.getElementById("source-search").addEventListener("input", renderSources);
+document.getElementById("source-category").addEventListener("change", renderSources);
 document.getElementById("candidate-search").addEventListener("input", renderCandidates);
 document.getElementById("candidate-status").addEventListener("change", renderCandidates);
 
