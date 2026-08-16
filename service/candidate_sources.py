@@ -35,6 +35,10 @@ docs/sourcing-model.md) -- sourcing was always meant to be domain-
 unfiltered by design, with relevance handled downstream by
 filters.yaml, not by narrowing what gets sourced in the first place.
 """
+import json
+import re
+import time
+
 import requests
 
 # SEC's fair-access policy actively rejects requests that don't look
@@ -179,3 +183,158 @@ def fetch_wikipedia_category_companies(categories: list[str] = None) -> list[str
             if not cmcontinue:
                 break
     return names
+
+
+# Common Crawl's free CDX index (no key, no signup) lets a URL PATTERN be
+# queried directly against real, currently-crawled pages -- inverting
+# discovery.py's whole model for two of its four ATS platforms. Instead of
+# guessing "does {slugified company name} exist on Greenhouse/Workday" one
+# candidate at a time, this asks Common Crawl "what does it actually have
+# under boards.greenhouse.io/* / *.myworkdayjobs.com/*" and gets back real,
+# currently-live company tokens and Workday tenant/host/site triples
+# directly -- no guessing involved for anything this returns.
+#
+# Confirmed live (this session): boards.greenhouse.io + job-boards.
+# greenhouse.io together yielded 1,946 distinct real company tokens in
+# about 20 seconds. *.myworkdayjobs.com yielded 346 distinct tenant/host
+# pairs from just the first of 5 total pages -- a full pull is easily
+# 1,000+, each with a real `site` path segment recoverable too (e.g. 3M's
+# real site value is literally "Search", not one of the three site names
+# discovery.py already guesses).
+#
+# Deliberately does NOT cover Lever: jobs.lever.co/robots.txt explicitly
+# disallows CCBot ("User-agent: CCBot / Disallow: /"), so Common Crawl has
+# almost nothing indexed there (confirmed live -- the CDX query returns
+# a handful of robots.txt hits and nothing else). That's a real, permanent
+# constraint of this approach for Lever specifically, not a gap to close
+# with more querying -- Lever stays on the existing guess-based probe.
+COMMONCRAWL_COLLINFO_URL = "https://index.commoncrawl.org/collinfo.json"
+COMMONCRAWL_TIMEOUT = 60  # a full CDX page can be several MB and take longer than the 20s default
+
+# A locale/language path segment (Workday puts these first for
+# internationalized boards, e.g. .../en-US/Search/job/... or .../de-DE/
+# Search) -- not a real "site" name, skip it when looking for the site
+# segment. Matches "en", "en-US", "de-DE", "pt-BR", etc.
+_LOCALE_SEGMENT_RE = re.compile(r"^[a-z]{2}(-[A-Za-z]{2,4})?$")
+
+
+def _latest_commoncrawl_index() -> str:
+    resp = requests.get(COMMONCRAWL_COLLINFO_URL, headers=UA, timeout=TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()[0]["id"]  # most recent index is always first
+
+
+def _get_cdx_page_with_retry(base: str, url_pattern: str, page: int, attempts: int = 3):
+    # A CDX page response can be several MB (confirmed live: the
+    # *.myworkdayjobs.com pattern's pages ran multiple MB each) -- large
+    # chunked responses over a real network transiently truncate
+    # (confirmed live: requests.exceptions.ChunkedEncodingError,
+    # "Response ended prematurely", on an otherwise-correct request from
+    # inside the actual discovery container, not a local mock). Same
+    # retry shape as jsonld.py's _get_sitemap_with_retry -- one bad
+    # request shouldn't lose an entire page of real candidates when a
+    # short retry would likely succeed.
+    last_exc = None
+    for attempt in range(attempts):
+        try:
+            resp = requests.get(base, params={"url": url_pattern, "output": "json", "page": page},
+                                 headers=UA, timeout=COMMONCRAWL_TIMEOUT)
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt < attempts - 1:
+                time.sleep(1.5 * (attempt + 1))
+    raise last_exc
+
+
+def _fetch_commoncrawl_cdx_urls(url_pattern: str, index: str) -> list[str]:
+    """Every URL Common Crawl's CDX index has for a pattern like
+    'boards.greenhouse.io/*'. Paginates via CDX's own page mechanism --
+    confirmed live a single page can already be tens of thousands of rows
+    and the real page count varies a lot by pattern (1 page for the
+    Greenhouse domains tested, 5 for *.myworkdayjobs.com), so this always
+    checks showNumPages rather than assuming either shape.
+    """
+    base = f"https://index.commoncrawl.org/{index}-index"
+    meta = requests.get(base, params={"url": url_pattern, "output": "json", "showNumPages": "true"},
+                         headers=UA, timeout=TIMEOUT).json()
+    num_pages = meta.get("pages", 1)
+    urls: list[str] = []
+    for page in range(num_pages):
+        resp = _get_cdx_page_with_retry(base, url_pattern, page)
+        for line in resp.text.splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if row.get("url"):
+                urls.append(row["url"])
+    return urls
+
+
+def fetch_commoncrawl_greenhouse_tokens(index: str = None) -> list[str]:
+    """Real, currently-live Greenhouse board tokens (the slug in
+    boards.greenhouse.io/{token}/jobs/...) straight from Common Crawl --
+    each one is a company that already, verifiably, has a Greenhouse
+    board, not a guess. These slot directly into discovery.py's existing
+    candidate seed: _probe_greenhouse() already does `_slugify(company)`
+    before querying, which is a no-op on an already-slug-shaped token, so
+    no discovery.py changes are needed to consume these as plain
+    candidate names.
+
+    Queries BOTH boards.greenhouse.io and job-boards.greenhouse.io --
+    Greenhouse migrated their canonical domain at some point and Common
+    Crawl has real, current coverage of both (confirmed live: the older
+    domain 301-redirects to the newer one, but plenty of pages are still
+    indexed under it directly).
+    """
+    index = index or _latest_commoncrawl_index()
+    tokens: set[str] = set()
+    for domain in ("boards.greenhouse.io", "job-boards.greenhouse.io"):
+        for url in _fetch_commoncrawl_cdx_urls(f"{domain}/*", index):
+            marker = f"{domain}/"
+            if marker not in url:
+                continue
+            token = url.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0].lower()
+            if token and token != "robots.txt":
+                tokens.add(token)
+    return sorted(tokens)
+
+
+def fetch_commoncrawl_workday_tenants(index: str = None) -> list[dict]:
+    """Real (tenant, wd_host, site) triples straight from Common Crawl --
+    a fully-formed Workday config, not a guess to feed into discovery.py's
+    WORKDAY_HOST_GUESSES/WORKDAY_SITE_GUESSES matrix. For each distinct
+    tenant.host pair seen, picks the most common non-locale path segment
+    as `site` (a board can have multiple real site names across different
+    URLs -- e.g. a locale-specific one and a generic one -- so this isn't
+    guaranteed to be the "canonical" one, but it's a real, confirmed-live
+    value either way, which is what matters for a trial fetch).
+
+    Returns dicts shaped for discovery.py to seed directly as a resolved
+    (ats, config) pair rather than a plain candidate name -- these skip
+    the guess-probe step entirely, going straight to a real trial fetch.
+    """
+    index = index or _latest_commoncrawl_index()
+    # tenant_host -> {site_value: count}
+    site_votes: dict[str, dict[str, int]] = {}
+    for url in _fetch_commoncrawl_cdx_urls("*.myworkdayjobs.com/*", index):
+        m = re.match(r"https?://([a-z0-9-]+)\.([a-z0-9]+)\.myworkdayjobs\.com/([^/?]*)", url, re.IGNORECASE)
+        if not m:
+            continue
+        tenant, host, first_segment = m.group(1).lower(), m.group(2).lower(), m.group(3)
+        if not first_segment or first_segment.lower() == "robots.txt" or _LOCALE_SEGMENT_RE.match(first_segment):
+            continue
+        key = f"{tenant}|{host}"
+        votes = site_votes.setdefault(key, {})
+        votes[first_segment] = votes.get(first_segment, 0) + 1
+
+    results = []
+    for key, votes in site_votes.items():
+        tenant, host = key.split("|", 1)
+        best_site = max(votes.items(), key=lambda kv: kv[1])[0]
+        results.append({"tenant": tenant, "wd_host": host, "site": best_site})
+    return results

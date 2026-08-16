@@ -30,13 +30,22 @@ which ATS a named company uses automatically, it does not invent company
 names from nothing. That distinction matters: the automation this
 project asked for is "no human needed to APPROVE a hit," not "no human
 ever names a company to check." As of this file, "told to try" means
-SEC EDGAR's own public company-tickers list -- 10,391 real company
-names, free, no API key, no signup (see candidate_sources.py) -- rather
-than a hand-typed list someone has to keep extending by hand. That list
-IS still a human-curated input in one sense (someone chose "public
-companies with a US ticker" as the pool), but growing it from here on
-is a research/infrastructure question (which free, public bulk list to
-add next), not a per-company chore.
+SEC EDGAR's own public company-tickers list (10,391 real company names)
+plus Wikipedia's industry category listings, both free, no API key, no
+signup (see candidate_sources.py) -- rather than a hand-typed list
+someone has to keep extending by hand. Both of those still name a
+COMPANY and let the existing guess-probe matrix figure out the ATS.
+
+Common Crawl's free CDX index is a different shape of "told to try"
+entirely -- instead of naming a company and guessing its ATS, it directly
+enumerates real, currently-crawled Greenhouse boards and Workday tenants
+(see candidate_sources.py's fetch_commoncrawl_* functions), so those get
+seeded as ALREADY-RESOLVED candidates with no guessing left to do (see
+_seed_commoncrawl_candidates_if_due() and _process_candidate()'s
+pre-resolved-config check below). Confirmed live to find real Workday
+host/site values (e.g. wd_host="wd3", a real production Workday pod
+never in WORKDAY_HOST_GUESSES) that blind guessing structurally never
+would.
 """
 import re
 import sys
@@ -53,7 +62,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from connectors import CONNECTORS  # noqa: E402
 
-from candidate_sources import fetch_sec_edgar_company_names, fetch_wikipedia_category_companies  # noqa: E402
+from candidate_sources import (  # noqa: E402
+    fetch_commoncrawl_greenhouse_tokens,
+    fetch_commoncrawl_workday_tenants,
+    fetch_sec_edgar_company_names,
+    fetch_wikipedia_category_companies,
+)
 from db import cursor  # noqa: E402
 from verify import verify_trial_fetch  # noqa: E402
 
@@ -120,6 +134,87 @@ def _load_candidate_seed() -> list[str]:
 # longer evaluated at import time.
 CANDIDATE_SEED = None
 
+# Common Crawl's own index only refreshes roughly monthly, and a full
+# pull (Greenhouse's two domains + Workday's several pages) confirmed
+# live at ~1-2 minutes total -- re-running that every 5-minute discovery
+# cycle the way _load_candidate_seed() does for SEC EDGAR/Wikipedia would
+# stall the loop for no benefit (nothing upstream has changed). Gated to
+# once a day instead. Module-level, resets on container restart -- worst
+# case is one extra re-seed after a restart, not a correctness issue
+# since every insert is ON CONFLICT DO NOTHING anyway.
+COMMONCRAWL_RESEED_INTERVAL = timedelta(days=1)
+_last_commoncrawl_seed_at: datetime | None = None
+
+
+def _existing_source_keys() -> set[tuple[str, str]]:
+    # (lowercased company, ats) pairs already live in `sources` --
+    # confirmed live as a REAL collision, not a hypothetical: Common
+    # Crawl's Workday pull found tenant "3m" (lowercase, from the real
+    # URL), which is a DIFFERENT string than the existing manual source
+    # "3M" -- Postgres's UNIQUE (company, ats) constraint on `sources` is
+    # case-sensitive, so without this check that candidate would promote
+    # into a SECOND, redundant source scraping the exact same board.
+    # discovery_candidates' own UNIQUE(company) + ON CONFLICT DO NOTHING
+    # already prevents exact-string duplicates within that table; this
+    # closes the separate case-insensitive gap against `sources` itself.
+    with cursor() as cur:
+        cur.execute("SELECT company, ats FROM sources")
+        return {(r["company"].lower(), r["ats"]) for r in cur.fetchall()}
+
+
+def _seed_commoncrawl_candidates_if_due() -> None:
+    global _last_commoncrawl_seed_at
+    now = datetime.now(timezone.utc)
+    if _last_commoncrawl_seed_at is not None and now - _last_commoncrawl_seed_at < COMMONCRAWL_RESEED_INTERVAL:
+        return
+    _last_commoncrawl_seed_at = now
+    existing = _existing_source_keys()
+
+    try:
+        tokens = fetch_commoncrawl_greenhouse_tokens()
+    except Exception as exc:  # noqa: BLE001 - seeding must not crash the whole loop
+        print(f"[discovery] Common Crawl Greenhouse fetch failed ({exc})", flush=True)
+        tokens = []
+    tokens = [t for t in tokens if (t.lower(), "greenhouse") not in existing]
+    if tokens:
+        # Plain candidate names, same shape as the SEC EDGAR/Wikipedia
+        # seed -- _probe_greenhouse() already slugifies before querying,
+        # a no-op on an already-slug-shaped token, so these flow through
+        # the EXACT existing probe/verify/promote pipeline with zero
+        # further changes.
+        with cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur, "INSERT INTO discovery_candidates (company) VALUES %s ON CONFLICT (company) DO NOTHING",
+                [(t,) for t in tokens],
+            )
+        print(f"[discovery] seeded {len(tokens)} Greenhouse candidate(s) from Common Crawl", flush=True)
+
+    try:
+        workday_triples = fetch_commoncrawl_workday_tenants()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[discovery] Common Crawl Workday fetch failed ({exc})", flush=True)
+        workday_triples = []
+    workday_triples = [t for t in workday_triples if (t["tenant"].lower(), "workday") not in existing]
+    if workday_triples:
+        # Pre-resolved (ats, config) rows, NOT plain names -- Common Crawl
+        # already gave us a real, confirmed-live (tenant, host, site)
+        # triple, so there's nothing left to guess. _process_candidate
+        # checks for a pre-populated row["ats"]/row["config"] and skips
+        # straight to a trial fetch through this exact config instead of
+        # running the guess-probe matrix.
+        rows = []
+        for t in workday_triples:
+            config = {"company": t["tenant"], "ats": "workday", "tenant": t["tenant"], "wd_host": t["wd_host"],
+                      "site": t["site"], "category": "Uncategorized", "max_pages": 5}
+            rows.append((t["tenant"], "workday", psycopg2.extras.Json(config)))
+        with cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO discovery_candidates (company, ats, config) VALUES %s ON CONFLICT (company) DO NOTHING",
+                rows,
+            )
+        print(f"[discovery] seeded {len(workday_triples)} Workday candidate(s) from Common Crawl", flush=True)
+
 # Small, bounded guess matrices -- NOT exhaustive. Confirmed live this
 # session that blind Workday guessing has a low hit rate (Ford/Toyota/
 # Lockheed all 422'd on the obvious combinations) -- that's an accepted,
@@ -159,9 +254,19 @@ def _guess_domains(company: str) -> list[str]:
 def _probe_greenhouse(company: str):
     token = _slugify(company)
     try:
-        r = requests.get(GREENHOUSE_API.format(token=token), timeout=TIMEOUT, headers=UA)
-        if r.status_code == 200 and r.json().get("jobs"):
-            return {"ats": "greenhouse", "config": {"company": company, "ats": "greenhouse", "token": token,
+        # content=true costs nothing extra (same request either way) and
+        # gets back each job's real company_name -- confirmed live this
+        # matters for Common-Crawl-sourced candidates specifically (task
+        # #candidate-sources), whose seeded "company" is just the raw
+        # URL token (e.g. "10xgenomics"), not a real display name. Every
+        # posting from this source would otherwise show that raw slug as
+        # its company forever (Posting.company comes straight from this
+        # config's "company" field -- see scraper/connectors/base.py).
+        r = requests.get(GREENHOUSE_API.format(token=token), params={"content": "true"}, timeout=TIMEOUT, headers=UA)
+        jobs = r.json().get("jobs") if r.status_code == 200 else None
+        if jobs:
+            display_name = jobs[0].get("company_name") or company
+            return {"ats": "greenhouse", "config": {"company": display_name, "ats": "greenhouse", "token": token,
                                                       "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
     except Exception:  # noqa: BLE001 - a bad guess is a miss, never a crash (see _probe_jsonld's own note)
         pass
@@ -355,16 +460,24 @@ def _process_candidate(row: dict) -> dict:
     # candidate gets claimed again on the very next cycle -- a real
     # crash loop, confirmed live in production (task #23 fallout,
     # 2026-08-16), not a hypothetical.
-    try:
-        hit = probe_candidate(company)
-    except Exception as exc:  # noqa: BLE001
-        with cursor() as cur:
-            cur.execute(
-                "UPDATE discovery_candidates SET review_status = 'no_match', checked_at = %s, "
-                "next_check_at = %s WHERE id = %s",
-                (now, now + timedelta(days=NO_MATCH_RECHECK_DAYS), row["id"]),
-            )
-        return {"company": company, "outcome": "no_match", "reason": f"probe raised: {exc}"}
+    if row.get("ats") and row.get("config"):
+        # Pre-resolved by a seeding source that already confirmed the
+        # real (ats, config) -- e.g. Common Crawl's Workday tenant/host/
+        # site triples (see candidate_sources.py). Nothing left to guess,
+        # so skip the probe entirely and go straight to a real trial
+        # fetch through this exact config.
+        hit = {"ats": row["ats"], "config": row["config"]}
+    else:
+        try:
+            hit = probe_candidate(company)
+        except Exception as exc:  # noqa: BLE001
+            with cursor() as cur:
+                cur.execute(
+                    "UPDATE discovery_candidates SET review_status = 'no_match', checked_at = %s, "
+                    "next_check_at = %s WHERE id = %s",
+                    (now, now + timedelta(days=NO_MATCH_RECHECK_DAYS), row["id"]),
+                )
+            return {"company": company, "outcome": "no_match", "reason": f"probe raised: {exc}"}
 
     if hit is None:
         with cursor() as cur:
@@ -419,6 +532,7 @@ def run_discovery_cycle(limit: int = 5, max_workers: int = DISCOVERY_CANDIDATE_W
     """Processes up to `limit` due candidates, up to `max_workers` at a
     time. Returns a result summary per candidate for logging."""
     _seed_unchecked_candidates()
+    _seed_commoncrawl_candidates_if_due()
 
     with cursor() as cur:
         # 'promoted' is deliberately EXCLUDED, not just "not due yet" --
@@ -436,7 +550,7 @@ def run_discovery_cycle(limit: int = 5, max_workers: int = DISCOVERY_CANDIDATE_W
         # actual `sources` row and its data were unaffected, this only
         # broke discovery_candidates' own record of what happened).
         cur.execute(
-            "SELECT id, company FROM discovery_candidates "
+            "SELECT id, company, ats, config FROM discovery_candidates "
             "WHERE review_status = 'unchecked' "
             "   OR (review_status IN ('no_match', 'rejected') AND next_check_at <= now()) "
             "ORDER BY next_check_at LIMIT %s FOR UPDATE SKIP LOCKED",

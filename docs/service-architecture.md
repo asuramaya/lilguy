@@ -308,12 +308,22 @@ into an actual outbound notifier at that point.
   full scheduler replicas would each independently think they have
   `MAX_WORKERS` free slots). This project's source count doesn't need
   that yet.
-- **Candidate breadth beyond SEC EDGAR + Wikipedia categories.** Two free
-  sources feed discovery: 10,391 public companies from EDGAR, plus
-  ~1,300 more from Wikipedia's trucking/logistics/manufacturing/freight/
-  aerospace/automotive/retail/pharma/chemical/mining category listings
-  (the latter reaching real PRIVATE carriers like AAA Cooper
-  Transportation and Averitt Express that EDGAR structurally can't).
+- **Candidate breadth beyond SEC EDGAR + Wikipedia + Common Crawl.** SEC
+  EDGAR (10,391 public companies) and Wikipedia's industry category
+  listings (~1,300 more, reaching real PRIVATE carriers like AAA Cooper
+  Transportation that EDGAR structurally can't) both feed plain company
+  NAMES into the existing guess-probe pipeline. Common Crawl's free CDX
+  index (`candidate_sources.py`'s `fetch_commoncrawl_greenhouse_tokens`/
+  `fetch_commoncrawl_workday_tenants`) is a different kind of source
+  entirely — it doesn't guess at company names, it directly enumerates
+  real, currently-crawled Greenhouse boards and Workday tenants, so
+  `discovery.py` seeds those as already-resolved candidates and skips
+  guessing outright. Confirmed live: ~4,000 real Greenhouse tokens and
+  ~1,100 real Workday tenant/host/site triples per pull, including exact
+  values (`wd_host: "wd3"`, `site: "Sierra_Space_External_Career_Site"`)
+  the guess matrix would never have found on its own. Deliberately does
+  NOT cover Lever — `jobs.lever.co/robots.txt` explicitly disallows
+  Common Crawl's bot, so there's almost nothing indexed there to find.
   Still not exhaustive — a public S&P 1500/Russell index constituent
   list is a real next step, not yet wired in (both are effectively
   paywalled as machine-readable data outside a handful of already-

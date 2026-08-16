@@ -29,6 +29,21 @@ def _clean_db():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_real_commoncrawl_calls(monkeypatch):
+    # run_discovery_cycle() unconditionally calls
+    # _seed_commoncrawl_candidates_if_due() -- without this, the FIRST
+    # test in the whole suite to call run_discovery_cycle() would trigger
+    # a REAL network call to Common Crawl (the interval gate's
+    # `_last_commoncrawl_seed_at` starts as None), making every test run
+    # depend on network access and Common Crawl's uptime. Pretending it
+    # "just ran" makes the gate skip it by default; a specific test that
+    # wants to exercise the seeding path itself resets this back to None.
+    import datetime as _datetime
+    monkeypatch.setattr(discovery, "_last_commoncrawl_seed_at", _datetime.datetime.now(_datetime.timezone.utc))
+    yield
+
+
 def test_candidate_with_no_ats_hit_marked_no_match(monkeypatch):
     monkeypatch.setattr(discovery, "CANDIDATE_SEED", ["Nobody Corp"])
     monkeypatch.setattr(discovery, "PROBES", [])
@@ -154,6 +169,102 @@ def test_probe_candidate_falls_back_through_both_domain_guesses(monkeypatch):
     hit = discovery.probe_candidate("Acme Corp")
     assert seen_domains == ["acmecorp.com", "careers.acmecorp.com"]
     assert hit == {"ats": "jsonld", "config": {}}
+
+
+def test_preresolved_candidate_skips_probing_and_goes_straight_to_trial_fetch(monkeypatch):
+    # Common Crawl's Workday tenant/host/site triples (see
+    # candidate_sources.py) get seeded with ats/config already populated
+    # -- there's nothing left to guess, so _process_candidate should go
+    # straight to a trial fetch through that exact config. PROBES is set
+    # to a function that raises if called at all, so this test fails
+    # loudly if that guarantee ever regresses.
+    def exploding_probe(company):
+        raise AssertionError("a pre-resolved candidate must not be probed")
+
+    monkeypatch.setattr(discovery, "PROBES", [exploding_probe])
+    monkeypatch.setattr(discovery, "CANDIDATE_SEED", [])  # nothing else to seed this cycle
+
+    config = {"company": "acme", "ats": "workday", "tenant": "acme", "wd_host": "wd1",
+              "site": "Search", "category": "Uncategorized", "max_pages": 5}
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO discovery_candidates (company, ats, config) VALUES (%s, %s, %s)",
+            ("acme", "workday", __import__("psycopg2").extras.Json(config)),
+        )
+
+    real_postings = [fake_posting("wd:acme:1", "acme", "Supply Chain Intern"),
+                      fake_posting("wd:acme:2", "acme", "Logistics Intern")]
+    monkeypatch.setitem(discovery.CONNECTORS, "workday",
+                         lambda: SimpleNamespace(fetch=lambda cfg: real_postings if cfg == config else []))
+
+    results = discovery.run_discovery_cycle(limit=5)
+    assert results == [{"company": "acme", "outcome": "promoted_to_probation", "ats": "workday"}]
+
+    with db.cursor() as cur:
+        cur.execute("SELECT status, added_by FROM sources WHERE company = 'acme'")
+        row = cur.fetchone()
+    assert row["status"] == "probation"
+    assert row["added_by"] == "discovery"
+
+
+def test_commoncrawl_seeding_inserts_plain_names_and_preresolved_workday_rows(monkeypatch):
+    monkeypatch.setattr(discovery, "_last_commoncrawl_seed_at", None)  # force the gate open
+    monkeypatch.setattr(discovery, "fetch_commoncrawl_greenhouse_tokens", lambda: ["acme", "beta"])
+    monkeypatch.setattr(
+        discovery, "fetch_commoncrawl_workday_tenants",
+        lambda: [{"tenant": "gamma", "wd_host": "wd1", "site": "Search"}],
+    )
+
+    discovery._seed_commoncrawl_candidates_if_due()
+
+    with db.cursor() as cur:
+        cur.execute("SELECT company, ats, config, review_status FROM discovery_candidates ORDER BY company")
+        rows = cur.fetchall()
+
+    by_company = {r["company"]: r for r in rows}
+    assert set(by_company) == {"acme", "beta", "gamma"}
+    assert by_company["acme"]["ats"] is None  # plain name, same shape as SEC EDGAR/Wikipedia seeds
+    assert by_company["gamma"]["ats"] == "workday"
+    assert by_company["gamma"]["config"]["wd_host"] == "wd1"
+    assert by_company["gamma"]["config"]["site"] == "Search"
+    assert all(r["review_status"] == "unchecked" for r in rows)
+
+    # The interval gate: calling again immediately must NOT re-fetch (the
+    # mocked fetch functions would return the same data harmlessly here,
+    # but in production this is what keeps a slow multi-page Common Crawl
+    # pull from stalling every 5-minute discovery cycle).
+    monkeypatch.setattr(discovery, "fetch_commoncrawl_greenhouse_tokens",
+                         lambda: (_ for _ in ()).throw(AssertionError("should not be called again so soon")))
+    discovery._seed_commoncrawl_candidates_if_due()
+
+
+def test_commoncrawl_seeding_skips_candidates_that_case_insensitively_collide_with_an_existing_source(monkeypatch):
+    # Regression: confirmed live this session -- Common Crawl's real
+    # Workday pull found tenant "3m" (lowercase, straight from the real
+    # URL), a DIFFERENT string than the existing manual source "3M".
+    # sources' UNIQUE (company, ats) constraint is case-sensitive, so
+    # without this guard "3m"/workday would promote into a second,
+    # redundant source scraping the exact same board as the existing "3M".
+    monkeypatch.setattr(discovery, "_last_commoncrawl_seed_at", None)
+    monkeypatch.setattr(discovery, "fetch_commoncrawl_greenhouse_tokens", lambda: ["flexport", "newco"])
+    monkeypatch.setattr(
+        discovery, "fetch_commoncrawl_workday_tenants",
+        lambda: [{"tenant": "3m", "wd_host": "wd1", "site": "Search"},
+                 {"tenant": "newtenant", "wd_host": "wd1", "site": "Careers"}],
+    )
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO sources (company, ats, category, config, status) VALUES "
+            "('3M', 'workday', 'Industrial Manufacturing', '{}', 'active'), "
+            "('Flexport', 'greenhouse', 'Freight Forwarding', '{}', 'active')"
+        )
+
+    discovery._seed_commoncrawl_candidates_if_due()
+
+    with db.cursor() as cur:
+        cur.execute("SELECT company FROM discovery_candidates")
+        seeded = {r["company"] for r in cur.fetchall()}
+    assert seeded == {"newco", "newtenant"}  # "3m" and "flexport" excluded, already covered by existing sources
 
 
 def test_candidate_that_fails_verification_is_rejected_not_promoted(monkeypatch):
