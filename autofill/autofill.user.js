@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Internship Application Autofill
 // @namespace    internships-repo
-// @version      1.0.0
-// @description  Fills known-repetitive fields on Greenhouse/Lever application forms from a stored profile. Never submits — you always review before clicking Submit yourself.
+// @version      1.1.0
+// @description  Fills known-repetitive fields on Greenhouse/Lever/Workday application forms from a stored profile. Never submits — you always review before clicking Submit yourself.
 // @match        https://job-boards.greenhouse.io/*
 // @match        https://boards.greenhouse.io/*
 // @match        https://jobs.lever.co/*
+// @match        https://*.myworkdayjobs.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
@@ -13,15 +14,26 @@
 // ==/UserScript==
 
 /*
- * SCOPE: this fills plain HTML form fields reliably (Greenhouse, Lever —
- * both render standard <input>/<select>/<textarea> elements). It does NOT
- * target Workday, which builds its application forms out of custom web
- * components rather than plain form elements — a generic label/attribute
- * matcher like this one can't reliably find them. Extending this to
- * Workday means writing selectors against its specific component DOM,
- * which is a real but separate piece of work (see docs/adding-a-source.md
- * for the same "don't assume, go inspect it" approach applied to the
- * scraper side).
+ * SCOPE: Greenhouse and Lever render plain HTML form elements matched by
+ * label text. Workday support (added after live DOM inspection of a real
+ * C.H. Robinson application form, 2026-08-15 — see autofill/README.md for
+ * the two earlier blocked attempts) works differently: Workday's own
+ * design system stamps every real form control with a stable, human-
+ * readable `data-automation-id` (confirmed live: "email", "password",
+ * "verifyPassword" on a real account-creation step) — reusing that
+ * beats label-text matching, which the original docstring here wrongly
+ * assumed was the only option for a "custom web components" platform. In
+ * fact the confirmed fields were plain native <input> elements, same as
+ * Greenhouse/Lever; only the identification strategy differs.
+ *
+ * WORKDAY HONEYPOT: the same inspected form had a bot-trap field —
+ * `name="website"`, `data-automation-id="beecatcher"` — sized 1x0.01px
+ * but NOT hidden via display/visibility (those both read normal/visible;
+ * only the bounding-rect size gives it away). A naive fill-by-name-or-
+ * label matcher would hit this directly, since "website" is already one
+ * of this script's own MATCHERS patterns. isLikelyHoneypot() below
+ * checks real rendered size, not CSS visibility properties, and is
+ * applied on every platform, not just Workday — cheap insurance.
  *
  * SAFETY: this script fills fields and stops. It never clicks Submit, and
  * never uploads a resume without you having explicitly stored one first
@@ -110,6 +122,15 @@
     },
   ];
 
+  // "firstName" / "legal-name-section_firstName" -> "first Name section first Name"
+  // — Workday's data-automation-id values are readable camelCase/kebab-case
+  // words, not opaque hashes (confirmed live, see file header). Splitting
+  // them lets the SAME regex patterns below match Workday's own attribute
+  // instead of needing a separate hardcoded Workday field-name list.
+  function splitIdWords(id) {
+    return id.replace(/[-_]/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+  }
+
   function labelTextFor(el) {
     const parts = [];
     if (el.id) {
@@ -122,6 +143,8 @@
     if (el.placeholder) parts.push(el.placeholder);
     if (el.name) parts.push(el.name);
     if (el.id) parts.push(el.id);
+    const automationId = el.getAttribute("data-automation-id");
+    if (automationId) parts.push(splitIdWords(automationId));
     // Greenhouse/Lever often put the visible label in a preceding sibling
     // or a parent's earlier child rather than a real <label for>.
     const container = el.closest("div, li, fieldset");
@@ -138,6 +161,16 @@
       if (patterns.some((p) => p.test(signal))) return key;
     }
     return null;
+  }
+
+  // Bot-trap fields stay technically display:block/visibility:visible
+  // (confirmed live on a real Workday form: name="website",
+  // data-automation-id="beecatcher") specifically so a check against
+  // those CSS properties alone misses them. Rendered size does not lie —
+  // a real field a human is meant to fill is never ~1x0.01px.
+  function isLikelyHoneypot(el) {
+    const rect = el.getBoundingClientRect();
+    return rect.width < 2 || rect.height < 2;
   }
 
   // React-controlled inputs (Greenhouse/Lever are both React apps) ignore
@@ -209,6 +242,7 @@
     let filledCount = 0;
     document.querySelectorAll("input, textarea, select").forEach((el) => {
       if (el.type === "hidden" || el.type === "file" || el.disabled) return;
+      if (isLikelyHoneypot(el)) return;
       const key = matchKey(el);
       if (!key || !(key in profile)) return;
       const value = profile[key];

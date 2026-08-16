@@ -47,35 +47,41 @@ aren't committed if you keep `profile.json` out of git (already covered by
 
 ## Coverage
 
-Works on Greenhouse and Lever, both of which render plain HTML form
-elements. **Does not cover Workday** — Workday builds its forms out of
-custom web components rather than standard `<input>` elements, so the
-label/attribute matching this script uses doesn't find them. Extending
-coverage to Workday is a legitimate follow-up (inspect one real Workday
-application form's DOM and write selectors against its actual structure,
-the same way `docs/adding-a-source.md` describes for the scraper side).
+Works on Greenhouse, Lever, and Workday.
 
-Actively attempted twice now, not just deferred: this project has several
-real Workday sources (ConocoPhillips, GE Vernova, GE Aerospace,
-C.H. Robinson, Unilever — `sources.yaml`), so Workday coverage here would
-close a real gap.
+**Workday support (added 2026-08-15) after two earlier blocked attempts** —
+the first had no browser access; the second hit a genuine platform-wide
+Workday maintenance window (confirmed by trying four distinct hosts our
+own sources use, all redirecting to `community.workday.com/maintenance-
+page`). Third attempt reached a real, live C.H. Robinson application form
+and inspected its actual DOM. Two things confirmed live, not assumed:
 
-**Second attempt (2026-08-15), browser access available, still blocked —
-this time by Workday itself, not by tooling.** Tried four live application
-URLs across four distinct Workday hosts our own sources actually use
-(`conocophillips.wd1`, `chrobinson.wd5`, `unilever.wd3`,
-`gevernova.wd501`) — every single one redirected to
-`community.workday.com/maintenance-page`, Workday's own platform-wide
-maintenance page, not a per-tenant error. Retried `chrobinson.wd5` a
-second time a few minutes later; same result. This reads as a genuine
-Workday-side maintenance window affecting the whole `myworkdayjobs.com`
-platform at the time of the attempt, not a broken URL or a guessed
-tenant/host — the same tenant/host values our own `discovery.py` already
-confirmed live (they're `active` sources with successful scrape history).
-Real inspection of a live form's DOM still hasn't happened; the
-`data-automation-id` claim from the first attempt remains unverified.
-**Next session: just retry the same four URLs (or any `sources.yaml`
-Workday entry) — this is very likely a transient outage, not a dead end.**
+1. **The original "Workday uses custom web components" assumption was
+   wrong**, at least for the account-creation step inspected — the email/
+   password fields are plain native `<input>` elements, same as
+   Greenhouse/Lever. What differs is identification: Workday stamps every
+   real form control with a stable, human-readable `data-automation-id`
+   (confirmed: `"email"`, `"password"`, `"verifyPassword"`). The script
+   now splits that attribute into words (`legalName_firstName` ->
+   `"legal Name first Name"`) and runs it through the same MATCHERS regex
+   patterns already used for label text, rather than needing a hardcoded
+   list of every possible Workday field ID.
+2. **A honeypot field exists** — `name="website"`,
+   `data-automation-id="beecatcher"`, sized ~1x0.01px but with normal
+   `display`/`visibility` CSS (deliberately, so a check against those
+   properties alone misses it). This would have been filled directly by
+   this script's own pre-existing `website` pattern. Fixed with
+   `isLikelyHoneypot()`, which checks actual rendered bounding-rect size
+   instead — applied on every platform, not just Workday, since a
+   near-zero-size field is never something a human is meant to fill in
+   regardless of which ATS renders it.
+
+Not yet inspected: the personal-info step past account creation (dropdowns
+for country/state/work authorization, which Workday's design system likely
+renders as custom combobox widgets needing click-to-open handling rather
+than a plain `<select>`) — reaching it requires creating a real Workday
+account, which is out of scope for inspection. If dropdown fills don't
+work on a real form, that's the next thing to check.
 
 Radio buttons and checkboxes (common for yes/no work-authorization
 questions) are intentionally skipped rather than guessed at — matching the
