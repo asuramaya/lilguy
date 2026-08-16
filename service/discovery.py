@@ -246,7 +246,23 @@ def _guess_domains(company: str) -> list[str]:
     # [Honeywell's is "ibqbjb"], with no relationship to the company name
     # to guess from. A guessing probe there would just be firing at
     # random strings hoping to hit an unrelated company's cloud pod, not
-    # a real probe -- left alone rather than forced.)
+    # a real probe -- left alone rather than forced.
+    #
+    # Revisited via Common Crawl (task: same session as the greenhouse/
+    # workday candidate_sources.py additions) since that technique
+    # doesn't require guessing -- and it DOES find real opaque Oracle
+    # hosts (confirmed live: *.fa.ocs.oraclecloud.com/* turned up a real,
+    # different-from-Honeywell instance). Still not viable end-to-end
+    # though: the connector also needs `site_number`, and the
+    # recruitingCEJobRequisitions API returns a structurally-valid HTTP
+    # 200 with an EMPTY requisitionList for both a wrong siteNumber and a
+    # real one with zero current openings -- confirmed live trying
+    # "CX_1"/"CX_2"/"CX" against a real discovered host, no way to tell
+    # "wrong guess" from "no jobs right now" without already knowing the
+    # right value. Common Crawl closes half the gap (finding the host)
+    # but not the other half (site_number still needs a live browser
+    # session reading real network requests, per this connector's
+    # original docstring).)
     slug = _slugify(company)
     return [f"{slug}.com", f"careers.{slug}.com"]
 
