@@ -63,7 +63,14 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 512M
+          # Raised from 512M -- confirmed live sitting at ~380-400MB (75%+
+          # of the old cap) after the source count jumped 39 -> 511 via
+          # Common Crawl discovery. A single large-board poll (e.g.
+          # Anduril returned 2,206 raw postings in one fetch) landing
+          # mid-snapshot could tip that into an OOM kill. Host has ample
+          # headroom (30G total, 23G available, confirmed live) -- no
+          # reason to run this close to the edge.
+          memory: 1G
     logging:
       driver: json-file
       options:
@@ -83,7 +90,9 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 512M
+          # Raised from 512M -- same reasoning as scheduler's limit above,
+          # confirmed live at ~380-400MB post-Common-Crawl-integration.
+          memory: 1G
     logging:
       driver: json-file
       options:
