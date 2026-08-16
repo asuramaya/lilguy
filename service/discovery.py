@@ -163,7 +163,7 @@ def _probe_greenhouse(company: str):
         if r.status_code == 200 and r.json().get("jobs"):
             return {"ats": "greenhouse", "config": {"company": company, "ats": "greenhouse", "token": token,
                                                       "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
-    except (requests.RequestException, ValueError):
+    except Exception:  # noqa: BLE001 - a bad guess is a miss, never a crash (see _probe_jsonld's own note)
         pass
     return None
 
@@ -175,7 +175,7 @@ def _probe_lever(company: str):
         if r.status_code == 200 and isinstance(r.json(), list) and r.json():
             return {"ats": "lever", "config": {"company": company, "ats": "lever", "token": token,
                                                  "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
-    except (requests.RequestException, ValueError):
+    except Exception:  # noqa: BLE001
         pass
     return None
 
@@ -189,9 +189,9 @@ def _try_workday_guess(company: str, tenant: str, host: str, site: str):
             return {"ats": "workday", "config": {"company": company, "ats": "workday", "tenant": tenant,
                                                     "wd_host": host, "site": site,
                                                     "category": "Uncategorized", "max_pages": 5}}
-    except (requests.RequestException, ValueError):
-        pass
-    return None
+    except Exception:  # noqa: BLE001 - `tenant` is a hostname label built from a company name we
+        pass           # don't control (e.g. an overlong slug raises urllib3.LocationParseError,
+    return None         # not requests.RequestException -- confirmed live, see _probe_jsonld's note)
 
 
 def _probe_workday(company: str):
@@ -239,15 +239,28 @@ def _fetch_sitemap_locs(url: str):
         r = requests.get(url, timeout=TIMEOUT, headers=UA)
         if r.status_code == 200:
             return re.findall(r"<loc>([^<]+)</loc>", r.text)
-    except requests.RequestException:
+    except Exception:  # noqa: BLE001 - a malformed/unreachable sitemap URL is a miss, not a crash
         pass
     return []
 
 
 def _probe_jsonld(company: str, domain: str):
+    # A guessed domain can be malformed in ways requests.RequestException
+    # doesn't cover -- confirmed live, this crashed the whole discovery
+    # loop into a restart crash-loop (task #23 fallout): a garbage
+    # candidate name ("List of biotech and pharmaceutical companies in
+    # the New York metropolitan area" -- a Wikipedia LIST article, not a
+    # company, that slipped through candidate_sources.py's filtering)
+    # slugified into a 70+ character domain label, and urllib3 raises
+    # LocationParseError for that at DNS-resolution time, one layer below
+    # what requests.RequestException catches. A probe guessing at
+    # something is allowed to guess wrong; it is never allowed to take
+    # the whole process down over it -- catch broadly here, same
+    # philosophy as _process_candidate's own trial-fetch exception guard
+    # below.
     try:
         r = requests.get(f"https://{domain}/robots.txt", timeout=TIMEOUT, headers=UA)
-    except requests.RequestException:
+    except Exception:  # noqa: BLE001
         return None
     if r.status_code != 200:
         return None
@@ -332,7 +345,26 @@ def _process_candidate(row: dict) -> dict:
     """
     company = row["company"]
     now = datetime.now(timezone.utc)
-    hit = probe_candidate(company)
+    # Defense in depth on top of each probe's own broad except clauses
+    # (see _probe_jsonld's note) -- an uncaught exception here isn't just
+    # a bad candidate, it kills this worker thread inside pool.map(),
+    # which propagates out of run_discovery_cycle() and crashes
+    # run_forever()'s while loop entirely. Docker's restart policy then
+    # brings the process back up, but the row's SELECT ... FOR UPDATE
+    # lock was already released before dispatch (see db.py), so the SAME
+    # candidate gets claimed again on the very next cycle -- a real
+    # crash loop, confirmed live in production (task #23 fallout,
+    # 2026-08-16), not a hypothetical.
+    try:
+        hit = probe_candidate(company)
+    except Exception as exc:  # noqa: BLE001
+        with cursor() as cur:
+            cur.execute(
+                "UPDATE discovery_candidates SET review_status = 'no_match', checked_at = %s, "
+                "next_check_at = %s WHERE id = %s",
+                (now, now + timedelta(days=NO_MATCH_RECHECK_DAYS), row["id"]),
+            )
+        return {"company": company, "outcome": "no_match", "reason": f"probe raised: {exc}"}
 
     if hit is None:
         with cursor() as cur:

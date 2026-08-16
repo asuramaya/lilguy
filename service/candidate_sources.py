@@ -159,7 +159,22 @@ def fetch_wikipedia_category_companies(categories: list[str] = None) -> list[str
             resp = requests.get(WIKIPEDIA_API_URL, params=params, headers=UA, timeout=TIMEOUT)
             resp.raise_for_status()
             data = resp.json()
-            names.extend(m["title"] for m in data.get("query", {}).get("categorymembers", []) if m.get("title"))
+            # "List of ..." articles are Wikipedia's own convention for an
+            # INDEX page, not a company -- `cmnamespace=0` alone doesn't
+            # exclude them (they're real articles, just not company
+            # articles), and a company category can genuinely contain one
+            # (confirmed live: "List of biotech and pharmaceutical
+            # companies in the New York metropolitan area" sits inside
+            # Category:Pharmaceutical companies). Slugifying a title like
+            # that produces a 70+ character domain guess that isn't even
+            # a valid DNS label -- confirmed live, this crashed
+            # discovery.py's whole loop into a restart crash-loop before
+            # both this filter and discovery.py's own broader exception
+            # handling were added (see discovery.py's _probe_jsonld note).
+            names.extend(
+                m["title"] for m in data.get("query", {}).get("categorymembers", [])
+                if m.get("title") and not m["title"].lower().startswith("list of")
+            )
             cmcontinue = data.get("continue", {}).get("cmcontinue")
             if not cmcontinue:
                 break
