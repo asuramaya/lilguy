@@ -75,7 +75,22 @@ def compute_dedup_key(company: str, title: str, location: str) -> str | None:
     posting) -- it leaves today's status quo (no dedup at all) rather
     than making anything worse.
     """
-    company_n = _normalize(company, strip_legal_suffix=True)
+    # Company gets one more normalization step title/location deliberately
+    # don't: internal whitespace stripped entirely, not just collapsed.
+    # Confirmed live as a real miss, not hypothetical -- "GE Aerospace"
+    # (a hand-typed source) and "geaerospace" (a raw Greenhouse/Workday
+    # URL slug, before this project started giving those real display
+    # names) normalize to "ge aerospace" vs "geaerospace" otherwise --
+    # same company, genuinely different keys, so the sweep never merged
+    # them and two real duplicate postings sat 'open' side by side until
+    # found by hand. This is a narrower, better-understood failure mode
+    # than the title/location case the module docstring already reasons
+    # about (a slug missing word boundaries vs. two truly different
+    # companies), so the same "stay conservative" argument doesn't apply
+    # here the same way -- company name variance from slug-vs-display-name
+    # is common and safe to collapse; title/location wording variance
+    # across sources is not.
+    company_n = _normalize(company, strip_legal_suffix=True).replace(" ", "")
     title_n = _normalize(title)
     location_n = _normalize(location)
     if not company_n or not title_n:

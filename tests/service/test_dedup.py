@@ -31,6 +31,18 @@ def test_case_and_punctuation_do_not_matter():
     assert a == b
 
 
+def test_slug_style_company_name_matches_properly_spaced_display_name():
+    # Regression: confirmed live -- "GE Aerospace" (a hand-typed source)
+    # and "geaerospace" (a raw Greenhouse/Workday URL slug, before this
+    # project started giving those real display names) normalized to
+    # different keys ("ge aerospace" vs "geaerospace") purely because of
+    # the missing space, so two real duplicate postings sat 'open' side
+    # by side and the sweep never caught it.
+    a = compute_dedup_key("GE Aerospace", "Manufacturing Intern", "Singapore")
+    b = compute_dedup_key("geaerospace", "Manufacturing Intern", "Singapore")
+    assert a == b
+
+
 def test_different_title_produces_different_key():
     a = compute_dedup_key("Acme Corp", "Supply Chain Intern", "Austin, TX")
     b = compute_dedup_key("Acme Corp", "Logistics Intern", "Austin, TX")
