@@ -45,6 +45,28 @@ def test_wikipedia_category_pagination_via_cmcontinue():
     assert names == ["Acme Trucking", "Beta Logistics"]
 
 
+def test_wikipedia_list_of_meta_articles_are_filtered_out():
+    # Regression: "List of biotech and pharmaceutical companies in the
+    # New York metropolitan area" is a real member of Category:
+    # Pharmaceutical companies -- an index article, not a company --
+    # confirmed live to have slugified into a domain guess long enough to
+    # crash discovery.py's whole loop (see discovery.py's _probe_jsonld
+    # note). cmnamespace=0 doesn't exclude it since it's a real article,
+    # just not a company one.
+    payload = {
+        "query": {
+            "categorymembers": [
+                {"title": "Acme Pharma"},
+                {"title": "List of biotech and pharmaceutical companies in the New York metropolitan area"},
+                {"title": "list of things (lowercase variant)"},
+            ]
+        }
+    }
+    with patch("candidate_sources.requests.get", return_value=FakeResponse(payload)):
+        names = fetch_wikipedia_category_companies(["Pharmaceutical companies"])
+    assert names == ["Acme Pharma"]
+
+
 def test_wikipedia_multiple_categories_are_all_fetched():
     def fake_get(url, params, headers, timeout):
         cat = params["cmtitle"]

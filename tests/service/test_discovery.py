@@ -42,6 +42,40 @@ def test_candidate_with_no_ats_hit_marked_no_match(monkeypatch):
         assert cur.fetchone()["review_status"] == "no_match"
 
 
+def test_probe_exception_is_recorded_as_no_match_not_a_crash(monkeypatch):
+    # Regression: a garbage candidate name (a Wikipedia "List of ..."
+    # meta-article that slipped through candidate_sources.py's filtering)
+    # slugified into an overlong, invalid domain label. requests.get()
+    # raised urllib3.exceptions.LocationParseError for it -- NOT a
+    # requests.RequestException -- which propagated out of the worker
+    # thread, crashed run_forever()'s while loop, and Docker's restart
+    # policy brought the process back up to re-claim and re-crash on the
+    # SAME row every time (confirmed live in production, 2026-08-16).
+    # probe_candidate() itself is patched to actually raise here (not
+    # just return None) -- the assertion is that _process_candidate
+    # catches it and keeps going, not that a specific probe declines.
+    monkeypatch.setattr(discovery, "CANDIDATE_SEED", ["List of Nonsense Companies"])
+
+    def exploding_probe(company):
+        raise Exception("simulated LocationParseError: label empty or too long")
+
+    monkeypatch.setattr(discovery, "probe_candidate", exploding_probe)
+
+    results = discovery.run_discovery_cycle(limit=5)
+    assert len(results) == 1
+    assert results[0]["company"] == "List of Nonsense Companies"
+    assert results[0]["outcome"] == "no_match"
+
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT review_status, next_check_at FROM discovery_candidates WHERE company = %s",
+            ("List of Nonsense Companies",),
+        )
+        row = cur.fetchone()
+        assert row["review_status"] == "no_match"
+        assert row["next_check_at"] is not None  # pushed out, not immediately due again
+
+
 def test_candidate_that_passes_verification_goes_to_probation(monkeypatch):
     monkeypatch.setattr(discovery, "CANDIDATE_SEED", ["Acme Corp"])
 
