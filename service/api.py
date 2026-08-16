@@ -93,6 +93,32 @@ def sources():
         return {"sources": cur.fetchall()}
 
 
+@app.get("/duplicates")
+def duplicates(limit: int = Query(500, le=5000)):
+    """Audit view over what dedup.py's sweep actually caught -- deliberately
+    NOT run through user_filter.py's domain matching like /feed is, since
+    this is for sanity-checking the sweep itself (did it collapse the right
+    rows together?), not for reading as a feed. Self-joins `duplicate_of`
+    back to the canonical posting's own company/title/source so a duplicate
+    row reads as "X is a duplicate of Y", not just an opaque id.
+    """
+    with cursor() as cur:
+        cur.execute(
+            """
+            SELECT d.id, d.company, d.title, d.location, d.ats AS source, d.first_seen,
+                   c.id AS canonical_id, c.company AS canonical_company,
+                   c.title AS canonical_title, c.ats AS canonical_source
+            FROM postings d
+            LEFT JOIN postings c ON c.id = d.duplicate_of
+            WHERE d.status = 'duplicate'
+            ORDER BY d.first_seen DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        return {"duplicates": [_row_to_filter_dict(r) for r in cur.fetchall()]}
+
+
 @app.get("/candidates")
 def candidates():
     with cursor() as cur:

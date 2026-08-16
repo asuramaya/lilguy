@@ -307,6 +307,7 @@
     <button data-tab="feed" class="active">Feed</button>
     <button data-tab="sources">Sources</button>
     <button data-tab="candidates">Discovery</button>
+    <button data-tab="duplicates">Duplicates</button>
   </nav>
 </header>
 
@@ -414,11 +415,37 @@
     </div>
   </section>
 
+  <section id="tab-duplicates" style="display:none">
+    <div class="toolbar">
+      <div class="field grow">
+        <span class="field-icon">/</span>
+        <input type="text" id="duplicate-search" placeholder="Filter by company&hellip;">
+      </div>
+    </div>
+    <div class="result-line">
+      <span id="duplicates-count"></span>
+      <span>what the dedup sweep collapsed &mdash; not a feed, an audit view</span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Duplicate</th>
+            <th>Source</th>
+            <th>Canonical (kept open)</th>
+            <th class="num">Seen</th>
+          </tr>
+        </thead>
+        <tbody id="duplicates-body"></tbody>
+      </table>
+    </div>
+  </section>
+
 </main>
 
 <footer>
   <span>Sourced directly from company career sites &mdash; no third-party job-board aggregator in the loop.</span>
-  <span><a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a></span>
+  <span><a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
 </footer>
 
 <script>
@@ -625,9 +652,44 @@ function renderCandidates() {
   `).join("") : emptyRow(4, candidateRows.length ? "No candidates match that filter." : "No candidates yet.");
 }
 
+// --- duplicates tab ---------------------------------------------------------
+
+let duplicateRows = [];
+
+async function loadDuplicates() {
+  const res = await fetch("/duplicates?limit=500");
+  const data = await res.json();
+  duplicateRows = data.duplicates || [];
+  renderDuplicates();
+}
+
+function renderDuplicates() {
+  const q = document.getElementById("duplicate-search").value.trim().toLowerCase();
+  const filtered = q ? duplicateRows.filter(d => (d.company || "").toLowerCase().includes(q)) : duplicateRows;
+
+  document.getElementById("duplicates-count").innerHTML =
+    `<strong>${filtered.length}</strong> of ${duplicateRows.length} duplicates`;
+
+  document.getElementById("duplicates-body").innerHTML = filtered.length ? filtered.map(d => `
+    <tr>
+      <td>
+        <div class="title-cell">${escapeHtml(d.title)}</div>
+        <div class="company-cell">${escapeHtml(d.company)}${d.location ? " &middot; " + escapeHtml(d.location) : ""}</div>
+      </td>
+      <td class="mono">${escapeHtml(d.source || "—")}</td>
+      <td>
+        ${d.canonical_id
+          ? `${escapeHtml(d.canonical_title)}<div class="company-cell">${escapeHtml(d.canonical_company)} &middot; <span class="mono">${escapeHtml(d.canonical_source)}</span></div>`
+          : `<span class="empty" style="padding:0">canonical posting no longer open</span>`}
+      </td>
+      <td class="age-cell mono">${escapeHtml(timeAgo(d.first_seen))}</td>
+    </tr>
+  `).join("") : emptyRow(4, duplicateRows.length ? "No duplicates match that filter." : "No duplicates caught yet — either genuinely none, or the dedup sweep hasn't run since these sources were added.");
+}
+
 // --- tabs / wiring --------------------------------------------------------
 
-const tabs = { feed: loadFeed, sources: loadSources, candidates: loadCandidates };
+const tabs = { feed: loadFeed, sources: loadSources, candidates: loadCandidates, duplicates: loadDuplicates };
 let loaded = {};
 
 document.querySelectorAll("nav button").forEach(btn => {
@@ -651,6 +713,7 @@ document.getElementById("source-search").addEventListener("input", renderSources
 document.getElementById("source-category").addEventListener("change", renderSources);
 document.getElementById("candidate-search").addEventListener("input", renderCandidates);
 document.getElementById("candidate-status").addEventListener("change", renderCandidates);
+document.getElementById("duplicate-search").addEventListener("input", renderDuplicates);
 
 fetch("/health").then(r => r.json()).then(d => {
   document.getElementById("health-sub").textContent = d.ok ? "API live" : "API unhealthy";
