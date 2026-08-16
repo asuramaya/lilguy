@@ -138,8 +138,22 @@ def _slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
-def _guess_domain(company: str) -> str:
-    return f"{_slugify(company)}.com"
+def _guess_domains(company: str) -> list[str]:
+    # Two guesses, not one -- confirmed live (task #23, this session) that
+    # `careers.{slug}.com` is a real, common pattern this probe was
+    # entirely missing: PepsiCo, Honeywell, and General Mills (three of
+    # this project's OWN existing sources) all redirect from exactly this
+    # subdomain. The original single-guess version only ever tried the
+    # bare root domain. (Considered guessing Oracle Recruiting Cloud
+    # hosts too, for the same "grow the probe matrix" reason -- confirmed
+    # NOT viable: oracle_recruiting.py's own docstring documents that
+    # host as an opaque per-company hash Oracle assigns at provisioning
+    # [Honeywell's is "ibqbjb"], with no relationship to the company name
+    # to guess from. A guessing probe there would just be firing at
+    # random strings hoping to hit an unrelated company's cloud pod, not
+    # a real probe -- left alone rather than forced.)
+    slug = _slugify(company)
+    return [f"{slug}.com", f"careers.{slug}.com"]
 
 
 def _probe_greenhouse(company: str):
@@ -257,12 +271,18 @@ PROBES = [_probe_greenhouse, _probe_lever, _probe_workday]
 
 def probe_candidate(company: str) -> dict | None:
     """Try each ATS probe in order, cheapest first. jsonld needs a domain
-    guess and is the least reliable of the four, so it goes last."""
+    guess and is the least reliable of the four, so it goes last -- and
+    tries each domain guess in turn (root + careers subdomain) rather
+    than giving up after the first miss."""
     for probe in PROBES:
         hit = probe(company)
         if hit:
             return hit
-    return _probe_jsonld(company, _guess_domain(company))
+    for domain in _guess_domains(company):
+        hit = _probe_jsonld(company, domain)
+        if hit:
+            return hit
+    return None
 
 
 def _seed_unchecked_candidates():

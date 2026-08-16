@@ -100,6 +100,28 @@ def test_promoted_candidate_is_never_re_selected_as_due(monkeypatch):
         assert cur.fetchone()["review_status"] == "promoted"
 
 
+def test_guess_domains_tries_root_and_careers_subdomain():
+    # Confirmed live (task #23) that careers.{domain}.com is a common real
+    # pattern the original single-guess version entirely missed -- three
+    # of this project's own existing sources (PepsiCo, Honeywell, General
+    # Mills) all resolve there.
+    assert discovery._guess_domains("Acme Corp") == ["acmecorp.com", "careers.acmecorp.com"]
+
+
+def test_probe_candidate_falls_back_through_both_domain_guesses(monkeypatch):
+    monkeypatch.setattr(discovery, "PROBES", [])
+    seen_domains = []
+
+    def fake_jsonld(company, domain):
+        seen_domains.append(domain)
+        return {"ats": "jsonld", "config": {}} if domain == "careers.acmecorp.com" else None
+
+    monkeypatch.setattr(discovery, "_probe_jsonld", fake_jsonld)
+    hit = discovery.probe_candidate("Acme Corp")
+    assert seen_domains == ["acmecorp.com", "careers.acmecorp.com"]
+    assert hit == {"ats": "jsonld", "config": {}}
+
+
 def test_candidate_that_fails_verification_is_rejected_not_promoted(monkeypatch):
     # Simulates a tenant/site guess that resolves cleanly (a real HTTP
     # hit) but belongs to a different company -- the exact failure mode
