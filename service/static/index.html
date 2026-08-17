@@ -508,7 +508,11 @@
     </div>
     <table>
       <colgroup>
-        <col style="width:38%"><col style="width:18%"><col style="width:21%"><col style="width:15%"><col style="width:8%">
+        <!-- Weighted by what someone scanning a job feed actually reads
+             first: title, then who it's at, then what field, then where.
+             Location is the most verbose and the least decisive, so it
+             gets the smallest share of the three text columns. -->
+        <col style="width:36%"><col style="width:18%"><col style="width:18%"><col style="width:20%"><col style="width:8%">
       </colgroup>
       <thead>
         <tr>
