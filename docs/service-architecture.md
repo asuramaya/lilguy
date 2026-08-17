@@ -260,14 +260,23 @@ curl localhost:8000/feed                                    # this fork's defaul
 curl "localhost:8000/feed?preset=software-engineering"      # any preset in presets/
 curl localhost:8000/sources                                  # per-source status, cadence, failure counts
 curl localhost:8000/candidates                               # discovery evidence, promoted/rejected/no_match
+curl "localhost:8000/feed?preset=all&q=logistics&max_age_days=30"  # server-side search + freshness
+curl localhost:8000/feed.atom                                # subscribe in any feed reader
+scripts/run_tests.sh                                          # whole suite against a scratch Postgres
+scripts/deploy.sh api                                         # test, then push + rebuild (refuses on red)
 docker compose logs -f scheduler                              # watch it fetch in real time
 ```
 
-Open `http://localhost:8000/` in a browser for a minimal read-only UI over
-those same three endpoints (`service/api.py` mounts `service/static/`) —
-a Feed tab (preset switcher + client-side title/company search over open
-postings), a Sources tab (per-source status/failure table), and a
-Discovery tab (candidate review status, filterable). Deliberately plain
+Open `http://localhost:8000/` in a browser for a read-only UI over those
+same endpoints (`service/api.py` mounts `service/static/`) — a Feed tab
+(preset switcher, plus server-side title/company search, category and
+freshness filters over open postings), a Sources tab (per-source
+status/failure table), a Discovery tab (candidate review status with the
+reason each rejection was recorded), and a Duplicates tab (what the dedup
+sweep collapsed). Search and filtering run on the SERVER: they used to
+run in the browser over whatever page had loaded, which meant a search
+silently covered only the newest slice of the corpus and reported the
+result as complete. Deliberately plain
 HTML/CSS/vanilla JS, no build step and no npm dependency — it's fetched
 by the browser at runtime from whatever origin served the page, so
 nothing needs rebuilding when the data changes. This is the entire
@@ -338,6 +347,61 @@ immediately on load instead of requiring a dig through the Sources/
 Discovery tabs — not a true push notification. If this project ever adds
 its own SMTP credentials for another reason, revisit wiring `events` rows
 into an actual outbound notifier at that point.
+
+**Update — postings themselves now have a real subscription path.** The
+reasoning above still holds for *push*, but it conflated "we can't push"
+with "you have to come look", and those aren't the same thing.
+`/feed.atom` serves any `/feed` query as an Atom document, so a reader
+polls it on its own schedule and new postings arrive without anyone
+opening the page. That needs no persistent process on our side, no
+credentials and no account — the three constraints that killed the push
+options — and the subscriber controls both frequency and unsubscribing.
+
+```
+curl "localhost:8000/feed.atom"                            # this fork's default filter
+curl "localhost:8000/feed.atom?preset=all&max_age_days=7"  # everything posted in the last week
+curl "localhost:8000/feed.atom?q=logistics&limit=20"
+```
+
+Entries are dated by the **employer's** posting date, not by when this
+service discovered them, so a posting found today but posted in March
+doesn't arrive looking new (see "Posting dates" below). The feed's own
+`<updated>` is its newest entry rather than `now()`, so an unchanged feed
+doesn't register as changed on every poll. The `events` table remains the
+right mechanism for *operational* news (a source promoted or disabled) —
+a different audience from "a new internship exists".
+
+## Posting dates
+
+`postings.posted_at` holds whatever the provider sent, and providers do
+not agree: ISO-8601 from Greenhouse/Muse/JSON-LD/USAJobs/Oracle/Adzuna,
+bare epoch **milliseconds** from Lever, and English prose from Workday
+("Posted Today", "Posted 2 Days Ago", "Posted 30+ Days Ago"). Because it
+was `TEXT`, nothing could sort or filter on it, so the feed sorted and
+displayed `first_seen` — *our* discovery time — under a column headed
+"Posted". With a database younger than the postings it holds, that made
+every row read as hours old, including Lever postings genuinely from 2021.
+
+`service/posted_at.py` normalizes all three families into `posted_at_ts`
+(timestamptz) plus `posted_at_approx`. The raw text column is kept as
+provenance so a future parser fix can be replayed against the original
+value rather than a lossy conversion — that's what
+`scripts/backfill_posted_at.py` is for; it's safe to re-run.
+
+Two things worth knowing:
+
+- **`posted_at_approx` is not decoration.** Workday's "30+ Days Ago" is a
+  *saturating upper bound*, not a measurement. Re-resolving it on each
+  scrape would push the bound forward forever, so a six-month-old posting
+  would report as 30 days old indefinitely — exactly the staleness this
+  column exists to expose. The upsert therefore keeps the **earliest**
+  estimate for approximate values and the newest for exact ones.
+- **How stale the corpus actually is.** On the live data at the time of
+  writing: 4711 open postings, of which only ~800 were posted in the last
+  week, 1813 are older than 90 days, and 1209 are **older than a year**
+  (oldest: 2016). Those are boards that never took the listing down.
+  `max_age_days` is the filter for this, and it judges on the employer's
+  date, so it now means what it says.
 
 ## What this explicitly does NOT do (yet)
 
