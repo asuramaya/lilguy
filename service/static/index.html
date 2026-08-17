@@ -65,13 +65,6 @@
     letter-spacing: -0.01em;
   }
 
-  .brand .tag {
-    font-size: 11px;
-    color: var(--ink-tertiary);
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    letter-spacing: 0.02em;
-  }
-
   .status-line {
     display: flex;
     align-items: center;
@@ -225,6 +218,20 @@
 
   .toolbar input::placeholder { color: var(--ink-tertiary); }
 
+  /* Native <select> popups don't inherit page CSS -- most browsers render
+     the open option list with the OS's own (usually light) theme
+     regardless of how the closed control is styled. Chromium and Firefox
+     are exceptions ONLY for color/background-color set directly on
+     <option>, so this is the one lever that actually reaches the popup.
+     Without it, the closed select looks themed but the open list is
+     near-illegible light-gray-on-white (WCAG 1.4.3 needs >=4.5:1 for body
+     text; unstyled <option> text here measured well under that against a
+     white popup background) -- confirmed live via screenshot 2026-08-16. */
+  .toolbar select option {
+    background: var(--row);
+    color: var(--ink);
+  }
+
   .toolbar .field-icon {
     color: var(--ink-tertiary);
     font-family: ui-monospace, monospace;
@@ -308,7 +315,7 @@
     width: 5px;
     height: 5px;
     border-radius: 1px;
-    background: var(--accent-dim);
+    background: var(--swatch-color, var(--accent-dim));
     flex-shrink: 0;
   }
 
@@ -369,7 +376,6 @@
   <div class="header-top">
     <div class="brand">
       <h1>Internship Feed</h1>
-      <span class="tag">/ ops · logistics · supply chain</span>
     </div>
     <div class="status-line">
       <div class="events-wrap">
@@ -443,13 +449,13 @@
       <table>
         <thead>
           <tr>
-            <th>Company</th>
-            <th>ATS</th>
-            <th>Category</th>
-            <th>Status</th>
-            <th>Added by</th>
-            <th class="num">Failures</th>
-            <th class="num">Last scraped</th>
+            <th class="sortable" data-sort="company">Company</th>
+            <th class="sortable" data-sort="ats">ATS</th>
+            <th class="sortable" data-sort="category">Category</th>
+            <th class="sortable" data-sort="status">Status</th>
+            <th class="sortable" data-sort="added_by">Added by</th>
+            <th class="sortable num" data-sort="consecutive_failures">Failures</th>
+            <th class="sortable num" data-sort="last_scraped_at">Last scraped</th>
           </tr>
         </thead>
         <tbody id="sources-body"></tbody>
@@ -476,15 +482,17 @@
     </div>
     <div class="result-line">
       <span id="candidates-count"></span>
+      <span>promoted = a real board was found and verified &middot; rejected = a board was found but failed verification (see Reason) &middot; no match = no board found on any connector &middot; unchecked = not probed yet</span>
     </div>
     <div class="table-wrap">
       <table>
         <thead>
           <tr>
-            <th>Company</th>
-            <th>ATS guess</th>
-            <th>Status</th>
-            <th class="num">Checked</th>
+            <th class="sortable" data-sort="company">Company</th>
+            <th class="sortable" data-sort="ats">ATS guess</th>
+            <th class="sortable" data-sort="review_status">Status</th>
+            <th>Reason</th>
+            <th class="sortable num" data-sort="checked_at">Checked</th>
           </tr>
         </thead>
         <tbody id="candidates-body"></tbody>
@@ -508,9 +516,9 @@
         <thead>
           <tr>
             <th>Duplicate</th>
-            <th>Source</th>
+            <th class="sortable" data-sort="source">Source</th>
             <th>Canonical (kept open)</th>
-            <th class="num">Seen</th>
+            <th class="sortable num" data-sort="first_seen">Seen</th>
           </tr>
         </thead>
         <tbody id="duplicates-body"></tbody>
@@ -560,6 +568,22 @@ function timeAgo(iso) {
   if (secs < 3600) return Math.floor(secs / 60) + "m ago";
   if (secs < 86400) return Math.floor(secs / 3600) + "h ago";
   return Math.floor(secs / 86400) + "d ago";
+}
+
+// A category dot used to be one flat --accent-dim color for every
+// category -- decorative, not informative, and worse than no dot at all
+// since it visually promises color-coding it doesn't deliver (a user
+// scanning for "the blue one" would never find it, because there was
+// never more than one color). This gives each category a stable color
+// derived from its own name, so the same category always renders the
+// same hue everywhere the tag appears. Hue-only (fixed saturation/
+// lightness tuned for the dark canvas) keeps every generated color at
+// roughly the same perceived brightness against --canvas, rather than
+// risking a hash landing on a near-black or near-white hue.
+function categoryColor(category) {
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
+  return `hsl(${hash % 360}, 55%, 62%)`;
 }
 
 function emptyRow(colspan, message) {
@@ -615,6 +639,32 @@ function sortRows(rows, key, dir) {
   });
 }
 
+// Shared by every tab's table so sortability is consistent everywhere a
+// column header looks clickable, instead of only working on Feed --
+// mismatched affordances (a header that LOOKS the same as a sortable one
+// but does nothing) is a real usability failure (Nielsen's "consistency
+// and standards"), not just a missing nice-to-have.
+function wireSortable(containerId, state, renderFn) {
+  document.querySelectorAll(`#${containerId} th.sortable`).forEach(th => {
+    th.addEventListener("click", () => {
+      const key = th.dataset.sort;
+      state.dir = state.key === key ? -state.dir : 1;
+      state.key = key;
+      renderFn();
+    });
+  });
+}
+
+function applySortCarets(containerId, state) {
+  document.querySelectorAll(`#${containerId} th.sortable`).forEach(th => {
+    const caret = th.querySelector(".sort-caret");
+    if (caret) caret.remove();
+    if (th.dataset.sort === state.key) {
+      th.insertAdjacentHTML("beforeend", `<span class="sort-caret">${state.dir === 1 ? "▲" : "▼"}</span>`);
+    }
+  });
+}
+
 function renderFeed() {
   const q = document.getElementById("search").value.trim().toLowerCase();
   const category = document.getElementById("feed-category").value;
@@ -630,13 +680,7 @@ function renderFeed() {
   document.getElementById("feed-count").innerHTML =
     `<strong>${filtered.length}</strong> of ${feedPostings.length} open posting${feedPostings.length === 1 ? "" : "s"}`;
 
-  document.querySelectorAll('#tab-feed th.sortable').forEach(th => {
-    const caret = th.querySelector(".sort-caret");
-    if (caret) caret.remove();
-    if (th.dataset.sort === feedSort.key) {
-      th.insertAdjacentHTML("beforeend", `<span class="sort-caret">${feedSort.dir === 1 ? "▲" : "▼"}</span>`);
-    }
-  });
+  applySortCarets("tab-feed", feedSort);
 
   const body = document.getElementById("feed-body");
   if (!filtered.length) {
@@ -648,7 +692,7 @@ function renderFeed() {
       <td class="title-cell"><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a></td>
       <td class="company-cell">${escapeHtml(p.company)}</td>
       <td class="location-cell mono">${escapeHtml(p.location || "—")}</td>
-      <td>${p.category ? `<span class="swatch-tag">${escapeHtml(p.category)}</span>` : ""}</td>
+      <td>${p.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(p.category)}">${escapeHtml(p.category)}</span>` : ""}</td>
       <td class="age-cell mono">${escapeHtml(timeAgo(p.first_seen))}</td>
     </tr>
   `).join("");
@@ -666,13 +710,20 @@ document.querySelectorAll('#tab-feed th.sortable').forEach(th => {
 // --- sources tab --------------------------------------------------------
 
 let sourceRows = [];
+let sourceSort = { key: "company", dir: 1 };
 
 async function loadSources() {
-  const res = await fetch("/sources");
-  const data = await res.json();
-  sourceRows = data.sources || [];
-  populateCategoryOptions(document.getElementById("source-category"), sourceRows);
-  renderSources();
+  document.getElementById("sources-count").textContent = "loading…";
+  try {
+    const res = await fetch("/sources");
+    const data = await res.json();
+    sourceRows = data.sources || [];
+    populateCategoryOptions(document.getElementById("source-category"), sourceRows);
+    renderSources();
+  } catch (e) {
+    document.getElementById("sources-body").innerHTML = emptyRow(7, "Couldn't reach the API — is the service running?");
+    document.getElementById("sources-count").textContent = "";
+  }
 }
 
 function renderSources() {
@@ -681,9 +732,11 @@ function renderSources() {
   let filtered = sourceRows;
   if (category) filtered = filtered.filter(s => s.category === category);
   if (q) filtered = filtered.filter(s => (s.company || "").toLowerCase().includes(q));
+  filtered = sortRows(filtered, sourceSort.key, sourceSort.dir);
 
   document.getElementById("sources-count").innerHTML =
     `<strong>${filtered.length}</strong> of ${sourceRows.length} sources`;
+  applySortCarets("tab-sources", sourceSort);
 
   document.getElementById("sources-body").innerHTML = filtered.length ? filtered.map(s => `
     <tr>
@@ -701,12 +754,19 @@ function renderSources() {
 // --- candidates tab -------------------------------------------------------
 
 let candidateRows = [];
+let candidateSort = { key: "checked_at", dir: -1 };
 
 async function loadCandidates() {
-  const res = await fetch("/candidates");
-  const data = await res.json();
-  candidateRows = data.candidates || [];
-  renderCandidates();
+  document.getElementById("candidates-count").textContent = "loading…";
+  try {
+    const res = await fetch("/candidates");
+    const data = await res.json();
+    candidateRows = data.candidates || [];
+    renderCandidates();
+  } catch (e) {
+    document.getElementById("candidates-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
+    document.getElementById("candidates-count").textContent = "";
+  }
 }
 
 function renderCandidates() {
@@ -715,37 +775,49 @@ function renderCandidates() {
   let filtered = candidateRows;
   if (q) filtered = filtered.filter(c => (c.company || "").toLowerCase().includes(q));
   if (statusFilter) filtered = filtered.filter(c => c.review_status === statusFilter);
+  filtered = sortRows(filtered, candidateSort.key, candidateSort.dir);
 
   document.getElementById("candidates-count").innerHTML =
     `<strong>${filtered.length}</strong> of ${candidateRows.length} candidates`;
+  applySortCarets("tab-candidates", candidateSort);
 
   document.getElementById("candidates-body").innerHTML = filtered.length ? filtered.slice(0, 500).map(c => `
     <tr>
       <td class="company-cell">${escapeHtml(c.company)}</td>
       <td class="mono">${escapeHtml(c.ats || "—")}</td>
       <td><span class="status-cell status-${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</span></td>
+      <td class="location-cell">${escapeHtml(c.evidence?.reason || "—")}</td>
       <td class="age-cell mono">${escapeHtml(timeAgo(c.checked_at))}</td>
     </tr>
-  `).join("") : emptyRow(4, candidateRows.length ? "No candidates match that filter." : "No candidates yet.");
+  `).join("") : emptyRow(5, candidateRows.length ? "No candidates match that filter." : "No candidates yet.");
 }
 
 // --- duplicates tab ---------------------------------------------------------
 
 let duplicateRows = [];
+let duplicateSort = { key: "first_seen", dir: -1 };
 
 async function loadDuplicates() {
-  const res = await fetch("/duplicates?limit=500");
-  const data = await res.json();
-  duplicateRows = data.duplicates || [];
-  renderDuplicates();
+  document.getElementById("duplicates-count").textContent = "loading…";
+  try {
+    const res = await fetch("/duplicates?limit=500");
+    const data = await res.json();
+    duplicateRows = data.duplicates || [];
+    renderDuplicates();
+  } catch (e) {
+    document.getElementById("duplicates-body").innerHTML = emptyRow(4, "Couldn't reach the API — is the service running?");
+    document.getElementById("duplicates-count").textContent = "";
+  }
 }
 
 function renderDuplicates() {
   const q = document.getElementById("duplicate-search").value.trim().toLowerCase();
-  const filtered = q ? duplicateRows.filter(d => (d.company || "").toLowerCase().includes(q)) : duplicateRows;
+  let filtered = q ? duplicateRows.filter(d => (d.company || "").toLowerCase().includes(q)) : duplicateRows;
+  filtered = sortRows(filtered, duplicateSort.key, duplicateSort.dir);
 
   document.getElementById("duplicates-count").innerHTML =
     `<strong>${filtered.length}</strong> of ${duplicateRows.length} duplicates`;
+  applySortCarets("tab-duplicates", duplicateSort);
 
   document.getElementById("duplicates-body").innerHTML = filtered.length ? filtered.map(d => `
     <tr>
@@ -782,6 +854,10 @@ document.querySelectorAll("nav button").forEach(btn => {
     }
   });
 });
+
+wireSortable("tab-sources", sourceSort, renderSources);
+wireSortable("tab-candidates", candidateSort, renderCandidates);
+wireSortable("tab-duplicates", duplicateSort, renderDuplicates);
 
 presetSelect.addEventListener("change", loadFeed);
 document.getElementById("search").addEventListener("input", renderFeed);
