@@ -1,6 +1,6 @@
-"""Keeps postings' denormalized copies of source fields (company, category)
-from drifting out of sync with sources -- the systematic fix, not a
-one-off backfill.
+"""Keeps postings' denormalized copies of source fields (company,
+category, company_key) from drifting out of sync with sources -- the
+systematic fix, not a one-off backfill.
 
 Why this exists instead of just fixing the upsert: the upsert
 (scheduler.py's _upsert_postings) only touches postings that appear in a
@@ -32,7 +32,11 @@ def run_source_sync_sweep(cur) -> int:
     Not scoped to status='open' -- closed and duplicate postings are
     real historical records too, and leaving them stale would mean the
     /duplicates audit view keeps showing pre-correction data forever.
-    Returns the number of postings actually changed."""
+    Returns the number of row-updates applied, NOT distinct rows: a
+    posting whose company moved necessarily has a stale company_key too,
+    so it is counted by both statements. The number is for logging "the
+    sweep did something", and the guarantee that matters is that a
+    second consecutive run returns 0."""
     cur.execute(
         """
         UPDATE postings p SET company = s.company, category = s.category
@@ -41,4 +45,37 @@ def run_source_sync_sweep(cur) -> int:
           AND (p.company IS DISTINCT FROM s.company OR p.category IS DISTINCT FROM s.category)
         """
     )
-    return cur.rowcount
+    changed = cur.rowcount
+
+    # company_key is derived from company, so it has to be recomputed
+    # wherever company just moved -- and for any row that predates the
+    # column. Doing it here rather than as a one-off backfill means it is
+    # self-healing for the same reason the rest of this sweep is: it
+    # doesn't matter WHY a key is missing or stale.
+    #
+    # The normalization is mirrored in SQL rather than called from
+    # dedup.py because this is a set-based UPDATE over the whole table; it
+    # must stay in step with compute_company_key, and
+    # tests/service/test_source_sync.py asserts the two agree on real
+    # inputs precisely so a change to one that isn't mirrored fails loudly.
+    cur.execute(
+        r"""
+        UPDATE postings SET company_key = NULLIF(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(lower(company),
+                  '\y(inc|incorporated|corp|corporation|llc|ltd|limited|co|company|group|holdings|plc)\y\.?', '', 'g'),
+                '[^\w\s]', ' ', 'g'),
+              '\s', '', 'g'),
+            '')
+        WHERE company_key IS DISTINCT FROM NULLIF(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(lower(company),
+                  '\y(inc|incorporated|corp|corporation|llc|ltd|limited|co|company|group|holdings|plc)\y\.?', '', 'g'),
+                '[^\w\s]', ' ', 'g'),
+              '\s', '', 'g'),
+            '')
+        """
+    )
+    return changed + cur.rowcount

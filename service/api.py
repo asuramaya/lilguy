@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 sys.path.insert(0, str(Path(__file__).parent.parent / "scraper"))
 sys.path.insert(0, str(Path(__file__).parent))
 
+from dedup import compute_company_key  # noqa: E402
 from user_filter import is_too_old, load_filter, passes  # noqa: E402
 
 from atom import render_atom  # noqa: E402
@@ -177,6 +178,185 @@ def feed(
         "source_truncated": source_truncated,
         "postings": page,
     }
+
+
+# ---------------------------------------------------------------------
+# Entity endpoints.
+#
+# COMPANY, SOURCE and ATS are three different things and this project
+# had been using one word ("source") for all of them. They're separated
+# here because they answer different questions and, for aggregators,
+# genuinely do not coincide:
+#   company -- an employer. What a reader wants. SPANS sources: the same
+#              employer can arrive via its own Greenhouse board AND via
+#              Muse, which is exactly why dedup.py exists.
+#   source  -- one board we poll. Operational: health, cadence, failures.
+#              For a direct ATS connector it happens to be 1:1 with a
+#              company; for Muse one source carries thousands of
+#              companies, which is why collapsing the two is wrong.
+#   ats     -- the platform. Explains how data arrives and why fields
+#              differ (Workday sends relative dates, Lever epoch millis).
+# ---------------------------------------------------------------------
+
+
+@app.get("/posting/{posting_id:path}")
+def posting(posting_id: str):
+    """One posting, plus the context that makes it worth opening in-app
+    rather than bouncing straight out to the ATS."""
+    with cursor() as cur:
+        cur.execute("SELECT * FROM postings WHERE id = %s", (posting_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"error": "no such posting"}
+        row = _row_to_filter_dict(row)
+
+        # The same real job as surfaced by OTHER sources. Genuinely
+        # useful rather than trivia: it's how a reader sees that a
+        # posting is also on the company's own board and can choose to
+        # apply there instead of through an aggregator.
+        cur.execute(
+            "SELECT id, company, title, location, ats, source_entry, url, status "
+            "FROM postings WHERE dedup_key = %s AND dedup_key IS NOT NULL AND id <> %s "
+            "ORDER BY status, first_seen",
+            (row.get("dedup_key"), posting_id),
+        )
+        also_listed = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            "SELECT id, title, location, posted_at_ts FROM postings "
+            "WHERE company_key = %s AND company_key IS NOT NULL AND id <> %s AND status = 'open' "
+            "ORDER BY posted_at_ts DESC NULLS LAST LIMIT 25",
+            (row.get("company_key"), posting_id),
+        )
+        siblings = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    return {"posting": row, "also_listed": also_listed, "same_company": siblings}
+
+
+@app.get("/company/{company_key}")
+def company(company_key: str):
+    with cursor() as cur:
+        cur.execute(
+            "SELECT * FROM postings WHERE company_key = %s ORDER BY status, posted_at_ts DESC NULLS LAST",
+            (company_key,),
+        )
+        rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
+        if not rows:
+            return {"error": "no such company"}
+
+        # The display name is whichever spelling the most postings use --
+        # company_key deliberately merges variants ("Eaton" / "Eaton
+        # Corporation"), so something has to pick which to show, and
+        # majority beats first-seen because raw URL slugs tend to be the
+        # earliest and the ugliest.
+        names = {}
+        for r in rows:
+            names[r["company"]] = names.get(r["company"], 0) + 1
+        display_name = max(names, key=names.get)
+
+        # Which boards this employer is reachable through. For most
+        # companies that's one; for a company that has its own board AND
+        # appears on an aggregator it's several, and seeing that is the
+        # point of the page.
+        cur.execute(
+            "SELECT DISTINCT p.source_entry, p.ats, s.id AS source_id, s.status, s.category "
+            "FROM postings p LEFT JOIN sources s ON p.source_id = s.id "
+            "WHERE p.company_key = %s",
+            (company_key,),
+        )
+        reached_via = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    return {
+        "company_key": company_key,
+        "display_name": display_name,
+        "name_variants": sorted(names),
+        "category": rows[0].get("category"),
+        "open_count": sum(1 for r in rows if r["status"] == "open"),
+        "reached_via": reached_via,
+        "postings": rows,
+    }
+
+
+@app.get("/source/{source_id}")
+def source(source_id: int):
+    with cursor() as cur:
+        cur.execute("SELECT * FROM sources WHERE id = %s", (source_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"error": "no such source"}
+        row = _row_to_filter_dict(row)
+
+        cur.execute(
+            "SELECT count(*) AS total, count(*) FILTER (WHERE status='open') AS open, "
+            "count(DISTINCT company_key) AS companies "
+            "FROM postings WHERE source_id = %s",
+            (source_id,),
+        )
+        stats = cur.fetchone()
+
+        # An AGGREGATOR source carries many employers; a direct one
+        # carries exactly its own. That count is what tells the two apart
+        # in the UI without hardcoding a list of aggregator names.
+        cur.execute(
+            "SELECT company_key, company, count(*) AS n FROM postings "
+            "WHERE source_id = %s AND status='open' AND company_key IS NOT NULL "
+            "GROUP BY company_key, company ORDER BY n DESC LIMIT 200",
+            (source_id,),
+        )
+        companies = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            "SELECT started_at, finished_at, ok, error, fetched_count, internship_count "
+            "FROM scrape_runs WHERE source_id = %s ORDER BY started_at DESC LIMIT 10",
+            (source_id,),
+        )
+        runs = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    # Computed from the source's OWN name rather than from its postings,
+    # because a direct source with no current openings is still that
+    # company -- deriving the key only from postings would drop the jump
+    # button exactly when the board is empty. Meaningless for an
+    # aggregator (whose sources.company is a label like "The Muse
+    # (aggregator ...)"), so the UI only offers the jump when this source
+    # carries a single employer.
+    return {
+        "source": row,
+        "stats": stats,
+        "companies": companies,
+        "recent_runs": runs,
+        "company_key": compute_company_key(row.get("company") or ""),
+        "is_aggregator": (stats or {}).get("companies", 0) > 1,
+    }
+
+
+@app.get("/ats/{name}")
+def ats(name: str):
+    with cursor() as cur:
+        cur.execute(
+            "SELECT count(*) AS sources, count(*) FILTER (WHERE status='active') AS active "
+            "FROM sources WHERE ats = %s",
+            (name,),
+        )
+        source_stats = cur.fetchone()
+        cur.execute(
+            "SELECT count(*) FILTER (WHERE status='open') AS open_postings, "
+            "count(DISTINCT company_key) AS companies, "
+            "count(*) FILTER (WHERE status='open' AND description IS NOT NULL AND description <> '') AS with_description "
+            "FROM postings WHERE ats = %s",
+            (name,),
+        )
+        posting_stats = cur.fetchone()
+        cur.execute(
+            "SELECT id, company, category, status, consecutive_failures, last_scraped_at "
+            "FROM sources WHERE ats = %s ORDER BY company LIMIT 600",
+            (name,),
+        )
+        sources_on_platform = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    if not source_stats["sources"] and not posting_stats["open_postings"]:
+        return {"error": "no such ats"}
+    return {"ats": name, "source_stats": source_stats, "posting_stats": posting_stats,
+            "sources": sources_on_platform}
 
 
 # Deliberately reuses feed() rather than reimplementing the query: a

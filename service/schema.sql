@@ -197,3 +197,12 @@ CREATE INDEX IF NOT EXISTS idx_postings_posted_at_ts ON postings (posted_at_ts D
 -- until service/workday_descriptions.py fills them (its list endpoint
 -- carries no description at all).
 ALTER TABLE postings ADD COLUMN IF NOT EXISTS description TEXT;
+
+-- Normalized employer identity, so "every listing at this company" can be
+-- one page even when the postings arrived through different sources with
+-- different spellings ("Eaton" via jsonld, "Eaton Corporation" via muse).
+-- Computed by dedup.compute_company_key -- the SAME normalization the
+-- company component of dedup_key uses, shared deliberately so "same
+-- company" can't mean two different things in two places.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS company_key TEXT;
+CREATE INDEX IF NOT EXISTS idx_postings_company_key ON postings (company_key);

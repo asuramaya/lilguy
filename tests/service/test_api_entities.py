@@ -1,0 +1,182 @@
+"""The company / source / ats endpoints, and specifically the thing they
+exist to get right: a company is NOT a source. For a direct ATS connector
+the two coincide; for an aggregator one source carries many employers,
+and the old UI had no way to express that.
+"""
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import psycopg2.extras
+import pytest
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "scraper"))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "service"))
+
+pytestmark = pytest.mark.skipif(
+    "DATABASE_URL" not in os.environ, reason="needs a scratch Postgres via DATABASE_URL"
+)
+
+import api  # noqa: E402
+import db  # noqa: E402
+from dedup import compute_company_key  # noqa: E402
+
+NOW = datetime.now(timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _clean_db():
+    db.init_schema()
+    with db.cursor() as cur:
+        cur.execute("TRUNCATE postings, sources, scrape_runs RESTART IDENTITY CASCADE")
+    yield
+
+
+def _source(company, ats="greenhouse", status="active"):
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO sources (company, ats, config, status, category) "
+            "VALUES (%s, %s, %s, %s, 'Logistics') RETURNING id",
+            (company, ats, psycopg2.extras.Json({"company": company}), status),
+        )
+        return cur.fetchone()["id"]
+
+
+def _posting(pid, company, source_id, ats="greenhouse", status="open",
+             dedup_key=None, days_old=1, source_entry=None):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_id, source_entry, company, company_key, title, location,
+                                   url, ats, category, status, dedup_key, posted_at_ts, first_seen, last_seen)
+            VALUES (%s, %s, %s, %s, %s, 'Ops Intern', 'Remote', %s, %s, 'Logistics', %s, %s, %s, now(), now())
+            """,
+            (pid, source_id, source_entry or company, company, compute_company_key(company),
+             f"https://x/{pid}", ats, status, dedup_key, NOW - timedelta(days=days_old)),
+        )
+
+
+# --- company -----------------------------------------------------------
+
+def test_company_unions_postings_arriving_through_different_sources():
+    # The whole reason a company page can't just be a source page: this
+    # employer is reachable via its own board AND via an aggregator.
+    direct = _source("Eaton")
+    muse = _source("The Muse (aggregator)", ats="muse")
+    _posting("a", "Eaton", direct)
+    _posting("b", "Eaton Corporation", muse, ats="muse", source_entry="The Muse (aggregator)")
+
+    out = api.company(compute_company_key("Eaton"))
+    assert len(out["postings"]) == 2
+    assert {r["ats"] for r in out["reached_via"]} == {"greenhouse", "muse"}
+
+
+def test_company_display_name_is_the_most_common_spelling():
+    # company_key merges variants, so something must choose what to show.
+    # Majority beats first-seen because raw URL slugs tend to be both.
+    sid = _source("Eaton")
+    _posting("a", "Eaton Corporation", sid)
+    _posting("b", "Eaton Corporation", sid)
+    _posting("c", "eaton", sid)
+    out = api.company(compute_company_key("Eaton"))
+    assert out["display_name"] == "Eaton Corporation"
+    assert "eaton" in out["name_variants"]
+
+
+def test_company_open_count_excludes_closed():
+    sid = _source("Acme")
+    _posting("a", "Acme", sid)
+    _posting("b", "Acme", sid, status="closed")
+    out = api.company(compute_company_key("Acme"))
+    assert out["open_count"] == 1
+    assert len(out["postings"]) == 2  # history still visible
+
+
+def test_unknown_company_errors():
+    assert "error" in api.company("nosuchcompany")
+
+
+# --- posting -----------------------------------------------------------
+
+def test_posting_surfaces_the_same_job_from_other_sources():
+    # The point: a reader can see the job is also on the company's own
+    # board and apply there rather than through an aggregator.
+    direct = _source("Acme")
+    muse = _source("The Muse (aggregator)", ats="muse")
+    _posting("direct", "Acme", direct, dedup_key="k1")
+    _posting("viamuse", "Acme", muse, ats="muse", dedup_key="k1", status="duplicate")
+
+    out = api.posting("direct")
+    assert [p["id"] for p in out["also_listed"]] == ["viamuse"]
+
+
+def test_posting_lists_other_roles_at_the_same_company():
+    sid = _source("Acme")
+    _posting("a", "Acme", sid)
+    _posting("b", "Acme", sid)
+    _posting("elsewhere", "Globex", _source("Globex"))
+    out = api.posting("a")
+    assert [p["id"] for p in out["same_company"]] == ["b"]
+
+
+def test_posting_same_company_excludes_closed_roles():
+    sid = _source("Acme")
+    _posting("a", "Acme", sid)
+    _posting("b", "Acme", sid, status="closed")
+    assert api.posting("a")["same_company"] == []
+
+
+def test_unknown_posting_errors():
+    assert "error" in api.posting("nope")
+
+
+# --- source ------------------------------------------------------------
+
+def test_direct_source_reports_one_company_and_offers_a_jump_key():
+    sid = _source("Acme")
+    _posting("a", "Acme", sid)
+    out = api.source(sid)
+    assert out["is_aggregator"] is False
+    assert out["company_key"] == compute_company_key("Acme")
+    assert out["stats"]["companies"] == 1
+
+
+def test_aggregator_source_reports_many_companies():
+    muse = _source("The Muse (aggregator)", ats="muse")
+    for i, name in enumerate(["Acme", "Globex", "Initech"]):
+        _posting(f"m{i}", name, muse, ats="muse", source_entry="The Muse (aggregator)")
+    out = api.source(muse)
+    assert out["is_aggregator"] is True
+    assert out["stats"]["companies"] == 3
+    assert {c["company"] for c in out["companies"]} == {"Acme", "Globex", "Initech"}
+
+
+def test_source_jump_key_survives_a_board_with_no_open_postings():
+    # A direct source with nothing posted right now is still that
+    # company; deriving the key only from postings would drop the link
+    # exactly when the board is empty.
+    sid = _source("Acme")
+    out = api.source(sid)
+    assert out["company_key"] == compute_company_key("Acme")
+
+
+def test_unknown_source_errors():
+    assert "error" in api.source(999999)
+
+
+# --- ats ---------------------------------------------------------------
+
+def test_ats_summarizes_the_platform():
+    a = _source("Acme")
+    b = _source("Globex")
+    _posting("a", "Acme", a)
+    _posting("b", "Globex", b)
+    out = api.ats("greenhouse")
+    assert out["source_stats"]["sources"] == 2
+    assert out["posting_stats"]["open_postings"] == 2
+    assert out["posting_stats"]["companies"] == 2
+
+
+def test_unknown_ats_errors():
+    assert "error" in api.ats("nosuchats")

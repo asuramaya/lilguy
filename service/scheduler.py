@@ -48,7 +48,7 @@ from connectors import CONNECTORS  # noqa: E402
 from filters import is_internship  # noqa: E402
 
 from db import cursor  # noqa: E402
-from dedup import compute_dedup_key, run_dedup_sweep  # noqa: E402
+from dedup import compute_company_key, compute_dedup_key, run_dedup_sweep  # noqa: E402
 from posted_at import parse_posted_at  # noqa: E402
 from source_sync import run_source_sync_sweep  # noqa: E402
 from workday_descriptions import fetch_missing_descriptions  # noqa: E402
@@ -123,6 +123,7 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
     new_count = 0
     for p in postings:
         dedup_key = compute_dedup_key(p.company, p.title, p.location)
+        company_key = compute_company_key(p.company)
         # Anchored on seen_at, not now(), so the stored value means the
         # same thing whenever it's computed -- Workday's "Posted 2 Days
         # Ago" is only meaningful relative to when the page was fetched.
@@ -132,8 +133,8 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
             INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
                                    ats, category, posted_at, posted_at_ts, posted_at_approx,
                                    description_snippet, description, status,
-                                   dedup_key, first_seen, last_seen)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s)
+                                   dedup_key, company_key, first_seen, last_seen)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 location = EXCLUDED.location,
@@ -147,6 +148,7 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 -- it forever.
                 description = COALESCE(NULLIF(EXCLUDED.description, ''), postings.description),
                 dedup_key = EXCLUDED.dedup_key,
+                company_key = EXCLUDED.company_key,
                 -- category and company both come from this source's own
                 -- config (see connectors/*.py: company=entry.get("company",
                 -- token), category=entry.get("category", "")), which
@@ -207,7 +209,7 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 # permanently invisible to workday_descriptions.py.
                 # Confirmed live: 3 GE Aerospace postings were retired this
                 # way within a minute of deploying.
-                p.description or None, dedup_key, seen_at, seen_at,
+                p.description or None, dedup_key, company_key, seen_at, seen_at,
             ),
         )
         if cur.rowcount == 1:

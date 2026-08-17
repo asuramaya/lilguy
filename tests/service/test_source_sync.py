@@ -55,7 +55,9 @@ def test_sweep_resyncs_drifted_company_and_category():
 
     with db.cursor() as cur:
         changed = run_source_sync_sweep(cur)
-    assert changed == 1
+    # Two row-updates for one posting: company drifted, and company_key
+    # is derived from company so it necessarily drifted too.
+    assert changed == 2
 
     with db.cursor() as cur:
         cur.execute("SELECT company, category FROM postings WHERE id = 'p1'")
@@ -75,7 +77,7 @@ def test_sweep_touches_closed_and_duplicate_postings_too():
 
     with db.cursor() as cur:
         changed = run_source_sync_sweep(cur)
-    assert changed == 2
+    assert changed == 4  # two postings x (fields + derived key)
 
     with db.cursor() as cur:
         cur.execute("SELECT id, company, category FROM postings ORDER BY id")
@@ -85,10 +87,60 @@ def test_sweep_touches_closed_and_duplicate_postings_too():
         assert row["category"] == "Logistics"
 
 
-def test_sweep_is_a_no_op_when_nothing_drifted():
+def test_sweep_is_idempotent():
+    # The first run legitimately sets company_key, which starts unset.
+    # The guarantee worth pinning is that running it again changes
+    # nothing -- that's what makes it safe on every scheduler cycle.
     source_id = _insert_source("Acme Corporation", "Logistics")
     _insert_posting("p1", source_id, "Acme Corporation", "Logistics")
 
     with db.cursor() as cur:
-        changed = run_source_sync_sweep(cur)
-    assert changed == 0
+        run_source_sync_sweep(cur)
+    with db.cursor() as cur:
+        assert run_source_sync_sweep(cur) == 0
+
+
+def test_sql_company_key_agrees_with_the_python_implementation():
+    # The sweep recomputes company_key with SQL mirrored from
+    # dedup.compute_company_key, because it's a set-based UPDATE over the
+    # whole table. Two implementations of one rule drift silently, so
+    # this pins them together on inputs drawn from the real corpus --
+    # legal suffixes, punctuation, casing, raw slugs and unicode.
+    from dedup import compute_company_key
+
+    names = [
+        "Eaton", "Eaton Corporation", "Samsara Inc.", "Acme, Inc.",
+        "A.P. Moller - Maersk", "JLL (Jones Lang LaSalle)", "GE Aerospace",
+        "geaerospace", "The Vita Coco Company", "Reckitt (Reckitt Benckiser)",
+        "MUFG (Mitsubishi UFJ Financial Group)", "3M", "66degrees",
+        "International Flavors & Fragrances", "djeholdings", "ag",
+        "Kraft Heinz Co", "Brookfield Asset Management Ltd",
+    ]
+    source_id = _insert_source("Placeholder", "Cat")
+    for i, name in enumerate(names):
+        _insert_posting(f"p{i}", source_id, name, "Cat")
+
+    # Detach from the source so the sweep's company= copy doesn't
+    # overwrite the varied names we're testing.
+    with db.cursor() as cur:
+        cur.execute("UPDATE postings SET source_id = NULL")
+        run_source_sync_sweep(cur)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT company, company_key FROM postings ORDER BY id")
+        rows = cur.fetchall()
+
+    mismatches = [(r["company"], r["company_key"], compute_company_key(r["company"]))
+                  for r in rows if r["company_key"] != compute_company_key(r["company"])]
+    assert not mismatches, f"SQL and Python company_key disagree: {mismatches}"
+
+
+def test_company_key_unites_spelling_variants_of_one_employer():
+    source_id = _insert_source("Placeholder", "Cat")
+    _insert_posting("a", source_id, "Eaton", "Cat")
+    _insert_posting("b", source_id, "Eaton Corporation", "Cat")
+    with db.cursor() as cur:
+        cur.execute("UPDATE postings SET source_id = NULL")
+        run_source_sync_sweep(cur)
+        cur.execute("SELECT DISTINCT company_key FROM postings")
+        assert len(cur.fetchall()) == 1
