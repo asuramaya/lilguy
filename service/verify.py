@@ -44,9 +44,15 @@ def verify_trial_fetch(candidate_company: str, postings: list) -> dict:
     that itself, the same way scheduler.py's run_one() does for a
     confirmed source).
 
-    Returns {"passed": bool, "reason": str, "evidence": {...}} -- reason
-    and evidence are for discovery_candidates.evidence, so a rejection is
-    legible later without re-running the probe.
+    Returns {"passed": bool, "code": str, "reason": str, "evidence": {...}}.
+    `reason` is the human sentence stored in discovery_candidates.evidence
+    so a rejection stays legible later without re-running the probe;
+    `code` is the stable machine-readable form of the same fact, because
+    callers need to BRANCH on why something failed and matching on
+    English prose breaks the moment the wording is edited. See
+    discovery.py's RECHECK_DAYS_BY_CODE: these failures are not
+    equivalent, and how soon a candidate is worth re-probing depends on
+    which one it was.
     """
     total = len(postings)
     intern_postings = [p for p in postings if is_internship(p.title)]
@@ -61,25 +67,32 @@ def verify_trial_fetch(candidate_company: str, postings: list) -> dict:
     }
 
     if total == 0:
-        return {"passed": False, "reason": "zero postings returned", "evidence": evidence}
+        return {"passed": False, "code": "zero_postings",
+                "reason": "zero postings returned", "evidence": evidence}
 
     if len(intern_postings) < MIN_INTERNSHIP_POSTINGS:
-        return {"passed": False, "reason": "no internship-shaped titles found", "evidence": evidence}
+        # NOT a verdict about the board -- the board worked, parsed, and
+        # returned real jobs. It's a verdict about WHEN we looked. This
+        # is the single most common rejection by a wide margin and the
+        # one most likely to flip on its own.
+        return {"passed": False, "code": "no_internship_titles",
+                "reason": "no internship-shaped titles found", "evidence": evidence}
 
     if total >= MIN_DISTINCT_TITLES and distinct_titles < MIN_DISTINCT_TITLES:
         # Every posting has (almost) the same title -- looks more like a
         # generic error/placeholder page that happened to parse than a
         # real job board with multiple distinct openings.
-        return {"passed": False, "reason": "postings aren't distinct (looks like a placeholder page)",
+        return {"passed": False, "code": "not_distinct",
+                "reason": "postings aren't distinct (looks like a placeholder page)",
                 "evidence": evidence}
 
     similarity = _name_similarity(candidate_company, company_names)
     evidence["name_similarity"] = round(similarity, 2)
     if similarity < NAME_MATCH_THRESHOLD:
-        return {"passed": False,
+        return {"passed": False, "code": "name_mismatch",
                 "reason": f"fetched company name doesn't resemble '{candidate_company}' "
                           f"(best match {similarity:.2f}, need >= {NAME_MATCH_THRESHOLD}) -- "
                           "possible tenant/site collision with a different company",
                 "evidence": evidence}
 
-    return {"passed": True, "reason": "ok", "evidence": evidence}
+    return {"passed": True, "code": "ok", "reason": "ok", "evidence": evidence}

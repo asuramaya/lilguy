@@ -61,3 +61,22 @@ def test_slightly_different_company_string_still_passes():
     postings = [fake_posting("Acme Corporation", "Operations Intern")]
     v = verify_trial_fetch("Acme Corp", postings)
     assert v["passed"]
+
+
+def test_each_rejection_carries_a_stable_machine_readable_code():
+    # discovery.py branches on these to pick a recheck cadence, so they
+    # have to be stable identifiers rather than prose that can be reworded.
+    from types import SimpleNamespace as P
+
+    def posting(title, company="Acme"):
+        return P(title=title, company=company)
+
+    assert verify_trial_fetch("Acme", [])["code"] == "zero_postings"
+    assert verify_trial_fetch("Acme", [posting("Staff Accountant")])["code"] == "no_internship_titles"
+    assert verify_trial_fetch(
+        "Acme", [posting("Intern"), posting("Intern")])["code"] == "not_distinct"
+    assert verify_trial_fetch(
+        "Acme", [posting("Intern", "Totally Different Co"),
+                 posting("Summer Analyst Intern", "Totally Different Co")])["code"] == "name_mismatch"
+    assert verify_trial_fetch(
+        "Acme", [posting("Intern"), posting("Summer Analyst Intern")])["code"] == "ok"

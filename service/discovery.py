@@ -85,7 +85,44 @@ TIMEOUT = 5
 UA = {"User-Agent": "Mozilla/5.0 (internship-feed-bot; auto-discovery)"}
 TRIAL_MAX_PAGES = 40  # small trial fetch -- enough to judge, not a full scrape
 NO_MATCH_RECHECK_DAYS = 90
-REJECTED_RECHECK_DAYS = 90
+
+# How soon a REJECTED candidate is worth probing again, keyed by
+# verify.py's verdict `code`. These failures are not equivalent, and
+# were previously all treated as one 90-day bucket -- wrong for the
+# largest group by far: 3538 of 4441 live rejections are
+# 'no_internship_titles', i.e. the board was found, fetched and parsed
+# fine and simply had no interns posted at that moment. That's a
+# statement about WHEN we looked, not about whether the source is any
+# good, and internship hiring is seasonal -- a 90-day clock can step
+# straight over an entire recruiting window and re-probe a perfectly
+# good board only four times a year.
+#
+# Deliberately NOT seasonal beyond this. Weighting the interval toward
+# (say) an August-October peak would hardcode one hemisphere's academic
+# calendar into a project that is otherwise domain- and geography-
+# neutral. Splitting by REASON is a fact about the source; splitting by
+# date would be an assumption about the reader.
+REJECTED_RECHECK_DAYS = 90  # fallback for an unrecognized/absent code
+RECHECK_DAYS_BY_CODE = {
+    # The board works; we just caught it between postings. Check often.
+    "no_internship_titles": 14,
+    # Reachable but empty -- a dormant board, or a company between
+    # hiring cycles. Worth another look, less promising than one already
+    # serving real jobs.
+    "zero_postings": 30,
+    # Structural rather than temporal: a placeholder-looking page, or a
+    # probe that landed on a different company entirely. Re-probing soon
+    # would just fail the same way, so leave these on the long clock.
+    "not_distinct": 90,
+    "name_mismatch": 90,
+    # The trial fetch raised. Often a bad tenant/host guess (permanent),
+    # sometimes a transient network failure -- middle ground.
+    "fetch_error": 30,
+}
+
+
+def _recheck_days(code: str) -> int:
+    return RECHECK_DAYS_BY_CODE.get(code, REJECTED_RECHECK_DAYS)
 
 # The real candidate feed: SEC EDGAR's public-company ticker list
 # (10,391 names) PLUS Wikipedia's category listings for trucking/
@@ -508,7 +545,8 @@ def _process_candidate(row: dict) -> dict:
     try:
         trial_postings = connector_cls().fetch(hit["config"])
     except Exception as exc:  # noqa: BLE001
-        verdict = {"passed": False, "reason": f"trial fetch raised: {exc}", "evidence": {}}
+        verdict = {"passed": False, "code": "fetch_error",
+                    "reason": f"trial fetch raised: {exc}", "evidence": {}}
     else:
         verdict = verify_trial_fetch(company, trial_postings)
 
@@ -534,12 +572,16 @@ def _process_candidate(row: dict) -> dict:
             )
             return {"company": company, "outcome": "promoted_to_probation", "ats": hit["ats"]}
         else:
+            # `code` is persisted alongside `reason` so a later pass can
+            # re-derive the recheck cadence (or re-bucket old rows)
+            # without parsing the English sentence.
+            code = verdict.get("code", "")
             cur.execute(
                 "UPDATE discovery_candidates SET ats = %s, config = %s, review_status = 'rejected', "
                 "evidence = %s, checked_at = %s, next_check_at = %s WHERE id = %s",
                 (hit["ats"], psycopg2.extras.Json(hit["config"]),
-                 psycopg2.extras.Json({**verdict["evidence"], "reason": verdict["reason"]}),
-                 now, now + timedelta(days=REJECTED_RECHECK_DAYS), row["id"]),
+                 psycopg2.extras.Json({**verdict["evidence"], "reason": verdict["reason"], "code": code}),
+                 now, now + timedelta(days=_recheck_days(code)), row["id"]),
             )
             return {"company": company, "outcome": "rejected", "reason": verdict["reason"]}
 
@@ -587,7 +629,8 @@ def _process_disabled_source(row: dict) -> dict:
         trial_postings = connector_cls().fetch(row["config"]) if connector_cls else []
         verdict = verify_trial_fetch(row["company"], trial_postings)
     except Exception as exc:  # noqa: BLE001
-        verdict = {"passed": False, "reason": f"trial fetch raised: {exc}", "evidence": {}}
+        verdict = {"passed": False, "code": "fetch_error",
+                    "reason": f"trial fetch raised: {exc}", "evidence": {}}
 
     if verdict["passed"]:
         with cursor() as cur:

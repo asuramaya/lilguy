@@ -305,3 +305,23 @@ def test_disabled_source_reinstated_to_probation_on_recovery(monkeypatch):
     with db.cursor() as cur:
         cur.execute("SELECT status FROM sources WHERE company = 'Acme Corp'")
         assert cur.fetchone()["status"] == "probation"
+
+
+def test_recheck_cadence_is_shortest_for_a_board_that_simply_had_no_interns():
+    # The dominant rejection (3538 of 4441 live rows) is a board that
+    # worked fine and just had nothing intern-shaped posted yet -- a
+    # statement about when we looked, not about the source. It must come
+    # back around far sooner than a structurally-broken candidate, or a
+    # 90-day clock steps over whole recruiting windows.
+    assert discovery._recheck_days("no_internship_titles") == 14
+    assert discovery._recheck_days("zero_postings") == 30
+    assert discovery._recheck_days("fetch_error") == 30
+    assert discovery._recheck_days("not_distinct") == 90
+    assert discovery._recheck_days("name_mismatch") == 90
+
+
+def test_unknown_or_missing_code_falls_back_to_the_conservative_interval():
+    # Old rows predate `code`, and a future verify.py could add a verdict
+    # this table doesn't know about; neither should re-probe aggressively.
+    assert discovery._recheck_days("something_new") == discovery.REJECTED_RECHECK_DAYS
+    assert discovery._recheck_days("") == discovery.REJECTED_RECHECK_DAYS
