@@ -27,15 +27,35 @@ echo "==> starting scratch postgres ($PG_IMAGE)"
 # -P publishes to a random free host port instead of a fixed one, so this
 # can run alongside the real stack (or a second copy of itself) without
 # fighting over 5432.
-docker run -d --rm --name "$CONTAINER" -e POSTGRES_PASSWORD=test -P "$PG_IMAGE" >/dev/null
+# Deliberately NOT --rm: the cleanup trap removes it, and keeping the
+# container alive on failure is what makes the logs readable below. With
+# --rm a startup failure deletes its own evidence, and the only thing
+# left is this script's own uninformative "never became ready".
+docker run -d --name "$CONTAINER" -e POSTGRES_PASSWORD=test -P "$PG_IMAGE" >/dev/null
 PORT="$(docker port "$CONTAINER" 5432/tcp | head -1 | sed 's/.*://')"
 
-for _ in $(seq 1 60); do
-  docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1 && break
+# postgres:16-alpine starts a temporary server, runs initdb, stops it,
+# then starts the real one -- so readiness can flicker true and then
+# false during init. Requiring TWO consecutive successes avoids latching
+# onto the temporary server, and 120 x 0.5s tolerates a slow start under
+# load (seen intermittently on a busy host).
+ready=0
+for _ in $(seq 1 120); do
+  if docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1; then
+    ready=$((ready + 1))
+    [ "$ready" -ge 2 ] && break
+  else
+    ready=0
+  fi
   sleep 0.5
 done
-docker exec "$CONTAINER" pg_isready -U postgres >/dev/null 2>&1 || {
-  echo "!! scratch postgres never became ready" >&2; exit 1; }
+
+if [ "$ready" -lt 2 ]; then
+  echo "!! scratch postgres never became ready -- its own logs follow" >&2
+  docker logs "$CONTAINER" 2>&1 | tail -25 >&2
+  docker inspect -f 'state={{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' "$CONTAINER" >&2 || true
+  exit 1
+fi
 
 if [ ! -d "$VENV" ]; then
   echo "==> creating $VENV"
