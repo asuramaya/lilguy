@@ -169,6 +169,31 @@ def candidates():
         return {"candidates": cur.fetchall()}
 
 
+class RevalidatingStaticFiles(StaticFiles):
+    """StaticFiles that asks browsers to revalidate instead of guessing.
+
+    StaticFiles already sends ETag and Last-Modified, but sends NO
+    Cache-Control -- and with no explicit freshness a browser falls back
+    to HEURISTIC freshness (RFC 9111 section 4.2.2, commonly ~10% of the
+    time since Last-Modified) and will serve a stale copy WITHOUT
+    revalidating. Confirmed live: after deploying a rewritten
+    index.html, curl against the origin returned the new bytes while the
+    browser kept rendering the previous build until the URL's query
+    string was changed. That means every UI deploy was effectively
+    invisible to anyone who had already loaded the page.
+
+    "no-cache" does not mean "do not store" -- it means "store, but
+    revalidate before reuse". The ETag above turns that revalidation
+    into a cheap 304 with no body, so this costs one conditional request
+    per load rather than re-downloading the page.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
 # Registered last on purpose -- Starlette matches routes in registration
 # order, so the explicit /health, /feed, /sources, /candidates routes
 # above always win first. This mount only catches what's left ("/" and
@@ -176,4 +201,4 @@ def candidates():
 # minimal read-only UI over the same three JSON endpoints. No separate
 # build step / npm dependency -- plain HTML+JS, fetched at runtime from
 # whatever origin the page itself was served from.
-app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
+app.mount("/", RevalidatingStaticFiles(directory=str(STATIC_DIR), html=True), name="static")
