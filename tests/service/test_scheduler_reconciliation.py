@@ -280,3 +280,21 @@ def test_unparseable_posted_at_leaves_the_timestamp_null(monkeypatch):
     with db.cursor() as cur:
         cur.execute("SELECT posted_at_ts FROM postings WHERE id = 'gh:acme:d3'")
         assert cur.fetchone()["posted_at_ts"] is None
+
+
+def test_a_connector_with_no_description_leaves_the_column_null_not_empty(monkeypatch):
+    # NULL and '' mean different things: NULL is "not fetched yet,
+    # eligible", '' is "attempted, the provider genuinely has none".
+    # Workday's connector always sends empty (its list endpoint carries no
+    # description), so inserting '' would mark every new Workday posting
+    # as already-attempted and hide it from the backfill forever.
+    source_id = _insert_source("Acme")
+    row = {"id": source_id, "company": "Acme", "ats": "greenhouse", "config": {}, "status": "active",
+           "consecutive_failures": 0, "last_scraped_at": None}
+    p = fake_posting("gh:acme:nodesc", "Acme", "Supply Chain Intern")  # description=""
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: [p]))
+    scheduler.run_one(row)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT description FROM postings WHERE id = 'gh:acme:nodesc'")
+        assert cur.fetchone()["description"] is None

@@ -197,7 +197,17 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
             (
                 p.id, source_id, source_entry, p.company, p.title, p.location, p.url,
                 p.source, p.category, p.posted_at, posted_ts, posted_approx,
-                p.description_snippet, p.description, dedup_key, seen_at, seen_at,
+                p.description_snippet,
+                # NULLIF so "the connector had no description" stores as
+                # NULL (= not fetched yet, eligible) rather than '' (=
+                # attempted, provider genuinely has none). Workday's
+                # connector always sends empty because its list endpoint
+                # carries no description, so inserting '' marked every new
+                # Workday posting as already-attempted and made it
+                # permanently invisible to workday_descriptions.py.
+                # Confirmed live: 3 GE Aerospace postings were retired this
+                # way within a minute of deploying.
+                p.description or None, dedup_key, seen_at, seen_at,
             ),
         )
         if cur.rowcount == 1:
