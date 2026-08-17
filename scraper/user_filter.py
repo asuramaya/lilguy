@@ -37,15 +37,28 @@ def _matches_any(text: str, keywords: list[str]) -> bool:
     return any(re.search(r"\b" + re.escape(kw) + r"\b", text, re.IGNORECASE) for kw in keywords)
 
 
-def _too_old(posting: dict, max_age_days, now: datetime) -> bool:
+def is_too_old(posting: dict, max_age_days, now: datetime) -> bool:
+    """Public because the live API applies this as a standalone
+    freshness filter (independently of any preset), and it must use the
+    exact same age semantics as preset filtering rather than a second
+    near-identical implementation."""
     if not max_age_days:
         return False
-    first_seen = posting.get("first_seen")
-    if not first_seen:
+    # Prefer the EMPLOYER's posting date over first_seen, which is only
+    # when this project happened to discover the posting. Those diverge
+    # enormously in practice: on the live corpus 26% of open postings
+    # were posted over a year ago (oldest: 2016) while first_seen for
+    # every one of them was within the last few days, because the
+    # database is far younger than the postings it holds. Filtering on
+    # first_seen therefore let decade-old listings sail through any
+    # max_age_days gate. Falls back to first_seen when a source gave no
+    # date, and for batch-pipeline dicts that predate this column.
+    raw = posting.get("posted_at_ts") or posting.get("first_seen")
+    if not raw:
         return False  # can't judge age we don't have — don't punish the posting for it
     try:
-        seen_at = datetime.fromisoformat(first_seen)
-    except ValueError:
+        seen_at = datetime.fromisoformat(raw)
+    except (ValueError, TypeError):
         return False
     if seen_at.tzinfo is None:
         seen_at = seen_at.replace(tzinfo=timezone.utc)
@@ -67,14 +80,19 @@ def passes(posting: dict, spec: dict, now: datetime = None) -> bool:
       way to pass — a trusted company's posting still has to be in the
       right place if you've set a location filter at all).
 
-    `max_age_days` is checked against `first_seen` (when THIS project's
-    scraper first recorded the posting), not each source's own
-    `posted_at` — deliberately, because `posted_at` format varies wildly
-    across sources (an ISO date from Greenhouse, a relative string like
-    "Posted 15 Days Ago" from some Workday tenants) and isn't reliably
-    parseable as one thing. `first_seen` is always the scraper's own ISO
-    timestamp, so it's the one field guaranteed comparable across every
-    source.
+    `max_age_days` is checked against the EMPLOYER's posting date where
+    one is available, falling back to `first_seen` (when this project's
+    scraper first recorded the posting) where it isn't.
+
+    This used to check `first_seen` only, on the reasoning that
+    `posted_at` format varied too wildly across sources to parse as one
+    thing (an ISO date from Greenhouse, "Posted 15 Days Ago" from
+    Workday, bare epoch millis from Lever). That reasoning no longer
+    holds: service/posted_at.py normalizes all three families into
+    `posted_at_ts`, and parsed the entire live corpus — 6218 rows — with
+    zero failures. Keeping the old behaviour would have meant a
+    "max_age_days: 30" filter happily returning postings from 2016,
+    since first_seen for every one of them was days old.
     """
     if now is None:
         now = datetime.now(timezone.utc)
@@ -90,7 +108,7 @@ def passes(posting: dict, spec: dict, now: datetime = None) -> bool:
         return False
     if spec.get("locations_exclude") and _matches_any(location, spec["locations_exclude"]):
         return False
-    if _too_old(posting, spec.get("max_age_days"), now):
+    if is_too_old(posting, spec.get("max_age_days"), now):
         return False
 
     is_trusted = posting.get("company") in spec.get("trusted_companies", [])

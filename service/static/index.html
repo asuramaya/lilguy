@@ -497,6 +497,16 @@
         <label class="field-icon" for="feed-category">category</label>
         <select id="feed-category"><option value="">All</option></select>
       </div>
+      <div class="field">
+        <label class="field-icon" for="feed-age">posted</label>
+        <select id="feed-age">
+          <option value="">Any time</option>
+          <option value="7">Past week</option>
+          <option value="30">Past month</option>
+          <option value="90">Past 3 months</option>
+          <option value="365">Past year</option>
+        </select>
+      </div>
       <div class="field grow">
         <label class="field-icon" for="search">/</label>
         <input type="search" id="search" placeholder="Filter by title or company&hellip;">
@@ -811,6 +821,8 @@ function syncUrl() {
   if (cat) p.set("category", cat);
   const q = document.getElementById("search").value.trim();
   if (q) p.set("q", q);
+  const age = document.getElementById("feed-age").value;
+  if (age) p.set("age", age);
   const qs = p.toString();
   history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
 }
@@ -823,14 +835,54 @@ let feedPostings = [];
 let feedTotal = 0;
 let feedSort = { key: "posted_at_ts", dir: -1 };
 
+// Every narrowing control is now a SERVER query rather than a filter
+// over whatever happened to already be loaded. Client-side search ran
+// across one page of results, so with 4711 open postings and a 1000-row
+// page a search silently ignored 79% of the corpus and presented the
+// answer as if it were complete.
+function feedQueryUrl() {
+  const p = new URLSearchParams();
+  if (presetSelect.value) p.set("preset", presetSelect.value);
+  const q = document.getElementById("search").value.trim();
+  if (q) p.set("q", q);
+  const category = document.getElementById("feed-category").value;
+  if (category) p.set("category", category);
+  const age = document.getElementById("feed-age").value;
+  if (age) p.set("max_age_days", age);
+  p.set("limit", String(FEED_LIMIT));
+  return `/feed?${p.toString()}`;
+}
+
+// Category options come from /sources, NOT from the current result set.
+// Deriving them from the response worked while filtering was client-side
+// over everything, but now that the server narrows by category the
+// response contains exactly one category once a filter is applied -- so
+// the dropdown would collapse to the option you just picked and you
+// could never switch back. sources.category is the superset every
+// posting's category is copied from, so it's the stable list.
+let feedCategoriesLoaded = false;
+async function loadFeedCategories() {
+  if (feedCategoriesLoaded) return;
+  try {
+    const res = await fetch("/sources");
+    const data = await res.json();
+    populateCategoryOptions(document.getElementById("feed-category"), data.sources || []);
+    feedCategoriesLoaded = true;
+    const wanted = initialParams.get("category");
+    if (wanted) {
+      const sel = document.getElementById("feed-category");
+      if ([...sel.options].some(o => o.value === wanted)) sel.value = wanted;
+      initialParams.delete("category");
+      return true;
+    }
+  } catch (e) { /* the filter just stays as "All" */ }
+  return false;
+}
+
 async function loadFeed() {
-  const preset = presetSelect.value;
-  const url = preset
-    ? `/feed?preset=${encodeURIComponent(preset)}&limit=${FEED_LIMIT}`
-    : `/feed?limit=${FEED_LIMIT}`;
   document.getElementById("feed-count").textContent = "loading…";
   try {
-    const res = await fetch(url);
+    const res = await fetch(feedQueryUrl());
     const data = await res.json();
     if (data.error) {
       document.getElementById("feed-body").innerHTML = emptyRow(5, data.error);
@@ -839,18 +891,7 @@ async function loadFeed() {
     }
     feedPostings = data.postings || [];
     feedTotal = data.total ?? feedPostings.length;
-    populateCategoryOptions(document.getElementById("feed-category"), feedPostings);
-    if (initialParams.get("category")) {
-      const sel = document.getElementById("feed-category");
-      if ([...sel.options].some(o => o.value === initialParams.get("category"))) {
-        sel.value = initialParams.get("category");
-        initialParams.delete("category");
-      }
-    }
     renderFeed();
-    // Re-sync after the category select is populated: on a deep link the
-    // first syncUrl() runs before the options exist, so ?category would
-    // otherwise be stripped from the URL it just came from.
     syncUrl();
   } catch (e) {
     document.getElementById("feed-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
@@ -859,24 +900,19 @@ async function loadFeed() {
 }
 
 function renderFeed() {
-  const q = document.getElementById("search").value.trim().toLowerCase();
-  const category = document.getElementById("feed-category").value;
-  let filtered = feedPostings;
-  if (category) filtered = filtered.filter(p => p.category === category);
-  if (q) {
-    filtered = filtered.filter(p =>
-      (p.title || "").toLowerCase().includes(q) ||
-      (p.company || "").toLowerCase().includes(q));
-  }
-  filtered = sortRows(filtered, feedSort.key, feedSort.dir);
+  // No client-side narrowing left here: q / category / max_age are all
+  // applied by the server across the whole corpus (see feedQueryUrl).
+  // Sorting stays local because it only ever reorders the page you are
+  // already looking at.
+  const filtered = sortRows(feedPostings, feedSort.key, feedSort.dir);
 
   // Says plainly when the server capped the result set, rather than
   // presenting a truncated list as if it were the whole match.
   const truncated = feedTotal > feedPostings.length;
   document.getElementById("feed-count").innerHTML =
-    `<strong>${filtered.length}</strong> of ${feedPostings.length} shown` +
+    `<strong>${feedTotal}</strong> matching` +
     (truncated
-      ? ` <span class="truncated">(${feedTotal} match — capped at newest ${feedPostings.length})</span>`
+      ? ` <span class="truncated">(showing newest ${feedPostings.length})</span>`
       : "");
   document.getElementById("feed-sort-line").textContent =
     `sorted by ${({posted_at_ts: "date posted"})[feedSort.key] || feedSort.key.replace(/_/g, " ")}, ${feedSort.dir === 1 ? "oldest first" : "newest first"}`;
@@ -1039,7 +1075,7 @@ function renderDuplicates() {
 
 // --- tabs / wiring --------------------------------------------------------
 
-const tabs = { feed: loadFeed, sources: loadSources, candidates: loadCandidates, duplicates: loadDuplicates };
+const tabs = { feed: bootFeed, sources: loadSources, candidates: loadCandidates, duplicates: loadDuplicates };
 const tabButtons = [...document.querySelectorAll('[role="tab"]')];
 let loaded = {};
 
@@ -1082,8 +1118,11 @@ wireSortable("tab-candidates", candidateSort, renderCandidates, ["checked_at"]);
 wireSortable("tab-duplicates", duplicateSort, renderDuplicates, ["first_seen"]);
 
 presetSelect.addEventListener("change", () => { loadFeed(); syncUrl(); });
-document.getElementById("search").addEventListener("input", debounce(() => { renderFeed(); syncUrl(); }));
-document.getElementById("feed-category").addEventListener("change", () => { renderFeed(); syncUrl(); });
+// Debounced because each keystroke is now a round trip, not a local
+// filter -- 140ms turns a burst of typing into one request.
+document.getElementById("search").addEventListener("input", debounce(() => { loadFeed(); syncUrl(); }));
+document.getElementById("feed-category").addEventListener("change", () => { loadFeed(); syncUrl(); });
+document.getElementById("feed-age").addEventListener("change", () => { loadFeed(); syncUrl(); });
 document.getElementById("source-search").addEventListener("input", debounce(renderSources));
 document.getElementById("source-category").addEventListener("change", renderSources);
 document.getElementById("candidate-search").addEventListener("input", debounce(renderCandidates));
@@ -1185,14 +1224,28 @@ if (initialParams.get("preset") !== null &&
   presetSelect.value = initialParams.get("preset");
 }
 if (initialParams.get("q")) document.getElementById("search").value = initialParams.get("q");
+if (initialParams.get("age")) {
+  const ageSel = document.getElementById("feed-age");
+  if ([...ageSel.options].some(o => o.value === initialParams.get("age"))) {
+    ageSel.value = initialParams.get("age");
+  }
+}
+
+// Categories load first so a deep link's ?category is already applied to
+// the very first feed request, rather than being fetched, then filtered
+// again a moment later.
+async function bootFeed() {
+  await loadFeedCategories();
+  await loadFeed();
+}
 
 const initialTab = initialParams.get("tab");
 if (initialTab && tabs[initialTab]) {
   selectTab(initialTab);
-  if (initialTab !== "feed") { loaded.feed = true; loadFeed(); }
+  if (initialTab !== "feed") { loaded.feed = true; bootFeed(); }
 } else {
   loaded.feed = true;
-  loadFeed();
+  bootFeed();
 }
 </script>
 

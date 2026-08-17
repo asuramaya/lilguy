@@ -14,6 +14,7 @@ Run with: uvicorn service.api:app --host 0.0.0.0 --port 8000
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Annotated, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
@@ -21,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 sys.path.insert(0, str(Path(__file__).parent.parent / "scraper"))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from user_filter import load_filter, passes  # noqa: E402
+from user_filter import is_too_old, load_filter, passes  # noqa: E402
 
 from db import cursor  # noqa: E402
 
@@ -42,6 +43,12 @@ STATIC_DIR = Path(__file__).parent / "static"
 # never shadow it -- don't add one.
 ALL_POSTINGS = "all"
 
+# Upper bound on rows pulled from Postgres for one /feed request. The
+# open corpus is ~4.7k, so this shouldn't bind; it exists so a runaway
+# corpus degrades into an explicit `source_truncated: true` in the
+# response rather than a silently short answer.
+SOURCE_ROW_CAP = 20000
+
 app = FastAPI(title="Internship feed", description="Live feed of sourced internship postings.")
 
 
@@ -60,21 +67,48 @@ def health():
     return {"ok": True}
 
 
+# Annotated-style parameters rather than `x: str = Query(None)`, so the
+# actual Python default is None. With Query() as the default value, the
+# function is only callable through FastAPI -- calling it directly (as
+# tests/service/test_api_feed.py does, to exercise the filtering and
+# paging logic without adding an HTTP client dependency) hands the body
+# a Query object where it expects a string.
 @app.get("/feed")
 def feed(
-    preset: str = Query(None, description="Name of a file in presets/ (without .yaml), e.g. "
-                                            "'operations-logistics-supply-chain'. Defaults to the "
-                                            "root filters.yaml if omitted. Pass 'all' to apply no "
-                                            "filter at all and get the raw open-postings corpus."),
-    keywords_any: str = Query(None, description="Comma-separated, overrides the preset's keywords_any"),
-    trusted_companies: str = Query(None, description="Comma-separated, overrides the preset's trusted_companies"),
-    locations_include: str = Query(None, description="Comma-separated"),
-    max_age_days: int = Query(None),
-    limit: int = Query(200, le=5000),
+    preset: Annotated[Optional[str], Query(
+        description="Name of a file in presets/ (without .yaml), e.g. "
+                    "'operations-logistics-supply-chain'. Defaults to the root filters.yaml "
+                    "if omitted. Pass 'all' to apply no filter at all and get the raw "
+                    "open-postings corpus.")] = None,
+    keywords_any: Annotated[Optional[str], Query(
+        description="Comma-separated, overrides the preset's keywords_any")] = None,
+    trusted_companies: Annotated[Optional[str], Query(
+        description="Comma-separated, overrides the preset's trusted_companies")] = None,
+    locations_include: Annotated[Optional[str], Query(description="Comma-separated")] = None,
+    max_age_days: Annotated[Optional[int], Query(
+        description="Drop postings the employer posted more than N days ago. Judged on the "
+                    "provider's own date where there is one, not on when this feed first "
+                    "saw the posting.")] = None,
+    q: Annotated[Optional[str], Query(description="Free-text match against title and company")] = None,
+    category: Annotated[Optional[str], Query(description="Exact category match")] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(le=5000)] = 200,
 ):
     with cursor() as cur:
-        cur.execute("SELECT * FROM postings WHERE status = 'open' ORDER BY first_seen DESC LIMIT 5000")
+        # Ordered by the employer's own posting date rather than
+        # first_seen (our discovery time) -- see service/posted_at.py.
+        # NULLS LAST so postings whose source gave no date sink to the
+        # bottom instead of heading a "newest first" list.
+        cur.execute(
+            "SELECT * FROM postings WHERE status = 'open' "
+            "ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC LIMIT %s",
+            (SOURCE_ROW_CAP,),
+        )
         rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    # A cap this high should never bind, but if it ever does the caller
+    # is told rather than served a silently short corpus.
+    source_truncated = len(rows) >= SOURCE_ROW_CAP
 
     if preset == ALL_POSTINGS:
         matched = rows
@@ -90,17 +124,57 @@ def feed(
             spec["trusted_companies"] = [k.strip() for k in trusted_companies.split(",") if k.strip()]
         if locations_include is not None:
             spec["locations_include"] = [k.strip() for k in locations_include.split(",") if k.strip()]
-        if max_age_days is not None:
-            spec["max_age_days"] = max_age_days
-
         now = datetime.now(timezone.utc)
         matched = [r for r in rows if passes(r, spec, now)]
 
-    # `total` is the count BEFORE the limit slice, so a caller can tell
-    # "this preset matches 91 postings" apart from "this preset matches
-    # thousands and you're seeing the first `limit` of them". Without it
-    # a truncated response is indistinguishable from a complete one.
-    return {"count": len(matched[:limit]), "total": len(matched), "postings": matched[:limit]}
+    # Free-text and category narrowing happen HERE, server-side, over the
+    # whole corpus. They used to be done in the browser over whatever
+    # page had been loaded, which quietly meant searching only the newest
+    # slice: with 4711 open postings and a 1000-row page, a search for
+    # "logistics" silently ignored 79% of the data and reported the
+    # result as if it were complete.
+    #
+    # Deliberately Python rather than SQL: user_filter.passes() is the
+    # single definition of what a preset means and is shared with the
+    # batch pipeline, so pushing filtering into SQL would fork that logic
+    # into two implementations that must agree forever. At this corpus
+    # size (~5k rows) filtering in Python costs a few milliseconds, which
+    # is a good trade for keeping one source of truth.
+    # Applied to EVERY branch including preset='all', which is where it
+    # matters most: 26% of the open corpus was posted over a year ago
+    # (oldest: 2016), and before posted_at was parsed there was no way to
+    # tell. A preset's own max_age_days still applies via passes(); this
+    # query parameter is an additional constraint on top, not a
+    # replacement for it.
+    if max_age_days is not None:
+        now = datetime.now(timezone.utc)
+        matched = [r for r in matched if not is_too_old(r, max_age_days, now)]
+    if category:
+        matched = [r for r in matched if (r.get("category") or "") == category]
+    if q:
+        needle = q.strip().lower()
+        if needle:
+            matched = [
+                r for r in matched
+                if needle in (r.get("title") or "").lower()
+                or needle in (r.get("company") or "").lower()
+            ]
+
+    total = len(matched)
+    page = matched[offset:offset + limit]
+
+    # `total` is the count BEFORE paging, so a caller can tell "this
+    # preset matches 91 postings" apart from "this matches thousands and
+    # you're seeing a page of them" -- without it a truncated response is
+    # indistinguishable from a complete one.
+    return {
+        "count": len(page),
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "source_truncated": source_truncated,
+        "postings": page,
+    }
 
 
 @app.get("/sources")
