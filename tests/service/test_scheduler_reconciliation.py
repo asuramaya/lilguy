@@ -219,3 +219,63 @@ def test_recategorized_source_updates_existing_open_postings(monkeypatch):
         r = cur.fetchone()
         assert r["category"] == "Logistics"
         assert r["company"] == "Acme Corporation"
+
+
+def _fake_posting_with_date(id_, posted_at):
+    return SimpleNamespace(id=id_, company="Acme", title="Supply Chain Intern", location="Remote",
+                            url=f"https://x/{id_}", source="greenhouse", category="Test",
+                            posted_at=posted_at, description_snippet="")
+
+
+def test_exact_posted_at_is_parsed_into_a_real_timestamp(monkeypatch):
+    source_id = _insert_source("Acme")
+    row = {"id": source_id, "company": "Acme", "ats": "greenhouse", "config": {}, "status": "active",
+           "consecutive_failures": 0, "last_scraped_at": None}
+    p = _fake_posting_with_date("gh:acme:d1", "2026-07-09T10:58:08-04:00")
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: [p]))
+    scheduler.run_one(row)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT posted_at_ts, posted_at_approx FROM postings WHERE id = 'gh:acme:d1'")
+        r = cur.fetchone()
+    assert r["posted_at_ts"].year == 2026 and r["posted_at_ts"].month == 7
+    assert r["posted_at_approx"] is False
+
+
+def test_saturating_relative_date_keeps_the_earliest_estimate(monkeypatch):
+    # "Posted 30+ Days Ago" is an UPPER bound on the posted date, not a
+    # measurement. Re-resolving it against each new scrape would push
+    # that bound forward forever, so a six-month-old posting would keep
+    # reporting as 30 days old -- precisely the staleness this column
+    # exists to surface. The earliest estimate is the tightest bound.
+    source_id = _insert_source("Acme")
+    row = {"id": source_id, "company": "Acme", "ats": "greenhouse", "config": {}, "status": "active",
+           "consecutive_failures": 0, "last_scraped_at": None}
+    p = _fake_posting_with_date("gh:acme:d2", "Posted 30+ Days Ago")
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: [p]))
+
+    scheduler.run_one(row)
+    with db.cursor() as cur:
+        cur.execute("SELECT posted_at_ts FROM postings WHERE id = 'gh:acme:d2'")
+        first = cur.fetchone()["posted_at_ts"]
+
+    scheduler.run_one(row)  # scraped again later; same saturating string
+    with db.cursor() as cur:
+        cur.execute("SELECT posted_at_ts, posted_at_approx FROM postings WHERE id = 'gh:acme:d2'")
+        r = cur.fetchone()
+
+    assert r["posted_at_ts"] <= first, "bound drifted forward on re-scrape"
+    assert r["posted_at_approx"] is True
+
+
+def test_unparseable_posted_at_leaves_the_timestamp_null(monkeypatch):
+    source_id = _insert_source("Acme")
+    row = {"id": source_id, "company": "Acme", "ats": "greenhouse", "config": {}, "status": "active",
+           "consecutive_failures": 0, "last_scraped_at": None}
+    p = _fake_posting_with_date("gh:acme:d3", "sometime last spring")
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: [p]))
+    scheduler.run_one(row)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT posted_at_ts FROM postings WHERE id = 'gh:acme:d3'")
+        assert cur.fetchone()["posted_at_ts"] is None

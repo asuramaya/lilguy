@@ -47,7 +47,7 @@ app = FastAPI(title="Internship feed", description="Live feed of sourced interns
 
 def _row_to_filter_dict(row: dict) -> dict:
     d = dict(row)
-    for field in ("first_seen", "last_seen"):
+    for field in ("first_seen", "last_seen", "posted_at_ts"):
         if isinstance(d.get(field), datetime):
             d[field] = d[field].isoformat()
     return d

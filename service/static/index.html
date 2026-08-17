@@ -520,7 +520,7 @@
           <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
           <th scope="col"><button class="sort-btn" data-sort="location">Location</button></th>
           <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
-          <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen">Posted</button></th>
+          <th scope="col" class="num"><button class="sort-btn" data-sort="posted_at_ts">Posted</button></th>
         </tr>
       </thead>
       <tbody id="feed-body"></tbody>
@@ -689,6 +689,34 @@ function exactTime(iso) {
   return isNaN(d) ? "" : d.toLocaleString();
 }
 
+// How old a posting really is, which is the single most decision-
+// relevant fact on the row and used to be wrong: this column showed
+// first_seen -- when THIS system first saw the posting -- under a
+// header reading "Posted". With a young database that made every row
+// look hours old, including Lever postings whose real date was 2021.
+//
+// posted_at_ts is the provider's own date where one exists (99.3% of
+// the open corpus). Where it doesn't, fall back to first_seen but SAY
+// so rather than silently passing our discovery time off as theirs.
+// `approx` marks values the provider only bounded or rounded (Workday's
+// "30+ days ago"), rendered with a leading ~ so the row never implies
+// precision nobody offered.
+function postedCell(p) {
+  if (p.posted_at_ts) {
+    const rel = timeAgo(p.posted_at_ts);
+    return {
+      text: p.posted_at_approx ? `~${rel}` : rel,
+      title: (p.posted_at_approx ? "Approximate — provider reported a rounded or bounded age.\n" : "") +
+             `Posted ${exactTime(p.posted_at_ts)}` +
+             (p.posted_at ? `\nProvider value: ${p.posted_at}` : ""),
+    };
+  }
+  return {
+    text: `first seen ${timeAgo(p.first_seen)}`,
+    title: `This source gave no posting date, so this is when the feed first saw it: ${exactTime(p.first_seen)}`,
+  };
+}
+
 function emptyRow(colspan, message) {
   return `<tr><td colspan="${colspan}"><div class="empty">${escapeHtml(message)}</div></td></tr>`;
 }
@@ -719,6 +747,12 @@ function sortRows(rows, key, dir) {
   return [...rows].sort((a, b) => {
     const av = a[key] ?? "";
     const bv = b[key] ?? "";
+    // A missing value sorts LAST in whichever direction is active,
+    // rather than winning "newest first" by virtue of being empty --
+    // postings whose source gave no date shouldn't head the feed.
+    if (av === "" && bv === "") return 0;
+    if (av === "") return 1;
+    if (bv === "") return -1;
     if (av < bv) return -1 * dir;
     if (av > bv) return 1 * dir;
     return 0;
@@ -787,7 +821,7 @@ const initialParams = new URLSearchParams(location.search);
 
 let feedPostings = [];
 let feedTotal = 0;
-let feedSort = { key: "first_seen", dir: -1 };
+let feedSort = { key: "posted_at_ts", dir: -1 };
 
 async function loadFeed() {
   const preset = presetSelect.value;
@@ -845,7 +879,7 @@ function renderFeed() {
       ? ` <span class="truncated">(${feedTotal} match — capped at newest ${feedPostings.length})</span>`
       : "");
   document.getElementById("feed-sort-line").textContent =
-    `sorted by ${feedSort.key.replace("_", " ")}, ${feedSort.dir === 1 ? "ascending" : "descending"}`;
+    `sorted by ${({posted_at_ts: "date posted"})[feedSort.key] || feedSort.key.replace(/_/g, " ")}, ${feedSort.dir === 1 ? "oldest first" : "newest first"}`;
 
   applySort("tab-feed", feedSort);
 
@@ -854,15 +888,18 @@ function renderFeed() {
     body.innerHTML = emptyRow(5, feedPostings.length ? "No postings match that filter." : "No open postings sourced yet.");
     return;
   }
-  body.innerHTML = filtered.map(p => `
+  body.innerHTML = filtered.map(p => {
+    const posted = postedCell(p);
+    return `
     <tr>
       <td class="title-cell truncate" data-label="Title"><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
       <td class="company-cell truncate" data-label="Company" title="${escapeHtml(p.company)}">${escapeHtml(p.company)}</td>
       <td class="location-cell truncate" data-label="Location" title="${escapeHtml(p.location || "")}">${escapeHtml(p.location || "—")}</td>
       <td data-label="Category">${p.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(p.category)}"><span class="swatch-label">${escapeHtml(p.category)}</span></span>` : ""}</td>
-      <td class="age-cell mono" data-label="Posted" title="${escapeHtml(exactTime(p.first_seen))}">${escapeHtml(timeAgo(p.first_seen))}</td>
+      <td class="age-cell mono" data-label="Posted" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</td>
     </tr>
-  `).join("");
+  `;
+  }).join("");
 }
 
 // --- sources tab --------------------------------------------------------
@@ -1039,7 +1076,7 @@ document.querySelector('[role="tablist"]').addEventListener("keydown", (e) => {
   }
 });
 
-wireSortable("tab-feed", feedSort, renderFeed, ["first_seen"]);
+wireSortable("tab-feed", feedSort, renderFeed, ["posted_at_ts"]);
 wireSortable("tab-sources", sourceSort, renderSources, ["last_scraped_at"]);
 wireSortable("tab-candidates", candidateSort, renderCandidates, ["checked_at"]);
 wireSortable("tab-duplicates", duplicateSort, renderDuplicates, ["first_seen"]);

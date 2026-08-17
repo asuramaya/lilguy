@@ -49,6 +49,7 @@ from filters import is_internship  # noqa: E402
 
 from db import cursor  # noqa: E402
 from dedup import compute_dedup_key, run_dedup_sweep  # noqa: E402
+from posted_at import parse_posted_at  # noqa: E402
 from source_sync import run_source_sync_sweep  # noqa: E402
 
 MAX_WORKERS = 6
@@ -118,12 +119,17 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
     new_count = 0
     for p in postings:
         dedup_key = compute_dedup_key(p.company, p.title, p.location)
+        # Anchored on seen_at, not now(), so the stored value means the
+        # same thing whenever it's computed -- Workday's "Posted 2 Days
+        # Ago" is only meaningful relative to when the page was fetched.
+        posted_ts, posted_approx = parse_posted_at(p.posted_at, seen_at)
         cur.execute(
             """
             INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
-                                   ats, category, posted_at, description_snippet, status,
+                                   ats, category, posted_at, posted_at_ts, posted_at_approx,
+                                   description_snippet, status,
                                    dedup_key, first_seen, last_seen)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 location = EXCLUDED.location,
@@ -147,6 +153,28 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 -- path, not the only path.
                 category = EXCLUDED.category,
                 company = EXCLUDED.company,
+                posted_at = EXCLUDED.posted_at,
+                -- Exact dates just take the new value (successive
+                -- scrapes agree, and a provider may legitimately revise
+                -- one). APPROXIMATE ones take the EARLIEST estimate
+                -- instead, which is not fussiness -- it's the only
+                -- correct answer for a saturating bound. Workday's
+                -- "Posted 30+ Days Ago" means "posted at or before
+                -- now - 30d", an UPPER bound on the date. Re-resolving
+                -- it against each new scrape moves that bound forward
+                -- forever, so a posting that is genuinely six months
+                -- old would report as 30 days old indefinitely -- the
+                -- exact staleness this column exists to expose. Keeping
+                -- the minimum preserves the tightest bound we ever saw.
+                -- (Non-saturating values like "Posted 2 Days Ago" are
+                -- self-consistent across scrapes and unaffected.)
+                posted_at_ts = CASE
+                    WHEN EXCLUDED.posted_at_approx AND postings.posted_at_ts IS NOT NULL
+                         AND EXCLUDED.posted_at_ts IS NOT NULL
+                    THEN LEAST(postings.posted_at_ts, EXCLUDED.posted_at_ts)
+                    ELSE COALESCE(EXCLUDED.posted_at_ts, postings.posted_at_ts)
+                END,
+                posted_at_approx = EXCLUDED.posted_at_approx,
                 -- Reopen only if it was 'closed' -- a 'duplicate' status
                 -- is service/dedup.py's call, not this upsert's; forcing
                 -- it back to 'open' here would just fight the next sweep
@@ -157,7 +185,8 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
             """,
             (
                 p.id, source_id, source_entry, p.company, p.title, p.location, p.url,
-                p.source, p.category, p.posted_at, p.description_snippet, dedup_key, seen_at, seen_at,
+                p.source, p.category, p.posted_at, posted_ts, posted_approx,
+                p.description_snippet, dedup_key, seen_at, seen_at,
             ),
         )
         if cur.rowcount == 1:

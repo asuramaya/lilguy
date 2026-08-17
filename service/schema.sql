@@ -151,3 +151,36 @@ CREATE TABLE IF NOT EXISTS events (
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at DESC);
+
+-- ---------------------------------------------------------------------
+-- Additive column migrations
+--
+-- Everything above is CREATE ... IF NOT EXISTS, which is idempotent for
+-- a table that does not exist yet but does NOTHING to a table that
+-- already does -- so a column added to a definition above never reaches
+-- a live database. db.py's header explains why there's no Alembic here
+-- (five tables, hand-written SQL, not worth the abstraction yet); this
+-- section is the small price of that choice. ADD COLUMN IF NOT EXISTS
+-- is itself idempotent, so init_schema() stays safe to run on every
+-- boot, which is how the migrate container already behaves.
+--
+-- Keep these append-only and additive. A change that has to rewrite or
+-- drop data is the signal that this project has outgrown the approach
+-- and wants a real migration chain instead.
+-- ---------------------------------------------------------------------
+
+-- Parsed form of postings.posted_at. The raw TEXT column is kept as
+-- provenance -- providers disagree wildly (ISO-8601, epoch millis,
+-- English prose like "Posted 30+ Days Ago"), and keeping the original
+-- means a parser bug can be re-run against the source value rather than
+-- against a lossy conversion. See service/posted_at.py.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS posted_at_ts TIMESTAMPTZ;
+
+-- True when the provider gave a bound or a coarse value rather than a
+-- real timestamp ("30+ days ago", a date with no time). Lets the UI say
+-- "30+ days ago" instead of implying a precision nobody offered.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS posted_at_approx BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- NULLS LAST because a posting with no parseable date should sort to
+-- the bottom of "newest first", not the top.
+CREATE INDEX IF NOT EXISTS idx_postings_posted_at_ts ON postings (posted_at_ts DESC NULLS LAST);
