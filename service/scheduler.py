@@ -129,6 +129,15 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 url = EXCLUDED.url,
                 description_snippet = EXCLUDED.description_snippet,
                 dedup_key = EXCLUDED.dedup_key,
+                -- Missing from this list originally: a posting kept
+                -- whatever category it was first inserted with forever,
+                -- even after apply_categorization.py fixed the source's
+                -- real category and every later scrape fetched the
+                -- correct value in EXCLUDED.category -- confirmed live,
+                -- 101/356 open postings in the default feed still showed
+                -- 'Uncategorized' after the sources table itself had
+                -- zero Uncategorized rows left.
+                category = EXCLUDED.category,
                 -- Reopen only if it was 'closed' -- a 'duplicate' status
                 -- is service/dedup.py's call, not this upsert's; forcing
                 -- it back to 'open' here would just fight the next sweep
