@@ -1,11 +1,7 @@
 export const meta = {
   name: 'categorize-sources',
   description: 'Research and categorize discovery-promoted sources still sitting Uncategorized, fixing raw-slug display names too',
-  whenToUse: 'Run whenever the Uncategorized backlog is worth clearing -- pull the current list ' +
-             '(SELECT company FROM sources WHERE category=\'Uncategorized\' ORDER BY company) and pass it ' +
-             'as args (a flat array of company tokens). Auto-chunks into batches of ~20 internally, one agent ' +
-             'per batch. Apply the result with scripts/apply_categorization.py -- see docs/service-architecture.md\'s ' +
-             '"Categorizing discovery-promoted sources" section for the full recipe.',
+  whenToUse: 'Run whenever the Uncategorized backlog is worth clearing -- pull the current list (SELECT company FROM sources WHERE category=\'Uncategorized\' ORDER BY company) and pass it as args (a flat array of company tokens). Auto-chunks into batches of ~20 internally, one agent per batch. Apply the result with scripts/apply_categorization.py -- see docs/service-architecture.md\'s "Categorizing discovery-promoted sources" section for the full recipe.',
   phases: [
     { title: 'Research', detail: 'one agent per batch of ~20 tokens, WebSearch to identify real company + category' },
   ],
