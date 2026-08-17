@@ -165,6 +165,129 @@ def test_unknown_source_errors():
     assert "error" in api.source(999999)
 
 
+def test_source_lists_its_open_postings_not_just_a_count():
+    # "28 open postings" as a bare number is a dead end -- the page has to
+    # name them, which is the whole reason to visit a board.
+    muse = _source("The Muse (aggregator)", ats="muse")
+    for i, name in enumerate(["Acme", "Globex", "Initech"]):
+        _posting(f"m{i}", name, muse, ats="muse", days_old=i + 1)
+    _posting("closed", "Acme", muse, ats="muse", status="closed")
+
+    out = api.source(muse)
+    assert [p["id"] for p in out["postings"]] == ["m0", "m1", "m2"], "newest first, open only"
+    assert out["postings_truncated"] is False
+
+
+def test_source_posting_list_is_bounded_and_says_so():
+    # One aggregator row carries thousands; a page rendering all of them
+    # is neither readable nor fast, and silently stopping short would
+    # read as "that's all there is".
+    muse = _source("The Muse (aggregator)", ats="muse")
+    for i in range(api.SOURCE_POSTING_LIMIT + 5):
+        _posting(f"m{i:04d}", f"Company {i}", muse, ats="muse")
+    out = api.source(muse)
+    assert len(out["postings"]) == api.SOURCE_POSTING_LIMIT
+    assert out["postings_truncated"] is True
+
+
+def test_source_reports_only_the_latest_run():
+    sid = _source("Acme")
+    with db.cursor() as cur:
+        for i, ok in enumerate([True, False, True]):
+            cur.execute(
+                "INSERT INTO scrape_runs (source_id, started_at, ok, error, fetched_count, internship_count) "
+                "VALUES (%s, now() - make_interval(hours => %s), %s, %s, 10, 2)",
+                (sid, 3 - i, ok, None if ok else "boom"),
+            )
+    out = api.source(sid)
+    assert out["latest_run"]["ok"] is True, "the most recent run, not the first stored"
+    assert "recent_runs" not in out
+
+
+def test_source_with_no_runs_yet_reports_none_rather_than_failing():
+    sid = _source("Acme")
+    assert api.source(sid)["latest_run"] is None
+
+
+# --- company page carries the board health that the source page used to --
+
+def test_company_reached_via_carries_board_health():
+    # A direct board has no page of its own any more, so everything that
+    # page uniquely showed has to survive here or folding them together
+    # would lose it.
+    sid = _source("Acme")
+    _posting("a", "Acme", sid)
+    with db.cursor() as cur:
+        cur.execute("UPDATE sources SET consecutive_failures = 3 WHERE id = %s", (sid,))
+        cur.execute(
+            "INSERT INTO scrape_runs (source_id, started_at, ok, error, fetched_count, internship_count) "
+            "VALUES (%s, now(), false, 'HTTP 500', 0, 0)",
+            (sid,),
+        )
+    via = api.company(compute_company_key("Acme"))["reached_via"]
+    assert len(via) == 1
+    assert via[0]["consecutive_failures"] == 3
+    assert via[0]["last_run_ok"] is False
+    assert via[0]["last_run_error"] == "HTTP 500"
+
+
+def test_company_reached_via_has_one_entry_per_board_not_per_run():
+    # The health join is LATERAL over scrape_runs; without DISTINCT ON a
+    # board with several runs would multiply its own row and the page
+    # would list the same board repeatedly.
+    sid = _source("Acme")
+    _posting("a", "Acme", sid)
+    with db.cursor() as cur:
+        for i in range(4):
+            cur.execute(
+                "INSERT INTO scrape_runs (source_id, started_at, ok, fetched_count, internship_count) "
+                "VALUES (%s, now() - make_interval(hours => %s), true, 1, 1)",
+                (sid, i),
+            )
+    assert len(api.company(compute_company_key("Acme"))["reached_via"]) == 1
+
+
+# --- categories --------------------------------------------------------
+
+def _categorized(pid, category, source_id, status="open"):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_id, source_entry, company, company_key, title, location,
+                                   url, ats, category, status, first_seen, last_seen)
+            VALUES (%s, %s, 'x', 'Acme', 'acme', 'Ops Intern', 'Remote', %s,
+                    'greenhouse', %s, %s, now(), now())
+            """,
+            (pid, source_id, f"https://x/{pid}", category, status),
+        )
+
+
+def test_categories_rank_by_open_posting_count_not_alphabetically():
+    sid = _source("Acme")
+    for i in range(3):
+        _categorized(f"log{i}", "Logistics", sid)
+    _categorized("aero", "Aerospace & Defense", sid)
+    out = api.categories()["categories"]
+    assert [c["category"] for c in out] == ["Logistics", "Aerospace & Defense"]
+    assert out[0]["open_postings"] == 3
+
+
+def test_categories_omit_ones_with_nothing_open():
+    # A category whose every posting has closed is a dead end in the
+    # picker: selecting it returns an empty feed and no explanation.
+    sid = _source("Acme")
+    _categorized("open", "Logistics", sid)
+    _categorized("gone", "Semiconductors", sid, status="closed")
+    assert [c["category"] for c in api.categories()["categories"]] == ["Logistics"]
+
+
+def test_categories_ties_break_alphabetically_so_the_order_is_stable():
+    sid = _source("Acme")
+    _categorized("b", "Semiconductors", sid)
+    _categorized("a", "Logistics", sid)
+    assert [c["category"] for c in api.categories()["categories"]] == ["Logistics", "Semiconductors"]
+
+
 # --- ats ---------------------------------------------------------------
 
 def test_ats_summarizes_the_platform():

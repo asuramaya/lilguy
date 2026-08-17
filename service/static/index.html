@@ -265,6 +265,18 @@
     color: var(--ink);
   }
 
+  /* The category combobox needs room for the longest real labels
+     ("Healthcare Marketing Communications"), but must not eat the whole
+     toolbar on a narrow screen. */
+  .toolbar .field:has(#feed-category) { min-width: 210px; }
+
+  .field-hint {
+    color: var(--bad);
+    font-size: 11.5px;
+    align-self: center;
+  }
+  .field-hint:empty { display: none; }
+
   .toolbar .field-icon {
     color: var(--ink-tertiary);
     font-family: ui-monospace, monospace;
@@ -499,6 +511,21 @@
   .mini-row:hover { background: var(--row-hover); }
   .mini-row .meta { color: var(--ink-tertiary); font-size: 12px; white-space: nowrap; }
 
+  /* The board a company's postings arrive through, with its own health.
+     Wraps rather than nowraps: unlike a mini-row's short date, this meta
+     line carries a failure message of unpredictable length. */
+  .board-card {
+    padding: 9px 11px; border: 1px solid var(--border); border-radius: 5px;
+    background: var(--row); margin-bottom: 6px;
+  }
+  .board-card .board-name { font-weight: 600; text-decoration: none; color: var(--ink); }
+  .board-card .board-name:hover { text-decoration: underline; }
+  .board-card .meta {
+    display: block; margin-top: 3px; color: var(--ink-tertiary);
+    font-size: 12px; line-height: 1.5;
+  }
+  .bad { color: var(--bad); }
+
   .banner {
     padding: 10px 12px; border-radius: 5px; font-size: 12.5px;
     border: 1px solid var(--border-strong); background: var(--row);
@@ -583,10 +610,21 @@
         <label class="field-icon" for="preset">preset</label>
         <select id="preset"></select>
       </div>
+      <!-- A combobox, not a <select>: the taxonomy is ~310 labels, and an
+           alphabetical dropdown that long is a scroll, not a control.
+           <input list> gives native typeahead with no build step, and the
+           datalist is ordered by open-posting count so the categories
+           that actually return something come first. -->
       <div class="field">
         <label class="field-icon" for="feed-category">category</label>
-        <select id="feed-category"><option value="">All</option></select>
+        <input id="feed-category" list="category-options" autocomplete="off"
+               placeholder="All categories" aria-describedby="category-hint">
+        <datalist id="category-options"></datalist>
       </div>
+      <!-- aria-live so a screen-reader user hears that their typed text
+           matched nothing, rather than silently getting the whole feed
+           back with no explanation of why. -->
+      <span id="category-hint" class="field-hint" role="status" aria-live="polite"></span>
       <div class="field">
         <label class="field-icon" for="feed-age">posted</label>
         <select id="feed-age">
@@ -742,12 +780,21 @@
 
 <script>
 // "all" is the API's reserved no-filter sentinel (see service/api.py's
-// ALL_POSTINGS). Listed first because the raw corpus is ~13x larger than
-// what this fork's default filter matches, and before this option
-// existed there was no way to reach any of it from the UI.
+// ALL_POSTINGS), and it is the DEFAULT landing view -- operator ruling,
+// 2026-08-17. Measured cause: only 7.6% of the corpus (355 of 4,644
+// postings, 72 of 579 companies) matched the old supply-chain default,
+// so the landing page hid ~92% of what the scrapers actually collect and
+// nearly all recent work was invisible until a reader changed a dropdown
+// they had no reason to suspect. Supply Chain is now one interest among
+// eight rather than the frame around everything.
+//
+// The fork's own filters.yaml is still reachable as "This fork's filter"
+// -- forking and editing that file remains the documented way to make a
+// narrow build, it just isn't imposed on this deployment's readers.
+const DEFAULT_PRESET = "all";
+
 const PRESETS = [
-  ["", "Default (this fork's filter)"],
-  ["all", "All postings (no filter)"],
+  ["all", "All internships"],
   ["operations-logistics-supply-chain", "Supply Chain"],
   ["software-engineering", "Software Engineering"],
   ["data-analytics", "Data Analytics"],
@@ -755,6 +802,7 @@ const PRESETS = [
   ["human-resources", "Human Resources"],
   ["marketing", "Marketing"],
   ["sales", "Sales"],
+  ["", "This fork's filter (filters.yaml)"],
 ];
 
 // A page, not a cap. This used to be 1000 with no way to go further,
@@ -769,6 +817,9 @@ for (const [value, label] of PRESETS) {
   opt.textContent = label;
   presetSelect.appendChild(opt);
 }
+// Set before any ?preset= from the URL is applied, so a shared link still
+// wins over the default.
+presetSelect.value = DEFAULT_PRESET;
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -872,6 +923,40 @@ function populateCategoryOptions(selectEl, rows) {
   if (categories.includes(current)) selectEl.value = current;
 }
 
+// The feed's own category control is a combobox rather than a <select>,
+// so it fills a <datalist> instead. Ordered by open-posting count, with
+// the count shown as the option's label -- browsers render that beside
+// the value, which turns "which of these 310 is worth picking" from a
+// guess into a visible number.
+let feedCategoryNames = new Set();
+function populateCategoryDatalist(listEl, rows) {
+  feedCategoryNames = new Set(rows.map(r => r.category));
+  listEl.innerHTML = rows.map(r =>
+    `<option value="${escapeHtml(r.category)}" label="${escapeHtml(r.category)} — ${r.open_postings}"></option>`
+  ).join("");
+}
+
+// A typed value only filters when it names a real category. Anything
+// else is treated as "All" rather than silently returning zero rows,
+// which is what an exact-match filter over free text would otherwise do
+// on every partially-typed word.
+function feedCategoryValue() {
+  const raw = document.getElementById("feed-category").value.trim();
+  if (!raw) return "";
+  if (feedCategoryNames.has(raw)) return raw;
+  const ci = [...feedCategoryNames].find(c => c.toLowerCase() === raw.toLowerCase());
+  return ci || "";
+}
+
+function syncCategoryHint() {
+  const raw = document.getElementById("feed-category").value.trim();
+  const hint = document.getElementById("category-hint");
+  if (!hint) return;
+  hint.textContent = raw && !feedCategoryValue()
+    ? `no category named “${raw}” — showing all`
+    : "";
+}
+
 function sortRows(rows, key, dir) {
   return [...rows].sort((a, b) => {
     const av = a[key] ?? "";
@@ -939,8 +1024,12 @@ function syncUrl() {
   const p = new URLSearchParams();
   const tab = document.querySelector('[role="tab"][aria-selected="true"]').dataset.tab;
   if (tab !== "feed") p.set("tab", tab);
-  if (presetSelect.value) p.set("preset", presetSelect.value);
-  const cat = document.getElementById("feed-category").value;
+  // The default is omitted so a plain "/" stays clean, but ANY other
+  // choice is written -- including the empty-string fork filter, which
+  // would otherwise be indistinguishable from "nothing chosen" and snap
+  // back to the default on reload.
+  if (presetSelect.value !== DEFAULT_PRESET) p.set("preset", presetSelect.value);
+  const cat = feedCategoryValue();
   if (cat) p.set("category", cat);
   const q = document.getElementById("search").value.trim();
   if (q) p.set("q", q);
@@ -969,7 +1058,7 @@ function feedQueryUrl() {
   if (presetSelect.value) p.set("preset", presetSelect.value);
   const q = document.getElementById("search").value.trim();
   if (q) p.set("q", q);
-  const category = document.getElementById("feed-category").value;
+  const category = feedCategoryValue();
   if (category) p.set("category", category);
   const age = document.getElementById("feed-age").value;
   if (age) p.set("max_age_days", age);
@@ -989,14 +1078,17 @@ let feedCategoriesLoaded = false;
 async function loadFeedCategories() {
   if (feedCategoriesLoaded) return;
   try {
-    const res = await fetch("/sources");
+    // /categories, not /sources: the filter matches POSTINGS, so the list
+    // has to be the categories that postings actually carry, ranked by
+    // how many. Ranking by source count would put a category with one
+    // dormant board above one with four hundred live roles.
+    const res = await fetch("/categories");
     const data = await res.json();
-    populateCategoryOptions(document.getElementById("feed-category"), data.sources || []);
+    populateCategoryDatalist(document.getElementById("category-options"), data.categories || []);
     feedCategoriesLoaded = true;
     const wanted = initialParams.get("category");
     if (wanted) {
-      const sel = document.getElementById("feed-category");
-      if ([...sel.options].some(o => o.value === wanted)) sel.value = wanted;
+      if (feedCategoryNames.has(wanted)) document.getElementById("feed-category").value = wanted;
       initialParams.delete("category");
       return true;
     }
@@ -1269,7 +1361,13 @@ presetSelect.addEventListener("change", () => { loadFeed(); syncUrl(); });
 // Debounced because each keystroke is now a round trip, not a local
 // filter -- 140ms turns a burst of typing into one request.
 document.getElementById("search").addEventListener("input", debounce(() => { loadFeed(); syncUrl(); }));
-document.getElementById("feed-category").addEventListener("change", () => { loadFeed(); syncUrl(); });
+// "input" as well as "change": a combobox fires change only on commit,
+// so typing a full category name and stopping would leave the feed
+// stale until the field lost focus. Debounced for the same reason the
+// search box is -- one render per burst of keystrokes, not one per key.
+const onCategoryChanged = () => { syncCategoryHint(); loadFeed(); syncUrl(); };
+document.getElementById("feed-category").addEventListener("change", onCategoryChanged);
+document.getElementById("feed-category").addEventListener("input", debounce(onCategoryChanged));
 document.getElementById("feed-age").addEventListener("change", () => { loadFeed(); syncUrl(); });
 document.getElementById("source-search").addEventListener("input", debounce(renderSources));
 document.getElementById("source-category").addEventListener("change", renderSources);
@@ -1407,8 +1505,12 @@ document.addEventListener("click", (ev) => {
   navigateTo(link.dataset.route, link.dataset.value);
 });
 
-function navigateTo(kind, value) {
-  history.pushState(null, "", entityHref(kind, value));
+function navigateTo(kind, value, { replace = false } = {}) {
+  // replace:true is for a page that FORWARDS to another (a direct board
+  // to its company). Pushing there would trap Back in a loop between the
+  // two; replacing leaves the feed as the previous entry, which is where
+  // Back should actually go.
+  history[replace ? "replaceState" : "pushState"](null, "", entityHref(kind, value));
   route();
   window.scrollTo(0, 0);
 }
@@ -1510,11 +1612,27 @@ async function renderCompanyPage(key) {
     ? `<div class="banner"><b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name — it hasn't been identified yet.</div>`
     : "";
 
+  // "Where these come from" rather than a bare chip row: for a company
+  // scraped straight off its own board, this IS the source page, so the
+  // board's health has to be legible here or folding the two together
+  // would lose it.
   const via = data.reached_via.map(v => `
-    <a class="chip" href="${entityHref(v.source_id ? "source" : "ats", v.source_id || v.ats)}"
-       data-route="${v.source_id ? "source" : "ats"}" data-value="${escapeHtml(String(v.source_id || v.ats))}">
-      ${escapeHtml(v.source_entry || v.ats)} <span class="n">${escapeHtml(v.ats)}</span>
-    </a>`).join("");
+    <div class="board-card">
+      <a class="board-name" href="${entityHref(v.source_id ? "source" : "ats", v.source_id || v.ats)}"
+         data-route="${v.source_id ? "source" : "ats"}" data-value="${escapeHtml(String(v.source_id || v.ats))}">
+        ${escapeHtml(v.source_entry || v.ats)}</a>
+      <span class="meta">
+        ${entityLink("ats", v.ats, v.ats)}
+        ${v.status ? ` · <span class="status-cell status-${escapeHtml(v.status)}">${escapeHtml(v.status)}</span>` : ""}
+        ${v.last_scraped_at ? ` · checked ${escapeHtml(timeAgo(v.last_scraped_at))}` : ""}
+        ${v.last_run_at
+          ? ` · last run ${v.last_run_ok
+              ? `ok (${v.fetched_count} fetched, ${v.internship_count} relevant)`
+              : `<b class="bad">failed</b> — ${escapeHtml(String(v.last_run_error || "").slice(0, 90))}`}`
+          : ""}
+        ${v.consecutive_failures ? ` · <b class="bad">${v.consecutive_failures} consecutive failures</b>` : ""}
+      </span>
+    </div>`).join("");
 
   const rows = list => `<div class="mini-list">${list.map(p => `
     <a class="mini-row" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}">
@@ -1530,10 +1648,10 @@ async function renderCompanyPage(key) {
     ${data.name_variants.length > 1
       ? `<div class="banner">Also appears as ${data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ")} — merged into one page.</div>`
       : ""}
-    <div class="section-title">Reachable through</div>
-    <div class="chip-row">${via}</div>
     <div class="section-title">${open.length} open ${open.length === 1 ? "posting" : "postings"}</div>
     ${open.length ? rows(open) : `<div class="empty">No open postings right now.</div>`}
+    <div class="section-title">Where these come from</div>
+    ${via}
     ${other.length ? `<div class="section-title">${other.length} closed or duplicate</div>${rows(other)}` : ""}`;
 }
 
@@ -1545,51 +1663,61 @@ async function renderSourcePage(id) {
   if (data.error) return showDetailError(data.error);
   const s = data.source;
 
-  // The direct jump you asked for -- but only when this source really is
-  // one employer. Offering it on an aggregator would re-assert exactly
-  // the conflation these pages exist to separate.
-  const jump = !data.is_aggregator && data.company_key
-    ? entityLink("company", data.company_key, `View ${s.company} as a company →`, "btn primary")
-    : "";
+  // A DIRECT board is not a separate thing from the company it belongs
+  // to -- same name, same postings, and the only extra it carried was
+  // scrape health, which now lives on the company page. Two pages for one
+  // real-world entity is what made "source" and "company" read as
+  // synonyms. So: forward, replacing history so Back still reaches the
+  // feed rather than bouncing between the two.
+  // An AGGREGATOR keeps its own page, because there the source genuinely
+  // IS a different entity from the employers it carries.
+  if (!data.is_aggregator && data.company_key) {
+    return navigateTo("company", data.company_key, { replace: true });
+  }
 
   const companies = data.companies.length ? `
-    <div class="section-title">${data.is_aggregator ? `Employers carried by this source (${data.stats.companies})` : "Employer"}</div>
+    <div class="section-title">Employers carried by this source (${data.stats.companies})</div>
     <div class="chip-row">${data.companies.slice(0, 120).map(c => `
       <a class="chip" href="${entityHref("company", c.company_key)}" data-route="company" data-value="${escapeHtml(c.company_key)}">
         ${escapeHtml(c.company)} <span class="n">${c.n}</span>
       </a>`).join("")}</div>` : "";
 
-  const runs = data.recent_runs.length ? `
-    <div class="section-title">Recent runs</div>
-    <div class="mini-list">${data.recent_runs.map(r => `
-      <div class="mini-row">
-        <span>${r.ok ? "ok" : escapeHtml(String(r.error || "failed")).slice(0, 90)}</span>
-        <span class="meta">${escapeHtml(timeAgo(r.started_at))}${r.ok ? ` · ${r.fetched_count} fetched, ${r.internship_count} relevant` : ""}</span>
-      </div>`).join("")}</div>` : "";
+  const r = data.latest_run;
+  const run = r ? `<span class="meta"> · last run ${
+    r.ok ? `ok (${r.fetched_count} fetched, ${r.internship_count} relevant)`
+         : `<b class="bad">failed</b> — ${escapeHtml(String(r.error || "").slice(0, 90))}`
+  } ${escapeHtml(timeAgo(r.started_at))}</span>` : "";
+
+  const openRows = data.postings.length ? `
+    <div class="section-title">
+      ${data.stats.open} open ${data.stats.open === 1 ? "posting" : "postings"}${
+        data.postings_truncated ? ` <span class="meta">— showing the ${data.postings.length} most recent</span>` : ""}
+    </div>
+    <div class="mini-list">${data.postings.map(p => `
+      <a class="mini-row" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}">
+        <span>${escapeHtml(p.title)}</span>
+        <span class="meta">${escapeHtml(p.company || "")}${p.location ? ` · ${escapeHtml(p.location)}` : ""} · ${escapeHtml(postedCell(p).text)}</span>
+      </a>`).join("")}</div>`
+    : `<div class="empty">No open postings right now.</div>`;
 
   detailEl().innerHTML = `
     ${crumb("Back to feed")}
     <h2>${escapeHtml(s.company)}</h2>
     <div class="sub">
-      ${data.is_aggregator ? "Aggregator source" : "Direct board"} ·
-      ${entityLink("ats", s.ats, s.ats)} ·
+      Aggregator source · ${entityLink("ats", s.ats, s.ats)} ·
       <span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span>
+      ${run}
     </div>
-    ${data.is_aggregator
-      ? `<div class="banner"><b>This source is not a company.</b> It carries postings from ${data.stats.companies} different employers, so its listings belong to those companies rather than to the board itself.</div>`
-      : ""}
-    ${jump ? `<div class="actions">${jump}</div>` : ""}
+    <div class="banner"><b>This source is not a company.</b> It carries postings from ${data.stats.companies} different employers, so its listings belong to those companies rather than to the board itself.</div>
+    ${openRows}
+    ${companies}
     <div class="kv">
-      <div><span class="k">Open postings</span><span class="v">${data.stats.open}</span></div>
       <div><span class="k">Ever seen</span><span class="v">${data.stats.total}</span></div>
-      <div><span class="k">Employers</span><span class="v">${data.stats.companies}</span></div>
       <div><span class="k">Scrape interval</span><span class="v">${Math.round((s.scrape_interval_seconds || 0) / 60)} min</span></div>
       <div><span class="k">Consecutive failures</span><span class="v">${s.consecutive_failures}</span></div>
       <div><span class="k">Last scraped</span><span class="v">${escapeHtml(timeAgo(s.last_scraped_at))}</span></div>
       <div><span class="k">Added by</span><span class="v">${escapeHtml(s.added_by || "—")}</span></div>
-    </div>
-    ${companies}
-    ${runs}`;
+    </div>`;
 }
 
 // --- ats page -----------------------------------------------------------

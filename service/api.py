@@ -52,6 +52,12 @@ ALL_POSTINGS = "all"
 # response rather than a silently short answer.
 SOURCE_ROW_CAP = 20000
 
+# How many open postings a single source page lists inline. Bounded
+# because one aggregator row carries thousands (The Muse alone holds
+# ~2.8k), and a page that renders all of them is neither readable nor
+# fast. The response says when it truncated rather than trailing off.
+SOURCE_POSTING_LIMIT = 200
+
 app = FastAPI(title="Internship feed", description="Live feed of sourced internship postings.")
 
 
@@ -267,9 +273,26 @@ def company(company_key: str):
         # companies that's one; for a company that has its own board AND
         # appears on an aggregator it's several, and seeing that is the
         # point of the page.
+        #
+        # Carries the board's own health (status, staleness, last run) so
+        # that a DIRECT board needs no separate page of its own: for a
+        # company scraped straight off its Greenhouse, the source page and
+        # this page were near-duplicates, which is exactly what made
+        # "source" and "company" feel like the same thing wearing two
+        # hats. An aggregator still gets its own page, because there it
+        # really is a different entity from the employers it carries.
         cur.execute(
-            "SELECT DISTINCT p.source_entry, p.ats, s.id AS source_id, s.status, s.category "
-            "FROM postings p LEFT JOIN sources s ON p.source_id = s.id "
+            "SELECT DISTINCT ON (p.source_entry, p.ats) "
+            "       p.source_entry, p.ats, s.id AS source_id, s.status, s.category, "
+            "       s.last_scraped_at, s.consecutive_failures, s.scrape_interval_seconds, "
+            "       r.ok AS last_run_ok, r.error AS last_run_error, "
+            "       r.started_at AS last_run_at, r.fetched_count, r.internship_count "
+            "FROM postings p "
+            "LEFT JOIN sources s ON p.source_id = s.id "
+            "LEFT JOIN LATERAL ("
+            "    SELECT ok, error, started_at, fetched_count, internship_count "
+            "    FROM scrape_runs WHERE source_id = s.id ORDER BY started_at DESC LIMIT 1"
+            ") r ON true "
             "WHERE p.company_key = %s",
             (company_key,),
         )
@@ -314,12 +337,27 @@ def source(source_id: int):
         )
         companies = [_row_to_filter_dict(r) for r in cur.fetchall()]
 
+        # ONE run, not ten. A scroll of near-identical "ok · 40 fetched"
+        # lines is a log, and a log answers a question nobody browsing a
+        # board is asking; whether the last run worked is the whole of
+        # what a reader needs, and the space is better spent on the
+        # postings themselves.
         cur.execute(
             "SELECT started_at, finished_at, ok, error, fetched_count, internship_count "
-            "FROM scrape_runs WHERE source_id = %s ORDER BY started_at DESC LIMIT 10",
+            "FROM scrape_runs WHERE source_id = %s ORDER BY started_at DESC LIMIT 1",
             (source_id,),
         )
-        runs = [_row_to_filter_dict(r) for r in cur.fetchall()]
+        latest_run = cur.fetchone()
+
+        cur.execute(
+            "SELECT id, title, company, company_key, location, posted_at_ts, posted_at_approx, "
+            "       first_seen "
+            "FROM postings WHERE source_id = %s AND status = 'open' "
+            "ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC, id "
+            "LIMIT %s",
+            (source_id, SOURCE_POSTING_LIMIT),
+        )
+        postings = [_row_to_filter_dict(r) for r in cur.fetchall()]
 
     # Computed from the source's OWN name rather than from its postings,
     # because a direct source with no current openings is still that
@@ -332,7 +370,9 @@ def source(source_id: int):
         "source": row,
         "stats": stats,
         "companies": companies,
-        "recent_runs": runs,
+        "latest_run": latest_run,
+        "postings": postings,
+        "postings_truncated": len(postings) >= SOURCE_POSTING_LIMIT,
         "company_key": compute_company_key(row.get("company") or ""),
         "is_aggregator": (stats or {}).get("companies", 0) > 1,
     }
@@ -366,6 +406,32 @@ def ats(name: str):
         return {"error": "no such ats"}
     return {"ats": name, "source_stats": source_stats, "posting_stats": posting_stats,
             "sources": sources_on_platform}
+
+
+@app.get("/categories")
+def categories():
+    """Categories ranked by how many OPEN POSTINGS carry them.
+
+    Ranking by source count would be the easier query and the wrong
+    number: the category control filters postings, so what a reader
+    wants ranked is what they'll actually get back. The two diverge
+    sharply here -- one aggregator source carries thousands of postings
+    while most direct boards carry a handful.
+
+    The taxonomy is deliberately fine-grained (~310 labels for 579
+    sources; the operator ruled specificity is the point, 2026-08-17),
+    which makes an alphabetical dropdown of every label unusable. This
+    endpoint is what lets the UI put the ones that actually have
+    postings behind them first.
+    """
+    with cursor() as cur:
+        cur.execute(
+            "SELECT category, count(*) FILTER (WHERE status = 'open') AS open_postings "
+            "FROM postings WHERE category IS NOT NULL AND category <> '' "
+            "GROUP BY category HAVING count(*) FILTER (WHERE status = 'open') > 0 "
+            "ORDER BY open_postings DESC, category"
+        )
+        return {"categories": [_row_to_filter_dict(r) for r in cur.fetchall()]}
 
 
 # Deliberately reuses feed() rather than reimplementing the query: a
