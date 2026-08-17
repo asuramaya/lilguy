@@ -506,6 +506,10 @@
   }
   .banner b { color: var(--ink); font-weight: 600; }
 
+  .feed-more { display: flex; justify-content: center; padding: 22px 0 4px; }
+  .feed-more .meta { color: var(--ink-tertiary); font-size: 11.5px; }
+  .all-loaded { color: var(--ink-tertiary); font-size: 12px; }
+
   footer {
     border-top: 1px solid var(--border);
     color: var(--ink-tertiary);
@@ -622,6 +626,7 @@
       </thead>
       <tbody id="feed-body"></tbody>
     </table>
+    <div id="feed-more" class="feed-more"></div>
   </section>
 
   <section id="tab-sources" role="tabpanel" aria-labelledby="tabbtn-sources" tabindex="0" hidden>
@@ -752,7 +757,10 @@ const PRESETS = [
   ["sales", "Sales"],
 ];
 
-const FEED_LIMIT = 1000;
+// A page, not a cap. This used to be 1000 with no way to go further,
+// which left ~3800 of 4833 open postings unreachable from the UI -- the
+// same shape as the old "every preset is a filter" gap, just smaller.
+const FEED_PAGE_SIZE = 200;
 
 const presetSelect = document.getElementById("preset");
 for (const [value, label] of PRESETS) {
@@ -948,6 +956,7 @@ const initialParams = new URLSearchParams(location.search);
 
 let feedPostings = [];
 let feedTotal = 0;
+let feedOffset = 0;
 let feedSort = { key: "posted_at_ts", dir: -1 };
 
 // Every narrowing control is now a SERVER query rather than a filter
@@ -964,7 +973,8 @@ function feedQueryUrl() {
   if (category) p.set("category", category);
   const age = document.getElementById("feed-age").value;
   if (age) p.set("max_age_days", age);
-  p.set("limit", String(FEED_LIMIT));
+  p.set("limit", String(FEED_PAGE_SIZE));
+  if (feedOffset) p.set("offset", String(feedOffset));
   return `/feed?${p.toString()}`;
 }
 
@@ -994,8 +1004,9 @@ async function loadFeedCategories() {
   return false;
 }
 
-async function loadFeed() {
-  document.getElementById("feed-count").textContent = "loading…";
+async function loadFeed({ append = false } = {}) {
+  if (!append) feedOffset = 0;
+  document.getElementById("feed-count").textContent = append ? "loading more…" : "loading…";
   try {
     const res = await fetch(feedQueryUrl());
     const data = await res.json();
@@ -1004,7 +1015,10 @@ async function loadFeed() {
       document.getElementById("feed-count").textContent = "";
       return;
     }
-    feedPostings = data.postings || [];
+    const batch = data.postings || [];
+    // append=true only ever comes from the load-more button, so a filter
+    // change can never silently accumulate rows from the previous query.
+    feedPostings = append ? feedPostings.concat(batch) : batch;
     feedTotal = data.total ?? feedPostings.length;
     renderFeed();
     syncUrl();
@@ -1023,12 +1037,23 @@ function renderFeed() {
 
   // Says plainly when the server capped the result set, rather than
   // presenting a truncated list as if it were the whole match.
-  const truncated = feedTotal > feedPostings.length;
+  const more = feedTotal > feedPostings.length;
   document.getElementById("feed-count").innerHTML =
     `<strong>${feedTotal}</strong> matching` +
-    (truncated
-      ? ` <span class="truncated">(showing newest ${feedPostings.length})</span>`
-      : "");
+    (more ? ` <span class="truncated">(showing ${feedPostings.length})</span>` : "");
+
+  // Rendered after the table so "there is more" is discoverable at the
+  // point you run out of rows, not only in a counter above the fold.
+  const moreWrap = document.getElementById("feed-more");
+  moreWrap.innerHTML = more
+    ? `<button class="btn" id="feed-more-btn">Load ${Math.min(FEED_PAGE_SIZE, feedTotal - feedPostings.length)} more
+         <span class="meta">(${feedTotal - feedPostings.length} remaining)</span></button>`
+    : (feedPostings.length ? `<div class="all-loaded">All ${feedTotal} shown.</div>` : "");
+  const btn = document.getElementById("feed-more-btn");
+  if (btn) btn.addEventListener("click", () => {
+    feedOffset = feedPostings.length;
+    loadFeed({ append: true });
+  });
   document.getElementById("feed-sort-line").textContent =
     `sorted by ${({posted_at_ts: "date posted"})[feedSort.key] || feedSort.key.replace(/_/g, " ")}, ${feedSort.dir === 1 ? "oldest first" : "newest first"}`;
 
