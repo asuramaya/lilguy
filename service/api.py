@@ -103,8 +103,17 @@ def feed(
         # NULLS LAST so postings whose source gave no date sink to the
         # bottom instead of heading a "newest first" list.
         cur.execute(
+            # `id` is a tiebreaker, not decoration: without it the sort
+            # is not TOTAL, and offset paging over a non-total sort
+            # silently repeats and skips rows. Measured here -- 88 open
+            # postings share an identical (posted_at_ts, first_seen)
+            # pair, Postgres may order ties differently per query, and
+            # paging three pages of 200 returned 592 distinct rows out
+            # of 600. A unique final key makes the order deterministic
+            # across separate requests, which is what offset paging
+            # assumes and never states.
             "SELECT * FROM postings WHERE status = 'open' "
-            "ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC LIMIT %s",
+            "ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC, id LIMIT %s",
             (SOURCE_ROW_CAP,),
         )
         rows = [_row_to_filter_dict(r) for r in cur.fetchall()]

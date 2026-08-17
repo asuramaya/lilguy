@@ -136,3 +136,31 @@ def test_max_age_days_filters_on_the_employers_date_not_discovery_time():
 
 def test_unknown_preset_still_errors():
     assert "error" in api.feed(preset="definitely-not-a-preset")
+
+
+def test_paging_never_repeats_or_skips_when_sort_keys_tie():
+    # Without a unique final sort key the ordering is not total, and
+    # Postgres may return tied rows in a different order per query --
+    # so offset paging repeats some and drops others. Found live: 88
+    # open postings shared one (posted_at_ts, first_seen) pair and three
+    # pages of 200 yielded 592 distinct rows out of 600.
+    same_instant = NOW - timedelta(days=5)
+    with db.cursor() as cur:
+        for i in range(25):
+            cur.execute(
+                """
+                INSERT INTO postings (id, source_entry, company, title, location, url, ats,
+                                       category, status, posted_at_ts, first_seen, last_seen)
+                VALUES (%s, 'x', 'Acme', %s, 'Remote', 'https://x', 'greenhouse',
+                        'Logistics', 'open', %s, %s, now())
+                """,
+                (f"tie{i:03d}", f"Intern {i}", same_instant, same_instant),
+            )
+
+    seen = []
+    for offset in range(0, 25, 5):
+        page = api.feed(preset="all", limit=5, offset=offset)
+        seen.extend(p["id"] for p in page["postings"])
+
+    assert len(seen) == 25
+    assert len(set(seen)) == 25, "offset paging repeated or skipped rows across tied sort keys"
