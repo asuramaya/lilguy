@@ -1,4 +1,6 @@
 .venv/
+# Created by scripts/run_tests.sh to run the suite against a scratch DB.
+.venv-test/
 __pycache__/
 *.pyc
 autofill/profile.json
