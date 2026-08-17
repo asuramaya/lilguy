@@ -26,9 +26,12 @@ what makes it self-healing -- it doesn't matter WHY a row went stale
 fixes whatever's still mismatched.
 """
 
+from dedup import DIRECT_SOURCE_ATS
+
+
 
 def run_source_sync_sweep(cur) -> int:
-    """Re-syncs company/category on every posting from its source row.
+    """Re-syncs source-derived fields on postings from their source row.
     Not scoped to status='open' -- closed and duplicate postings are
     real historical records too, and leaving them stale would mean the
     /duplicates audit view keeps showing pre-correction data forever.
@@ -37,13 +40,33 @@ def run_source_sync_sweep(cur) -> int:
     so it is counted by both statements. The number is for logging "the
     sweep did something", and the guarantee that matters is that a
     second consecutive run returns 0."""
+    # ONLY for direct-ATS sources. This is the whole correctness of the
+    # sweep and it was wrong at first: `company` is source-derived for a
+    # direct connector (greenhouse/lever/workday/oracle/jsonld all read
+    # company from OUR config, so it is constant per source) but
+    # job-derived for an aggregator -- muse takes it from each posting's
+    # own company object. Syncing every row from sources.company
+    # therefore overwrote the real employer on every aggregator posting
+    # with the board's label.
+    #
+    # Confirmed live, and it is not a small blast radius: it flattened
+    # all 2798 open Muse postings to "The Muse (aggregator - every real
+    # category, queried separately)", which is not a company at all. It
+    # would also have fought the scheduler's upsert forever -- the next
+    # muse fetch restores the true name, the next sweep destroys it again.
+    #
+    # DIRECT_SOURCE_ATS is imported rather than re-listed: dedup.py
+    # already draws exactly this line for precedence ranking, and two
+    # copies of "which connectors are company-scoped" would drift.
     cur.execute(
         """
         UPDATE postings p SET company = s.company, category = s.category
         FROM sources s
         WHERE p.source_id = s.id
+          AND p.ats = ANY(%s)
           AND (p.company IS DISTINCT FROM s.company OR p.category IS DISTINCT FROM s.category)
-        """
+        """,
+        (sorted(DIRECT_SOURCE_ATS),),
     )
     changed = cur.rowcount
 

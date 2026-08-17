@@ -144,3 +144,59 @@ def test_company_key_unites_spelling_variants_of_one_employer():
         run_source_sync_sweep(cur)
         cur.execute("SELECT DISTINCT company_key FROM postings")
         assert len(cur.fetchall()) == 1
+
+
+def _insert_aggregator_posting(id_, source_id, real_employer):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
+                                   ats, category, status, dedup_key, first_seen, last_seen)
+            VALUES (%s, %s, 'The Muse (aggregator)', %s, 'Intern', 'Remote', 'https://x',
+                    'muse', 'Logistics', 'open', %s, now(), now())
+            """,
+            (id_, source_id, real_employer, f"dk:{id_}"),
+        )
+
+
+def test_sweep_never_overwrites_the_employer_on_an_aggregator_posting():
+    # THE bug this guard exists for, found live: `company` is
+    # source-derived for a direct connector (it comes from our config and
+    # is constant per source) but job-derived for an aggregator -- muse
+    # reads it from each posting. Syncing every row from sources.company
+    # flattened all 2798 open Muse postings to the board's own label,
+    # "The Muse (aggregator ...)", which is not a company at all. It would
+    # also have fought the upsert forever: the next fetch restores the
+    # real name, the next sweep destroys it again.
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO sources (company, ats, category, config, status) "
+            "VALUES ('The Muse (aggregator)', 'muse', 'Aggregated', %s, 'active') RETURNING id",
+            (psycopg2.extras.Json({}),),
+        )
+        muse_id = cur.fetchone()["id"]
+
+    _insert_aggregator_posting("m1", muse_id, "Rocket Lab")
+    _insert_aggregator_posting("m2", muse_id, "Vita Coco")
+
+    with db.cursor() as cur:
+        run_source_sync_sweep(cur)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT id, company FROM postings ORDER BY id")
+        got = {r["id"]: r["company"] for r in cur.fetchall()}
+    assert got == {"m1": "Rocket Lab", "m2": "Vita Coco"}
+
+
+def test_sweep_still_syncs_direct_ats_postings():
+    # The guard must not disable the sweep's actual job for the sources
+    # where company genuinely is source-derived.
+    source_id = _insert_source("Acme Corporation", "Logistics")
+    _insert_posting("d1", source_id, "acmecorp", "Uncategorized")
+    with db.cursor() as cur:
+        run_source_sync_sweep(cur)
+    with db.cursor() as cur:
+        cur.execute("SELECT company, category FROM postings WHERE id = 'd1'")
+        r = cur.fetchone()
+    assert r["company"] == "Acme Corporation"
+    assert r["category"] == "Logistics"
