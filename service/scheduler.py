@@ -127,14 +127,21 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
             """
             INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
                                    ats, category, posted_at, posted_at_ts, posted_at_approx,
-                                   description_snippet, status,
+                                   description_snippet, description, status,
                                    dedup_key, first_seen, last_seen)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 location = EXCLUDED.location,
                 url = EXCLUDED.url,
                 description_snippet = EXCLUDED.description_snippet,
+                -- COALESCE, not a plain overwrite: Workday postings get
+                -- their description from a separate per-posting fetch
+                -- (its list endpoint has none), so the connector sends
+                -- an empty string every cycle. Overwriting would erase
+                -- the fetched text on the very next scrape and re-fetch
+                -- it forever.
+                description = COALESCE(NULLIF(EXCLUDED.description, ''), postings.description),
                 dedup_key = EXCLUDED.dedup_key,
                 -- category and company both come from this source's own
                 -- config (see connectors/*.py: company=entry.get("company",
@@ -186,7 +193,7 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
             (
                 p.id, source_id, source_entry, p.company, p.title, p.location, p.url,
                 p.source, p.category, p.posted_at, posted_ts, posted_approx,
-                p.description_snippet, dedup_key, seen_at, seen_at,
+                p.description_snippet, p.description, dedup_key, seen_at, seen_at,
             ),
         )
         if cur.rowcount == 1:

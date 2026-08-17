@@ -1,7 +1,7 @@
 import requests
 
 from .base import Connector, Posting
-from .util import strip_html
+from .util import strip_html, to_display_text
 
 API = "https://{host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions"
 
@@ -90,6 +90,7 @@ class OracleRecruitingConnector(Connector):
                         category=entry.get("category", ""),
                         posted_at=r.get("PostedDate"),
                         description_snippet=strip_html(description),
+                        description=to_display_text(description),
                     )
                 )
 

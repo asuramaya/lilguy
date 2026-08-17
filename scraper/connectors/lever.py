@@ -1,6 +1,7 @@
 import requests
 
 from .base import Connector, Posting
+from .util import to_display_text
 
 API = "https://api.lever.co/v0/postings/{company}?mode=json"
 
@@ -45,6 +46,7 @@ class LeverConnector(Connector):
                     category=entry.get("category", ""),
                     posted_at=job.get("createdAt"),
                     description_snippet=(job.get("descriptionPlain") or "")[:600],
+                    description=to_display_text(job.get("description") or job.get("descriptionPlain") or ""),
                 )
             )
         return postings

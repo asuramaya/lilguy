@@ -14,7 +14,14 @@ class Posting:
     source: str  # ats connector name, e.g. "greenhouse"
     category: str = ""  # from sources.yaml, e.g. "Industrial Manufacturing"
     posted_at: Optional[str] = None  # ISO date string if the ATS provides one
+    # Short, whitespace-collapsed text used for keyword MATCHING (see
+    # user_filter.passes). Not for display.
     description_snippet: str = ""
+    # The full posting text, structure preserved, for READING on a
+    # posting page. Empty when the provider's list endpoint carries no
+    # description -- Workday is the notable case, its list response has
+    # none at all, so that arrives later via a per-posting fetch.
+    description: str = ""
     extra: dict = field(default_factory=dict)
     # Which sources.yaml ENTRY this came from (its own `company:` label,
     # e.g. "UPS", "The Muse (aggregator...)") — set by scrape.py's
@@ -40,6 +47,7 @@ class Posting:
             "category": self.category,
             "posted_at": self.posted_at,
             "description_snippet": self.description_snippet,
+            "description": self.description,
             "source_entry": self.source_entry,
         }
 

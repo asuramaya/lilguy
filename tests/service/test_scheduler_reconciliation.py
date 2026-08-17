@@ -33,7 +33,8 @@ import scheduler  # noqa: E402
 
 def fake_posting(id_, company, title, source="greenhouse", category="Test"):
     return SimpleNamespace(id=id_, company=company, title=title, location="Remote", url=f"https://x/{id_}",
-                            source=source, category=category, posted_at=None, description_snippet="")
+                            source=source, category=category, posted_at=None, description_snippet="",
+                            description="")
 
 
 @pytest.fixture(autouse=True)
@@ -224,7 +225,7 @@ def test_recategorized_source_updates_existing_open_postings(monkeypatch):
 def _fake_posting_with_date(id_, posted_at):
     return SimpleNamespace(id=id_, company="Acme", title="Supply Chain Intern", location="Remote",
                             url=f"https://x/{id_}", source="greenhouse", category="Test",
-                            posted_at=posted_at, description_snippet="")
+                            posted_at=posted_at, description_snippet="", description="")
 
 
 def test_exact_posted_at_is_parsed_into_a_real_timestamp(monkeypatch):

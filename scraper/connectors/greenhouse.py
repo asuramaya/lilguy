@@ -1,7 +1,7 @@
 import requests
 
 from .base import Connector, Posting
-from .util import strip_html
+from .util import strip_html, to_display_text
 
 API = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true"
 
@@ -45,6 +45,7 @@ class GreenhouseConnector(Connector):
                     category=entry.get("category", ""),
                     posted_at=job.get("updated_at"),
                     description_snippet=strip_html(job.get("content", "")),
+                    description=to_display_text(job.get("content", "")),
                 )
             )
         return postings

@@ -4,7 +4,7 @@ import time
 import requests
 
 from .base import Connector, Posting
-from .util import strip_html
+from .util import strip_html, to_display_text
 
 API = "https://www.themuse.com/api/public/jobs"
 
@@ -125,6 +125,7 @@ class MuseConnector(Connector):
                         category=category or ", ".join(job_categories) or "Uncategorized",
                         posted_at=job.get("publication_date"),
                         description_snippet=strip_html(job.get("contents", "")),
+                        description=to_display_text(job.get("contents", "")),
                     )
                 )
             page += 1

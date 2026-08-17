@@ -5,7 +5,7 @@ import time
 import requests
 
 from .base import Connector, Posting
-from .util import strip_html
+from .util import strip_html, to_display_text
 
 LD_JSON_RE = re.compile(
     r'<script[^>]*type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.DOTALL
@@ -182,5 +182,6 @@ class JsonLdConnector(Connector):
                 category=entry.get("category", ""),
                 posted_at=data.get("datePosted"),
                 description_snippet=strip_html(data.get("description", "")),
+                description=to_display_text(data.get("description", "")),
             )
         return None

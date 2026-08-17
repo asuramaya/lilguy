@@ -184,3 +184,16 @@ ALTER TABLE postings ADD COLUMN IF NOT EXISTS posted_at_approx BOOLEAN NOT NULL 
 -- NULLS LAST because a posting with no parseable date should sort to
 -- the bottom of "newest first", not the top.
 CREATE INDEX IF NOT EXISTS idx_postings_posted_at_ts ON postings (posted_at_ts DESC NULLS LAST);
+
+-- Full posting text for the in-app posting page, structure preserved as
+-- plain text (see scraper/connectors/util.py's to_display_text). Kept
+-- separate from description_snippet rather than replacing it: the
+-- snippet is whitespace-collapsed and capped at 600 chars because it
+-- feeds keyword MATCHING (user_filter.passes), and widening that would
+-- change what every preset matches. This column is for READING.
+--
+-- Empty rather than NULL means "the provider gave us nothing"; NULL
+-- means "not fetched yet", which is the state Workday postings sit in
+-- until service/workday_descriptions.py fills them (its list endpoint
+-- carries no description at all).
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS description TEXT;
