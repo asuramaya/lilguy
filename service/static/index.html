@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Internship Feed</title>
+<link rel="alternate" type="application/atom+xml" title="Internship Feed" href="/feed.atom">
 <style>
   :root {
     --canvas: #0d0d0c;
@@ -642,7 +643,7 @@
 <footer>
   <div class="wrap">
     <span>Sourced directly from company career sites &mdash; no third-party job-board aggregator in the loop.</span>
-    <span><a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
+    <span><a id="atom-link" href="/feed.atom" target="_blank">subscribe (Atom)</a> &middot; <a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
   </div>
 </footer>
 
@@ -918,6 +919,12 @@ function renderFeed() {
     `sorted by ${({posted_at_ts: "date posted"})[feedSort.key] || feedSort.key.replace(/_/g, " ")}, ${feedSort.dir === 1 ? "oldest first" : "newest first"}`;
 
   applySort("tab-feed", feedSort);
+
+  // Subscribing should capture the filters you can see, not a generic
+  // feed -- otherwise "subscribe" quietly means something other than
+  // what is on screen.
+  const atomLink = document.getElementById("atom-link");
+  if (atomLink) atomLink.href = feedQueryUrl().replace("/feed?", "/feed.atom?");
 
   const body = document.getElementById("feed-body");
   if (!filtered.length) {

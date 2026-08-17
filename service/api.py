@@ -16,13 +16,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scraper"))
 sys.path.insert(0, str(Path(__file__).parent))
 
 from user_filter import is_too_old, load_filter, passes  # noqa: E402
+
+from atom import render_atom  # noqa: E402
 
 from db import cursor  # noqa: E402
 
@@ -175,6 +177,45 @@ def feed(
         "source_truncated": source_truncated,
         "postings": page,
     }
+
+
+# Deliberately reuses feed() rather than reimplementing the query: a
+# subscriber must get exactly what the same parameters would give them in
+# the web UI, and two code paths would drift. Placed before the "/" mount
+# like every other explicit route.
+@app.get("/feed.atom")
+def feed_atom(
+    request: Request,
+    preset: Annotated[Optional[str], Query(description="Same preset names as /feed, including 'all'")] = None,
+    q: Annotated[Optional[str], Query(description="Free-text match against title and company")] = None,
+    category: Annotated[Optional[str], Query(description="Exact category match")] = None,
+    max_age_days: Annotated[Optional[int], Query(description="Only postings the employer posted within N days")] = None,
+    # Far smaller default than /feed: a feed reader wants the recent
+    # head of the list, not a bulk export, and every entry is re-parsed
+    # by the client on every poll.
+    limit: Annotated[int, Query(le=500)] = 50,
+):
+    result = feed(preset=preset, q=q, category=category, max_age_days=max_age_days, limit=limit)
+    if "error" in result:
+        return Response(content=f"<error>{result['error']}</error>", status_code=404,
+                        media_type="application/xml")
+
+    label = {None: "default filter", ALL_POSTINGS: "all postings"}.get(preset, preset)
+    bits = [b for b in (q and f"matching '{q}'", category, max_age_days and f"posted within {max_age_days}d") if b]
+    title = "Internship Feed — " + label + (f" ({', '.join(bits)})" if bits else "")
+
+    return Response(
+        content=render_atom(
+            result["postings"],
+            title=title,
+            self_url=str(request.url),
+            # Distinct id per distinct query, so subscribing to two
+            # different presets doesn't look like one feed changing its
+            # mind to a reader keying on feed id.
+            feed_slug="feed/" + (request.url.query or "default"),
+        ),
+        media_type="application/atom+xml; charset=utf-8",
+    )
 
 
 @app.get("/sources")
