@@ -187,30 +187,35 @@ def test_active_source_disables_after_repeated_failures(monkeypatch):
 
 def test_recategorized_source_updates_existing_open_postings(monkeypatch):
     # Regression: confirmed live -- apply_categorization.py updates
-    # sources.config->>'category', and every later scrape fetches the
-    # corrected value into p.category, but the ON CONFLICT DO UPDATE
-    # clause didn't list `category` in its SET list, so an already-open
-    # posting kept whatever category it was first inserted with forever.
-    # 101/356 open postings in the live default feed still showed
-    # 'Uncategorized' after the sources table itself had zero left.
+    # sources.config->>'category' AND ->>'company', and every later
+    # scrape fetches the corrected values into p.category/p.company, but
+    # the ON CONFLICT DO UPDATE clause didn't list either in its SET
+    # list, so an already-open posting kept whatever values it was first
+    # inserted with forever. 101/356 open postings in the live default
+    # feed still showed 'Uncategorized', and 5253 postings had a stale
+    # company, after the sources table itself was fully corrected.
     source_id = _insert_source("Acme")
     row = {"id": source_id, "company": "Acme", "ats": "greenhouse", "config": {}, "status": "active",
            "consecutive_failures": 0, "last_scraped_at": None}
 
     posting_id = f"gh:acme:{uuid.uuid4()}"
-    first_fetch = [fake_posting(posting_id, "Acme", "Supply Chain Intern", category="Uncategorized")]
+    first_fetch = [fake_posting(posting_id, "acmecorp", "Supply Chain Intern", category="Uncategorized")]
     monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: first_fetch))
     scheduler.run_one(row)
 
     with db.cursor() as cur:
-        cur.execute("SELECT category FROM postings WHERE id = %s", (posting_id,))
-        assert cur.fetchone()["category"] == "Uncategorized"
+        cur.execute("SELECT category, company FROM postings WHERE id = %s", (posting_id,))
+        r = cur.fetchone()
+        assert r["category"] == "Uncategorized"
+        assert r["company"] == "acmecorp"
 
-    recategorized_fetch = [fake_posting(posting_id, "Acme", "Supply Chain Intern", category="Logistics")]
+    recategorized_fetch = [fake_posting(posting_id, "Acme Corporation", "Supply Chain Intern", category="Logistics")]
     monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse",
                          lambda: SimpleNamespace(fetch=lambda cfg: recategorized_fetch))
     scheduler.run_one(row)
 
     with db.cursor() as cur:
-        cur.execute("SELECT category FROM postings WHERE id = %s", (posting_id,))
-        assert cur.fetchone()["category"] == "Logistics"
+        cur.execute("SELECT category, company FROM postings WHERE id = %s", (posting_id,))
+        r = cur.fetchone()
+        assert r["category"] == "Logistics"
+        assert r["company"] == "Acme Corporation"

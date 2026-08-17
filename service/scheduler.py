@@ -49,6 +49,7 @@ from filters import is_internship  # noqa: E402
 
 from db import cursor  # noqa: E402
 from dedup import compute_dedup_key, run_dedup_sweep  # noqa: E402
+from source_sync import run_source_sync_sweep  # noqa: E402
 
 MAX_WORKERS = 6
 POLL_INTERVAL_SECONDS = 30
@@ -129,15 +130,23 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 url = EXCLUDED.url,
                 description_snippet = EXCLUDED.description_snippet,
                 dedup_key = EXCLUDED.dedup_key,
-                -- Missing from this list originally: a posting kept
-                -- whatever category it was first inserted with forever,
-                -- even after apply_categorization.py fixed the source's
-                -- real category and every later scrape fetched the
-                -- correct value in EXCLUDED.category -- confirmed live,
-                -- 101/356 open postings in the default feed still showed
-                -- 'Uncategorized' after the sources table itself had
-                -- zero Uncategorized rows left.
+                -- category and company both come from this source's own
+                -- config (see connectors/*.py: company=entry.get("company",
+                -- token), category=entry.get("category", "")), which
+                -- apply_categorization.py keeps current -- but neither was
+                -- in this SET list originally, so a posting kept whatever
+                -- values it happened to get on its first-ever insert,
+                -- forever, even once every later scrape fetched the
+                -- corrected value. Confirmed live: 101/356 open postings
+                -- still showed 'Uncategorized' and 5253 postings had a
+                -- stale company after the sources table itself was fully
+                -- corrected. service/source_sync.py's periodic sweep is
+                -- the safety net for postings this upsert doesn't reach
+                -- (closed/duplicate rows, or any future field like this
+                -- one that gets missed again) -- this fix is the fast
+                -- path, not the only path.
                 category = EXCLUDED.category,
+                company = EXCLUDED.company,
                 -- Reopen only if it was 'closed' -- a 'duplicate' status
                 -- is service/dedup.py's call, not this upsert's; forcing
                 -- it back to 'open' here would just fight the next sweep
@@ -290,6 +299,10 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
                     changed = run_dedup_sweep(cur)
                 if changed:
                     print(f"  dedup sweep: {changed} posting(s) changed open/duplicate status", flush=True)
+                with cursor() as cur:
+                    synced = run_source_sync_sweep(cur)
+                if synced:
+                    print(f"  source sync sweep: {synced} posting(s) had company/category re-synced", flush=True)
             time.sleep(poll_interval)
 
 
