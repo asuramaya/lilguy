@@ -140,6 +140,149 @@ next sweep naturally promotes the best remaining duplicate back to
 `open` with no special-case code for that transition. `scheduler.py`
 runs it once per cycle, after that cycle's upserts.
 
+## Company, source and ATS are three different things
+
+The word "source" was doing three jobs at once here — a board we poll, the
+platform it runs on, and where a given posting came from — and the
+conflation looked harmless because most sources happen to be 1:1 with a
+company. They are not, and the exception is the majority of the feed.
+
+The connectors make the split explicit. A direct connector reads the
+company from OUR config, so it is constant for that source:
+
+```python
+company=entry.get("company", token)          # greenhouse, lever, workday, oracle, jsonld
+```
+
+An aggregator reads it from each individual job:
+
+```python
+company=(job.get("company") or {}).get("name", "")    # muse
+```
+
+So one Muse source row carries 2798 of 4833 open postings across 87
+different employers, and its `sources.company` is a label — literally
+`"The Muse (aggregator — every real category, queried separately)"` —
+not a company at all.
+
+The model that follows:
+
+| | what it is | spans |
+|---|---|---|
+| **company** | an employer; what a reader wants | MANY sources — its own board *and* an aggregator |
+| **source** | one board we poll; health, cadence, failures | one ATS |
+| **ATS** | the platform; explains why fields differ | many sources |
+
+`postings.company_key` is the join key for the company view, normalized by
+`dedup.compute_company_key` — the SAME rule as the company component of
+`dedup_key`, shared deliberately so "same company" cannot mean two things
+in two places. Measured before adopting: across 102 distinct raw company
+strings it merged exactly two pairs, both correct (`Eaton`/`Eaton
+Corporation`, `Samsara`/`Samsara Inc.`), with no false merges — and it
+united four employers reachable through two sources each, which would
+otherwise have rendered as two half-empty pages.
+
+**This distinction has caused two real bugs, both this project's own.**
+`source_sync.py`'s sweep synced `postings.company` from `sources.company`
+for every posting, which is right for a direct board and flattened all
+2798 Muse postings to the aggregator's label; it is now scoped to
+`dedup.DIRECT_SOURCE_ATS`. And an absent description stored as `''`
+rather than `NULL` marked every new Workday posting "already attempted",
+hiding it from its own backfill. Both were the same assumption: that a
+field which is source-derived for one connector family is source-derived
+for all of them. Check which family you are in before syncing anything
+from `sources` onto `postings`.
+
+The UI reflects it: company names open a company page (union across
+sources), Sources rows open an operational source page, and a source page
+offers a direct jump to its company ONLY when it carries a single
+employer — `api.source()` reports `is_aggregator` from
+`count(DISTINCT company_key)` rather than from a hardcoded list of
+aggregator names.
+
+## Job descriptions
+
+`postings.description_snippet` is whitespace-collapsed and capped at 600
+characters because it feeds keyword MATCHING (`user_filter.passes`).
+That is correct for matching and useless for reading, so it was the only
+description this project kept and a posting page had nothing to show.
+
+The surprise on inspection: for ~83% of the corpus the full text was
+ALREADY in the list response being fetched and then truncated —
+Greenhouse's `content`, Muse's `contents`, Lever's `descriptionPlain`,
+JSON-LD's `description`, Oracle's three composable fields. Storing it
+cost zero extra HTTP requests. `postings.description` holds it, converted
+by `to_display_text` rather than `strip_html`: block tags become real
+line breaks and list items become bullets, so a description renders with
+`white-space: pre-wrap` and no sanitizer. It emits TEXT, never markup —
+these strings come from third-party boards, and storing HTML we later
+inject would mean owning an XSS surface forever.
+
+**Workday is the sole exception** and needs a second request per posting;
+its list endpoint carries no description at all (`bulletFields[0]` is a
+requisition-ID stub). `service/workday_descriptions.py` fetches from the
+CXS detail endpoint, and the cost is bounded by NEW postings rather than
+total ones because the column is three-state:
+
+| value | meaning |
+|---|---|
+| `NULL` | never attempted — eligible |
+| `''` | attempted; the provider genuinely has none, or it is gone |
+| text | got it |
+
+A transient failure (timeout, 5xx) deliberately leaves `NULL` so it
+retries; a definitive 404/410 writes `''` so a posting that will never
+resolve is not re-requested every cycle forever. Confusing those two is
+how a backfill becomes permanent load on someone else's servers. The
+scheduler's upsert COALESCEs rather than overwrites for the same reason —
+Workday's connector sends empty every cycle, and a plain overwrite would
+erase the fetched text and re-fetch it forever.
+
+## Deploying
+
+```
+scripts/run_tests.sh              # whole suite against a throwaway Postgres
+scripts/deploy.sh api scheduler   # test, push, rebuild, then VERIFY
+```
+
+`deploy.sh` runs everything that can refuse before anything that mutates:
+tests, clean-tree check, push, rebuild. That ordering is what turns a
+network fault into a no-op — a push that fails leaves nothing
+half-applied, which is how the ~100-minute connectivity loss on
+2026-08-17 cost nothing.
+
+Then `scripts/verify_deploy.sh` confirms the deploy actually WORKS, which
+is a different claim from "started":
+
+- snapshot each service's `RestartCount`, wait out a settle window, **fail
+  if it moved**
+- confirm each container is in state `running` (an unresolvable name
+  resolves to `missing`, so a typo'd service fails rather than being
+  silently skipped)
+- ask the api's `/health` whether it serves rather than merely runs
+
+**The delta is the load-bearing part, not the status.** `docker compose up
+-d` returns when containers start, and a crashlooping container reads
+`running` every time you look at it — measured on this host against a
+container crashing every 3s: status was `running` at all five samples
+while the restart count climbed 0→4. A `docker ps` gate passes five times
+out of five on a service that has never once stayed up. Reading the count
+once tells you nothing either; only its change over a window does.
+
+What this does NOT cover: a 20s window catches a fast crashloop, not a
+slow leak or a death at minute three. That case is covered by a different
+layer — `container-watch` on the host (a systemd timer, every 5 minutes,
+watching every container whose own restart policy declares it should stay
+up). The two are deliberately not redundant: `container-watch` answers
+"is it staying up", `verify_deploy.sh` answers "is it serving", and a
+service that is up and returning errors passes the former cleanly.
+
+`verify_deploy.sh` is a separate script rather than inline in `deploy.sh`
+specifically so its FAILURE path can be run on demand — pointed at a
+deliberately crashlooping container, it has been observed tripping (exit
+1), passing on healthy services (exit 0), and rejecting a typo'd name. A
+gate whose failure has never executed is a belief, not a check.
+
 ## Reconciling with the batch pipeline
 
 `scraper/scrape.py`'s git-committed `data/all_postings.json`/`FEED.md`
@@ -262,21 +405,38 @@ curl localhost:8000/sources                                  # per-source status
 curl localhost:8000/candidates                               # discovery evidence, promoted/rejected/no_match
 curl "localhost:8000/feed?preset=all&q=logistics&max_age_days=30"  # server-side search + freshness
 curl localhost:8000/feed.atom                                # subscribe in any feed reader
+curl "localhost:8000/feed?preset=all&limit=200&offset=200"   # paging; `total` is independent of the page
+curl localhost:8000/company/rocketlab                        # one employer, across every source
+curl localhost:8000/posting/<id>                             # one posting + duplicates + sibling roles
+curl localhost:8000/source/1                                 # one board: health, cadence, employers carried
+curl localhost:8000/ats/workday                              # one platform and its quirks
 scripts/run_tests.sh                                          # whole suite against a scratch Postgres
-scripts/deploy.sh api                                         # test, then push + rebuild (refuses on red)
+scripts/deploy.sh api                                         # test, push, rebuild, verify (refuses on red)
+scripts/resolve_source_names.py                               # ask boards their real name (dry run; --apply)
 docker compose logs -f scheduler                              # watch it fetch in real time
 ```
 
 Open `http://localhost:8000/` in a browser for a read-only UI over those
 same endpoints (`service/api.py` mounts `service/static/`) — a Feed tab
 (preset switcher, plus server-side title/company search, category and
-freshness filters over open postings), a Sources tab (per-source
-status/failure table), a Discovery tab (candidate review status with the
-reason each rejection was recorded), and a Duplicates tab (what the dedup
-sweep collapsed). Search and filtering run on the SERVER: they used to
-run in the browser over whatever page had loaded, which meant a search
-silently covered only the newest slice of the corpus and reported the
-result as complete. Deliberately plain
+freshness filters over open postings, paged with load-more), a Sources
+tab (per-source status/failure table), a Discovery tab (candidate review
+status with the reason each rejection was recorded), and a Duplicates tab
+(what the dedup sweep collapsed). Clicking through opens entity pages
+inside the app rather than bouncing out to the ATS — see "Company, source
+and ATS are three different things" above.
+
+Search and filtering run on the SERVER: they used to run in the browser
+over whatever page had loaded, which meant a search silently covered only
+the newest slice of the corpus and reported the result as complete.
+Paging is offset-based, and the feed query's ORDER BY ends in `id` for
+that reason — without a unique final key the sort is not total, Postgres
+may order tied rows differently per query, and paging then repeats and
+skips rows. Measured: 88 open postings share one identical
+`(posted_at_ts, first_seen)` pair, and three pages of 200 returned 592
+distinct rows out of 600 before the tiebreaker was added.
+
+Deliberately plain
 HTML/CSS/vanilla JS, no build step and no npm dependency — it's fetched
 by the browser at runtime from whatever origin served the page, so
 nothing needs rebuilding when the data changes. This is the entire
@@ -396,10 +556,18 @@ Two things worth knowing:
   would report as 30 days old indefinitely — exactly the staleness this
   column exists to expose. The upsert therefore keeps the **earliest**
   estimate for approximate values and the newest for exact ones.
-- **How stale the corpus actually is.** On the live data at the time of
-  writing: 4711 open postings, of which only ~800 were posted in the last
-  week, 1813 are older than 90 days, and 1209 are **older than a year**
-  (oldest: 2016). Those are boards that never took the listing down.
+- **How stale the corpus actually is.** A snapshot, so treat the exact
+  numbers as drifting — but the proportions are stable and they are the
+  point. Of 4833 open postings: 870 were posted in the last week, 1809
+  are older than 90 days, and **1208 are older than a year**, the oldest
+  dating to 2016-02-24. Those are boards that never took the listing
+  down. Re-run it with:
+
+  ```sql
+  SELECT count(*) FILTER (WHERE posted_at_ts < now() - interval '365 days'),
+         count(*) FROM postings WHERE status = 'open';
+  ```
+
   `max_age_days` is the filter for this, and it judges on the employer's
   date, so it now means what it says.
 
