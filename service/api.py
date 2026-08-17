@@ -402,7 +402,10 @@ def feed_atom(
 def sources():
     with cursor() as cur:
         cur.execute(
-            "SELECT company, ats, category, status, added_by, scrape_interval_seconds, "
+            # id is returned so the Sources tab can link each row to its
+            # own source page -- without it the tab can only ever be a
+            # flat table.
+            "SELECT id, company, ats, category, status, added_by, scrape_interval_seconds, "
             "consecutive_failures, last_scrape_status, last_scraped_at, next_scrape_at "
             "FROM sources ORDER BY company"
         )

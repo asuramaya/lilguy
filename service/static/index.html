@@ -426,6 +426,86 @@
   }
   .legend b { color: var(--ink-secondary); font-weight: 500; }
 
+
+  /* --- entity pages ------------------------------------------------ */
+  .detail { padding-top: 4px; }
+  .crumb {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: none; border: none; padding: 4px 0; margin-bottom: 14px;
+    color: var(--ink-tertiary); font-family: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .crumb:hover { color: var(--accent); }
+  .detail h2 { margin: 0 0 4px; font-size: 21px; font-weight: 650; letter-spacing: -0.01em; }
+  .detail .sub { color: var(--ink-secondary); font-size: 13px; margin-bottom: 18px; }
+  .detail .sub a { color: var(--ink-secondary); }
+
+  .kv { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 20px; }
+  .kv div { display: flex; flex-direction: column; gap: 2px; }
+  .kv dt, .kv .k {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--ink-tertiary);
+  }
+  .kv dd, .kv .v { margin: 0; font-size: 13px; color: var(--ink); }
+
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 14px; border-radius: 5px; font-size: 13px; font-family: inherit;
+    text-decoration: none; cursor: pointer; border: 1px solid var(--border-strong);
+    background: var(--row); color: var(--ink);
+  }
+  .btn:hover { border-color: var(--accent-dim); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #1a1206; font-weight: 600; }
+  .btn.primary:hover { background: #f0a03d; color: #1a1206; }
+
+  .section-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--ink-tertiary); margin: 26px 0 10px;
+    border-bottom: 1px solid var(--border); padding-bottom: 6px;
+  }
+
+  /* Job descriptions are stored as plain text with real line breaks (see
+     to_display_text) precisely so they can be rendered without a
+     sanitizer -- pre-wrap honours that structure without markup. */
+  .description {
+    white-space: pre-wrap;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--ink-secondary);
+    max-width: 68ch;
+  }
+  .description-missing { color: var(--ink-tertiary); font-style: italic; font-size: 13px; }
+
+  .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px; border: 1px solid var(--border); border-radius: 999px;
+    background: var(--row); font-size: 12.5px; color: var(--ink-secondary);
+    text-decoration: none; cursor: pointer;
+  }
+  .chip:hover { border-color: var(--accent-dim); color: var(--accent); }
+  .chip .n { color: var(--ink-tertiary); font-family: ui-monospace, monospace; font-size: 11.5px; }
+
+  a.entity { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; cursor: pointer; }
+  a.entity:hover { color: var(--accent); border-bottom-color: var(--accent-dim); }
+  .maps-link::after { content: " ↗"; color: var(--ink-tertiary); font-size: 10px; }
+
+  .mini-list { display: flex; flex-direction: column; gap: 2px; }
+  .mini-row {
+    display: flex; justify-content: space-between; gap: 14px; align-items: baseline;
+    padding: 8px 10px; border-radius: 4px; text-decoration: none; color: var(--ink);
+    border-bottom: 1px solid var(--border); cursor: pointer;
+  }
+  .mini-row:hover { background: var(--row-hover); }
+  .mini-row .meta { color: var(--ink-tertiary); font-size: 12px; white-space: nowrap; }
+
+  .banner {
+    padding: 10px 12px; border-radius: 5px; font-size: 12.5px;
+    border: 1px solid var(--border-strong); background: var(--row);
+    color: var(--ink-secondary); margin-bottom: 18px;
+  }
+  .banner b { color: var(--ink); font-weight: 600; }
+
   footer {
     border-top: 1px solid var(--border);
     color: var(--ink-tertiary);
@@ -644,6 +724,8 @@
     </table>
   </section>
 
+  <section id="tab-detail" class="detail" hidden></section>
+
 </main>
 
 <footer>
@@ -842,6 +924,10 @@ function debounce(fn, ms = 140) {
 // back on the default preset with your search cleared.
 
 function syncUrl() {
+  // An entity page owns the query string while it's open; rewriting it
+  // from the feed's filters here would bounce the reader out of the page
+  // they just opened.
+  if (activeDetailRoute()) return;
   const p = new URLSearchParams();
   const tab = document.querySelector('[role="tab"][aria-selected="true"]').dataset.tab;
   if (tab !== "feed") p.set("tab", tab);
@@ -964,9 +1050,9 @@ function renderFeed() {
     const found = foundCell(p);
     return `
     <tr>
-      <td class="title-cell truncate" data-label="Title"><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
-      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(p.company)}">${escapeHtml(p.company)}</td>
-      <td class="location-cell truncate" data-label="Location" title="${escapeHtml(p.location || "")}">${escapeHtml(p.location || "—")}</td>
+      <td class="title-cell truncate" data-label="Title"><a href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
+      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(p.company)}">${entityLink("company", p.company_key, p.company)}</td>
+      <td class="location-cell truncate" data-label="Location" title="${escapeHtml(p.location || "")}">${locationHtml(p.location)}</td>
       <td data-label="Category">${p.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(p.category)}"><span class="swatch-label">${escapeHtml(p.category)}</span></span>` : ""}</td>
       <td class="age-cell mono ${posted.cls}" data-label="Posted" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</td>
       <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</td>
@@ -1008,8 +1094,8 @@ function renderSources() {
 
   document.getElementById("sources-body").innerHTML = filtered.length ? filtered.map(s => `
     <tr>
-      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(s.company)}">${escapeHtml(s.company)}</td>
-      <td class="mono truncate" data-label="ATS">${escapeHtml(s.ats)}</td>
+      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(s.company)}">${entityLink("source", s.id, s.company)}</td>
+      <td class="mono truncate" data-label="ATS">${entityLink("ats", s.ats, s.ats)}</td>
       <td data-label="Category">${s.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(s.category)}"><span class="swatch-label">${escapeHtml(s.category)}</span></span>` : "—"}</td>
       <td data-label="Status"><span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span></td>
       <td class="location-cell truncate" data-label="Added by">${escapeHtml(s.added_by)}</td>
@@ -1096,7 +1182,7 @@ function renderDuplicates() {
   document.getElementById("duplicates-body").innerHTML = filtered.length ? filtered.map(d => `
     <tr>
       <td data-label="Duplicate">
-        <div class="truncate" title="${escapeHtml(d.title)}">${escapeHtml(d.title)}</div>
+        <div class="truncate" title="${escapeHtml(d.title)}"><a class="entity" href="${entityHref("posting", d.id)}" data-route="posting" data-value="${escapeHtml(d.id)}">${escapeHtml(d.title)}</a></div>
         <div class="company-cell truncate">${escapeHtml(d.company)}${d.location ? " &middot; " + escapeHtml(d.location) : ""}</div>
       </td>
       <td class="mono truncate" data-label="Source">${escapeHtml(d.source || "—")}</td>
@@ -1244,6 +1330,308 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
+
+// --- entity pages -------------------------------------------------------
+//
+// Company, source and ATS are three different things (see api.py's note).
+// Routing is query-string based like the rest of this page's state, so a
+// company or posting page is linkable, survives a reload, and works with
+// browser back -- and it all stays inside the one static file, no build
+// step, which is what "a page within the feed itself" needs.
+
+const DETAIL_ROUTES = ["posting", "company", "source", "ats"];
+
+// Locations arrive as free text from third-party boards and a lot of
+// them are not places: "Remote", "2 Locations", "Various". Linking those
+// to Maps produces a nonsense search, so they're skipped. Rough on
+// purpose -- a heuristic that catches the obvious cases beats either
+// linking everything or building a geocoder.
+const NON_PLACE_RE = /^(remote|hybrid|virtual|various|multiple locations?|flexible|anywhere|worldwide|n\/?a|tbd|—|-)$/i;
+const MULTI_LOCATION_RE = /^\d+\s+locations?$/i;
+
+function mapsUrl(location) {
+  const t = (location || "").trim();
+  if (!t || NON_PLACE_RE.test(t) || MULTI_LOCATION_RE.test(t)) return null;
+  if (!/[a-z]/i.test(t)) return null;   // no letters means nothing to search
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t)}`;
+}
+
+function locationHtml(location) {
+  const text = escapeHtml(location || "—");
+  const url = mapsUrl(location);
+  return url
+    ? `<a class="entity maps-link" href="${url}" target="_blank" rel="noopener" title="Open in Google Maps">${text}</a>`
+    : text;
+}
+
+function entityHref(kind, value) {
+  return `?${kind}=${encodeURIComponent(value)}`;
+}
+
+function entityLink(kind, value, text, cls = "entity") {
+  if (!value) return escapeHtml(text || "—");
+  return `<a class="${cls}" href="${entityHref(kind, value)}" data-route="${kind}" data-value="${escapeHtml(value)}">${escapeHtml(text)}</a>`;
+}
+
+// Intercepted globally so every entity link in every renderer routes
+// in-app instead of triggering a full page load.
+document.addEventListener("click", (ev) => {
+  const link = ev.target.closest("a[data-route]");
+  if (!link || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button !== 0) return;
+  ev.preventDefault();
+  navigateTo(link.dataset.route, link.dataset.value);
+});
+
+function navigateTo(kind, value) {
+  history.pushState(null, "", entityHref(kind, value));
+  route();
+  window.scrollTo(0, 0);
+}
+
+function leaveDetail() {
+  history.pushState(null, "", location.pathname);
+  route();
+}
+
+function crumb(label) {
+  return `<button class="crumb" onclick="leaveDetail()">← ${escapeHtml(label)}</button>`;
+}
+
+async function getJson(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+function detailEl() { return document.getElementById("tab-detail"); }
+
+function showDetailLoading() {
+  detailEl().innerHTML = `<div class="empty">loading…</div>`;
+}
+
+function showDetailError(message) {
+  detailEl().innerHTML = `${crumb("Back to feed")}<div class="empty">${escapeHtml(message)}</div>`;
+}
+
+// --- posting page -------------------------------------------------------
+
+async function renderPostingPage(id) {
+  showDetailLoading();
+  const data = await getJson(`/posting/${encodeURIComponent(id)}`);
+  if (data.error) return showDetailError(data.error);
+  const p = data.posting;
+  const posted = postedCell(p);
+  const found = foundCell(p);
+
+  const description = p.description
+    ? `<div class="description">${escapeHtml(p.description)}</div>`
+    : `<div class="description-missing">${p.description === ""
+        ? "This source publishes no description for this posting."
+        : "Description not fetched yet — it arrives on the next scrape of this source."}</div>`;
+
+  const alsoListed = data.also_listed.length ? `
+    <div class="section-title">Also listed via</div>
+    <div class="mini-list">${data.also_listed.map(d => `
+      <a class="mini-row" href="${entityHref("posting", d.id)}" data-route="posting" data-value="${escapeHtml(d.id)}">
+        <span>${escapeHtml(d.source_entry)} <span class="meta">· ${escapeHtml(d.ats)}</span></span>
+        <span class="meta">${escapeHtml(d.status)}</span>
+      </a>`).join("")}</div>` : "";
+
+  const siblings = data.same_company.length ? `
+    <div class="section-title">Other openings at ${escapeHtml(p.company)}</div>
+    <div class="mini-list">${data.same_company.map(o => `
+      <a class="mini-row" href="${entityHref("posting", o.id)}" data-route="posting" data-value="${escapeHtml(o.id)}">
+        <span>${escapeHtml(o.title)}</span>
+        <span class="meta">${escapeHtml(o.location || "")}</span>
+      </a>`).join("")}</div>` : "";
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(p.title)}</h2>
+    <div class="sub">${entityLink("company", p.company_key, p.company)} · ${locationHtml(p.location)}</div>
+    <div class="actions">
+      <a class="btn primary" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">Apply on ${escapeHtml(p.ats)} ↗</a>
+      ${entityLink("company", p.company_key, `All roles at ${p.company}`, "btn")}
+    </div>
+    <div class="kv">
+      <div><span class="k">Posted</span><span class="v" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</span></div>
+      <div><span class="k">Found</span><span class="v" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</span></div>
+      <div><span class="k">Category</span><span class="v">${escapeHtml(p.category || "—")}</span></div>
+      <div><span class="k">Platform</span><span class="v">${entityLink("ats", p.ats, p.ats)}</span></div>
+      <div><span class="k">Via source</span><span class="v">${escapeHtml(p.source_entry || "—")}</span></div>
+      <div><span class="k">Status</span><span class="v">${escapeHtml(p.status)}</span></div>
+    </div>
+    <div class="section-title">Description</div>
+    ${description}
+    ${alsoListed}
+    ${siblings}`;
+}
+
+// --- company page -------------------------------------------------------
+
+async function renderCompanyPage(key) {
+  showDetailLoading();
+  const data = await getJson(`/company/${encodeURIComponent(key)}`);
+  if (data.error) return showDetailError(data.error);
+
+  const open = data.postings.filter(p => p.status === "open");
+  const other = data.postings.filter(p => p.status !== "open");
+
+  // A raw URL slug is not a company profile, and pretending otherwise
+  // would be worse than saying so -- some names in the corpus are
+  // genuinely unresolved tokens like "ag" or "djeholdings".
+  const looksUnresolved = data.display_name === data.display_name.toLowerCase()
+                           && !data.display_name.includes(" ");
+  const banner = looksUnresolved
+    ? `<div class="banner"><b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name — it hasn't been identified yet.</div>`
+    : "";
+
+  const via = data.reached_via.map(v => `
+    <a class="chip" href="${entityHref(v.source_id ? "source" : "ats", v.source_id || v.ats)}"
+       data-route="${v.source_id ? "source" : "ats"}" data-value="${escapeHtml(String(v.source_id || v.ats))}">
+      ${escapeHtml(v.source_entry || v.ats)} <span class="n">${escapeHtml(v.ats)}</span>
+    </a>`).join("");
+
+  const rows = list => `<div class="mini-list">${list.map(p => `
+    <a class="mini-row" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}">
+      <span>${escapeHtml(p.title)}</span>
+      <span class="meta">${escapeHtml(p.location || "")} · ${escapeHtml(postedCell(p).text)}</span>
+    </a>`).join("")}</div>`;
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(data.display_name)}</h2>
+    <div class="sub">${escapeHtml(data.category || "Uncategorized")} · ${data.open_count} open ${data.open_count === 1 ? "role" : "roles"}</div>
+    ${banner}
+    ${data.name_variants.length > 1
+      ? `<div class="banner">Also appears as ${data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ")} — merged into one page.</div>`
+      : ""}
+    <div class="section-title">Reachable through</div>
+    <div class="chip-row">${via}</div>
+    <div class="section-title">${open.length} open ${open.length === 1 ? "posting" : "postings"}</div>
+    ${open.length ? rows(open) : `<div class="empty">No open postings right now.</div>`}
+    ${other.length ? `<div class="section-title">${other.length} closed or duplicate</div>${rows(other)}` : ""}`;
+}
+
+// --- source page --------------------------------------------------------
+
+async function renderSourcePage(id) {
+  showDetailLoading();
+  const data = await getJson(`/source/${encodeURIComponent(id)}`);
+  if (data.error) return showDetailError(data.error);
+  const s = data.source;
+
+  // The direct jump you asked for -- but only when this source really is
+  // one employer. Offering it on an aggregator would re-assert exactly
+  // the conflation these pages exist to separate.
+  const jump = !data.is_aggregator && data.company_key
+    ? entityLink("company", data.company_key, `View ${s.company} as a company →`, "btn primary")
+    : "";
+
+  const companies = data.companies.length ? `
+    <div class="section-title">${data.is_aggregator ? `Employers carried by this source (${data.stats.companies})` : "Employer"}</div>
+    <div class="chip-row">${data.companies.slice(0, 120).map(c => `
+      <a class="chip" href="${entityHref("company", c.company_key)}" data-route="company" data-value="${escapeHtml(c.company_key)}">
+        ${escapeHtml(c.company)} <span class="n">${c.n}</span>
+      </a>`).join("")}</div>` : "";
+
+  const runs = data.recent_runs.length ? `
+    <div class="section-title">Recent runs</div>
+    <div class="mini-list">${data.recent_runs.map(r => `
+      <div class="mini-row">
+        <span>${r.ok ? "ok" : escapeHtml(String(r.error || "failed")).slice(0, 90)}</span>
+        <span class="meta">${escapeHtml(timeAgo(r.started_at))}${r.ok ? ` · ${r.fetched_count} fetched, ${r.internship_count} relevant` : ""}</span>
+      </div>`).join("")}</div>` : "";
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(s.company)}</h2>
+    <div class="sub">
+      ${data.is_aggregator ? "Aggregator source" : "Direct board"} ·
+      ${entityLink("ats", s.ats, s.ats)} ·
+      <span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span>
+    </div>
+    ${data.is_aggregator
+      ? `<div class="banner"><b>This source is not a company.</b> It carries postings from ${data.stats.companies} different employers, so its listings belong to those companies rather than to the board itself.</div>`
+      : ""}
+    ${jump ? `<div class="actions">${jump}</div>` : ""}
+    <div class="kv">
+      <div><span class="k">Open postings</span><span class="v">${data.stats.open}</span></div>
+      <div><span class="k">Ever seen</span><span class="v">${data.stats.total}</span></div>
+      <div><span class="k">Employers</span><span class="v">${data.stats.companies}</span></div>
+      <div><span class="k">Scrape interval</span><span class="v">${Math.round((s.scrape_interval_seconds || 0) / 60)} min</span></div>
+      <div><span class="k">Consecutive failures</span><span class="v">${s.consecutive_failures}</span></div>
+      <div><span class="k">Last scraped</span><span class="v">${escapeHtml(timeAgo(s.last_scraped_at))}</span></div>
+      <div><span class="k">Added by</span><span class="v">${escapeHtml(s.added_by || "—")}</span></div>
+    </div>
+    ${companies}
+    ${runs}`;
+}
+
+// --- ats page -----------------------------------------------------------
+
+const ATS_NOTES = {
+  workday: "Its job-search endpoint carries no description, so descriptions are fetched per posting. Dates arrive as prose (\"Posted 30+ Days Ago\"), which is a bound rather than a measurement.",
+  greenhouse: "Full description ships inside the list response. Dates are ISO-8601.",
+  lever: "Full description ships inside the list response. Dates arrive as epoch milliseconds.",
+  muse: "An aggregator: one source carrying many employers, with the company named per job rather than per source.",
+  jsonld: "Generic harvester reading schema.org JobPosting markup off a company's own sitemap.",
+  oracle_recruiting: "Oracle Recruiting Cloud. Descriptions are composed from several separate fields.",
+};
+
+async function renderAtsPage(name) {
+  showDetailLoading();
+  const data = await getJson(`/ats/${encodeURIComponent(name)}`);
+  if (data.error) return showDetailError(data.error);
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(data.ats)}</h2>
+    <div class="sub">Applicant tracking platform</div>
+    ${ATS_NOTES[data.ats] ? `<div class="banner">${escapeHtml(ATS_NOTES[data.ats])}</div>` : ""}
+    <div class="kv">
+      <div><span class="k">Sources</span><span class="v">${data.source_stats.sources} (${data.source_stats.active} active)</span></div>
+      <div><span class="k">Open postings</span><span class="v">${data.posting_stats.open_postings}</span></div>
+      <div><span class="k">Employers</span><span class="v">${data.posting_stats.companies}</span></div>
+      <div><span class="k">With description</span><span class="v">${data.posting_stats.with_description}</span></div>
+    </div>
+    <div class="section-title">Sources on this platform</div>
+    <div class="mini-list">${data.sources.map(s => `
+      <a class="mini-row" href="${entityHref("source", s.id)}" data-route="source" data-value="${s.id}">
+        <span>${escapeHtml(s.company)}</span>
+        <span class="meta">${escapeHtml(s.status)} · ${escapeHtml(timeAgo(s.last_scraped_at))}</span>
+      </a>`).join("")}</div>`;
+}
+
+// --- router -------------------------------------------------------------
+
+function activeDetailRoute() {
+  const p = new URLSearchParams(location.search);
+  for (const kind of DETAIL_ROUTES) {
+    const value = p.get(kind);
+    if (value) return { kind, value };
+  }
+  return null;
+}
+
+function route() {
+  const detail = activeDetailRoute();
+  const tabsWrap = document.querySelector('[role="tablist"]');
+  document.getElementById("tab-detail").hidden = !detail;
+  tabsWrap.style.display = detail ? "none" : "";
+  for (const name of Object.keys(tabs)) {
+    if (detail) document.getElementById(`tab-${name}`).hidden = true;
+  }
+  if (!detail) {
+    const current = document.querySelector('[role="tab"][aria-selected="true"]');
+    selectTab(current ? current.dataset.tab : "feed");
+    return;
+  }
+  ({ posting: renderPostingPage, company: renderCompanyPage,
+     source: renderSourcePage, ats: renderAtsPage })[detail.kind](detail.value);
+}
+
+addEventListener("popstate", route);
+
 // --- boot ---------------------------------------------------------------
 
 // Feeds the real sticky-header height to CSS so the sticky <thead> parks
@@ -1277,7 +1665,13 @@ async function bootFeed() {
 }
 
 const initialTab = initialParams.get("tab");
-if (initialTab && tabs[initialTab]) {
+if (activeDetailRoute()) {
+  // Deep link straight to an entity page. The feed still loads behind it
+  // so leaving the page is instant rather than a second round trip.
+  loaded.feed = true;
+  bootFeed();
+  route();
+} else if (initialTab && tabs[initialTab]) {
   selectTab(initialTab);
   if (initialTab !== "feed") { loaded.feed = true; bootFeed(); }
 } else {
