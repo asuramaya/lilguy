@@ -30,6 +30,18 @@ PRESETS_DIR = ROOT / "presets"
 DEFAULT_FILTERS_FILE = ROOT / "filters.yaml"
 STATIC_DIR = Path(__file__).parent / "static"
 
+# Reserved preset name meaning "apply no filter at all". Without it there
+# was NO way to reach the raw corpus: /feed always applied a filter (a
+# named preset, or filters.yaml as the default), so of ~4700 open
+# postings the frontend could surface only the ~356 the supply-chain
+# default matched -- 92% of what this project collects was unreachable
+# from its own UI. That's backwards for a deliberately domain-UNFILTERED
+# scraper (docs/sourcing-model.md's two-layer split makes filtering the
+# READER's choice, which has to include choosing not to filter).
+# Checked before any presets/ file lookup, so a presets/all.yaml could
+# never shadow it -- don't add one.
+ALL_POSTINGS = "all"
+
 app = FastAPI(title="Internship feed", description="Live feed of sourced internship postings.")
 
 
@@ -52,34 +64,43 @@ def health():
 def feed(
     preset: str = Query(None, description="Name of a file in presets/ (without .yaml), e.g. "
                                             "'operations-logistics-supply-chain'. Defaults to the "
-                                            "root filters.yaml if omitted."),
+                                            "root filters.yaml if omitted. Pass 'all' to apply no "
+                                            "filter at all and get the raw open-postings corpus."),
     keywords_any: str = Query(None, description="Comma-separated, overrides the preset's keywords_any"),
     trusted_companies: str = Query(None, description="Comma-separated, overrides the preset's trusted_companies"),
     locations_include: str = Query(None, description="Comma-separated"),
     max_age_days: int = Query(None),
-    limit: int = Query(200, le=2000),
+    limit: int = Query(200, le=5000),
 ):
-    filter_path = (PRESETS_DIR / f"{preset}.yaml") if preset else DEFAULT_FILTERS_FILE
-    if not filter_path.exists():
-        return {"error": f"no such preset '{preset}'"}
-    spec = load_filter(str(filter_path))
-
-    if keywords_any is not None:
-        spec["keywords_any"] = [k.strip() for k in keywords_any.split(",") if k.strip()]
-    if trusted_companies is not None:
-        spec["trusted_companies"] = [k.strip() for k in trusted_companies.split(",") if k.strip()]
-    if locations_include is not None:
-        spec["locations_include"] = [k.strip() for k in locations_include.split(",") if k.strip()]
-    if max_age_days is not None:
-        spec["max_age_days"] = max_age_days
-
     with cursor() as cur:
         cur.execute("SELECT * FROM postings WHERE status = 'open' ORDER BY first_seen DESC LIMIT 5000")
         rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
 
-    now = datetime.now(timezone.utc)
-    matched = [r for r in rows if passes(r, spec, now)][:limit]
-    return {"count": len(matched), "postings": matched}
+    if preset == ALL_POSTINGS:
+        matched = rows
+    else:
+        filter_path = (PRESETS_DIR / f"{preset}.yaml") if preset else DEFAULT_FILTERS_FILE
+        if not filter_path.exists():
+            return {"error": f"no such preset '{preset}'"}
+        spec = load_filter(str(filter_path))
+
+        if keywords_any is not None:
+            spec["keywords_any"] = [k.strip() for k in keywords_any.split(",") if k.strip()]
+        if trusted_companies is not None:
+            spec["trusted_companies"] = [k.strip() for k in trusted_companies.split(",") if k.strip()]
+        if locations_include is not None:
+            spec["locations_include"] = [k.strip() for k in locations_include.split(",") if k.strip()]
+        if max_age_days is not None:
+            spec["max_age_days"] = max_age_days
+
+        now = datetime.now(timezone.utc)
+        matched = [r for r in rows if passes(r, spec, now)]
+
+    # `total` is the count BEFORE the limit slice, so a caller can tell
+    # "this preset matches 91 postings" apart from "this preset matches
+    # thousands and you're seeing the first `limit` of them". Without it
+    # a truncated response is indistinguishable from a complete one.
+    return {"count": len(matched[:limit]), "total": len(matched), "postings": matched[:limit]}
 
 
 @app.get("/sources")

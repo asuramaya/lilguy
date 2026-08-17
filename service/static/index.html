@@ -13,12 +13,22 @@
     --border-strong: #3a362e;
     --ink: #f0ede4;
     --ink-secondary: #a39d8c;
-    --ink-tertiary: #6d6858;
+    /* Was #6d6858, which measured 3.49:1 against --canvas -- under
+       WCAG AA's 4.5:1 floor for normal text, and this token carries
+       most of the metadata layer (locations, dates, counts, footer,
+       placeholders, inactive tabs), so the failure was everywhere at
+       once rather than in one corner. #8a8474 measures 5.22:1: passes
+       with headroom while still reading as clearly dimmer than
+       --ink-secondary (7.18:1), which is the whole point of the token. */
+    --ink-tertiary: #8a8474;
     --accent: #e8952a;
     --accent-dim: #b87423;
     --ok: #4a9b6e;
     --warn: #c8933f;
     --bad: #c85a42;
+    --focus: #e8952a;
+    --measure: 1180px;
+    --gutter: 28px;
   }
 
   * { box-sizing: border-box; }
@@ -38,9 +48,41 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* One shared horizontal rhythm for header, main and footer. Before
+     this, <header> was full-bleed while <main> was max-width:1180px
+     centered, so on a wide screen the brand and tabs sat at x=28 while
+     the toolbar and table started at x=595 -- a measured 567px
+     misalignment that read as two unrelated pages stacked together. */
+  .wrap {
+    max-width: var(--measure);
+    margin: 0 auto;
+    padding: 0 var(--gutter);
+    width: 100%;
+  }
+
+  /* Visible keyboard focus everywhere. The toolbar inputs previously set
+     outline:none with no replacement, so a keyboard user typing into the
+     search box had no indication of where focus was (WCAG 2.4.7). Inputs
+     sit inside a styled .field wrapper, so the ring goes on the wrapper
+     via :focus-within -- putting it on the bare input would draw it
+     inside the visual control instead of around it. */
+  :where(a, button, select, input, [tabindex]):focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  .field:focus-within {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-color: var(--border-strong);
+  }
+
   header {
-    padding: 20px 28px 0;
     border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--canvas);
+    z-index: 20;
   }
 
   .header-top {
@@ -49,13 +91,7 @@
     justify-content: space-between;
     gap: 16px;
     flex-wrap: wrap;
-    padding-bottom: 16px;
-  }
-
-  .brand {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
+    padding: 20px 0 16px;
   }
 
   .brand h1 {
@@ -78,7 +114,7 @@
     height: 6px;
     border-radius: 50%;
     background: var(--ink-tertiary);
-    box-shadow: 0 0 0 3px rgba(109, 104, 88, 0.15);
+    box-shadow: 0 0 0 3px rgba(138, 132, 116, 0.15);
     flex-shrink: 0;
   }
 
@@ -94,9 +130,9 @@
        header -- confirmed live, that's exactly what display:none caused
        here: the panel rendered clipped off the viewport edge because its
        positioned ancestor had shrunk to nothing once the badge (its only
-       in-flow content) was hidden. opacity+pointer-events keep the same
-       "invisible until there's something to show" behavior without
-       destabilizing layout. */
+       in-flow content) was hidden. visibility keeps the same "invisible
+       until there's something to show" behavior without destabilizing
+       layout. */
     visibility: hidden;
     display: inline-flex;
     align-items: center;
@@ -126,7 +162,7 @@
     border: 1px solid var(--border-strong);
     border-radius: 8px;
     padding: 8px;
-    z-index: 10;
+    z-index: 30;
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
   }
   .events-panel.open { display: block; }
@@ -147,10 +183,8 @@
     margin-bottom: 3px;
   }
   .events-panel .event-kind::before { content: ""; width: 6px; height: 6px; border-radius: 1px; }
-  .events-panel .event-kind.k-promoted { color: var(--ok); }
-  .events-panel .event-kind.k-promoted::before { background: var(--ok); }
-  .events-panel .event-kind.k-reinstated { color: var(--ok); }
-  .events-panel .event-kind.k-reinstated::before { background: var(--ok); }
+  .events-panel .event-kind.k-promoted, .events-panel .event-kind.k-reinstated { color: var(--ok); }
+  .events-panel .event-kind.k-promoted::before, .events-panel .event-kind.k-reinstated::before { background: var(--ok); }
   .events-panel .event-kind.k-disabled { color: var(--bad); }
   .events-panel .event-kind.k-disabled::before { background: var(--bad); }
   .events-panel .event-kind.k-backup_restore_test { color: var(--ink-secondary); }
@@ -158,13 +192,15 @@
   .events-panel .event-detail { color: var(--ink-secondary); }
   .events-panel .event-time { color: var(--ink-tertiary); font-size: 11px; margin-top: 2px; }
 
-  nav {
+  [role="tablist"] {
     display: flex;
     gap: 24px;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
+  [role="tablist"]::-webkit-scrollbar { display: none; }
 
-  nav button {
-    display: block;
+  [role="tab"] {
     padding: 10px 2px 12px;
     font-size: 13px;
     font-weight: 500;
@@ -175,16 +211,14 @@
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
     cursor: pointer;
+    white-space: nowrap;
   }
 
-  nav button.active { color: var(--ink); border-bottom-color: var(--accent); }
-  nav button:not(.active):hover { color: var(--ink-secondary); }
+  [role="tab"][aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  [role="tab"][aria-selected="false"]:hover { color: var(--ink-secondary); }
 
-  main {
-    max-width: 1180px;
-    margin: 0 auto;
-    padding: 20px 28px 60px;
-  }
+  main { padding: 20px 0 60px; }
+  [role="tabpanel"]:focus { outline: none; }
 
   .toolbar {
     display: flex;
@@ -204,7 +238,7 @@
     padding: 7px 10px;
   }
 
-  .toolbar .field.grow { flex: 1; min-width: 220px; }
+  .toolbar .field.grow { flex: 1; min-width: 200px; }
 
   .toolbar input, .toolbar select {
     background: none;
@@ -218,15 +252,13 @@
 
   .toolbar input::placeholder { color: var(--ink-tertiary); }
 
-  /* Native <select> popups don't inherit page CSS -- most browsers render
-     the open option list with the OS's own (usually light) theme
+  /* Native <select> popups don't inherit page CSS -- most browsers
+     render the open option list with the OS's own (usually light) theme
      regardless of how the closed control is styled. Chromium and Firefox
-     are exceptions ONLY for color/background-color set directly on
-     <option>, so this is the one lever that actually reaches the popup.
-     Without it, the closed select looks themed but the open list is
-     near-illegible light-gray-on-white (WCAG 1.4.3 needs >=4.5:1 for body
-     text; unstyled <option> text here measured well under that against a
-     white popup background) -- confirmed live via screenshot 2026-08-16. */
+     honor color/background-color set directly on <option>, which is the
+     one lever that actually reaches the popup. Without it the closed
+     select looks themed but the open list is near-illegible pale-on-white
+     (confirmed live 2026-08-16); with it, ~15.6:1. */
   .toolbar select option {
     background: var(--row);
     color: var(--ink);
@@ -251,21 +283,37 @@
     gap: 6px;
   }
 
-  .result-line strong {
-    color: var(--ink-secondary);
-    font-weight: 500;
-  }
-
-  .table-wrap { overflow-x: auto; }
+  .result-line strong { color: var(--ink-secondary); font-weight: 500; }
+  .result-line .truncated { color: var(--warn); }
 
   table {
     width: 100%;
     border-collapse: collapse;
+    /* Fixed, with explicit <col> widths, because `auto` sized columns to
+       their content: the longest location strings (up to 102 chars) won
+       792px while Title -- the column you actually read -- was squeezed
+       to 144px and wrapped to three lines. Measured live. Fixed layout
+       also means the table always fits its container, so no horizontal
+       scroll wrapper is needed, which is what let the sticky header
+       start working (see thead note below). */
+    table-layout: fixed;
   }
 
   thead th {
+    /* Sticks to the sticky <header> above it. This was previously dead
+       code: .table-wrap had overflow-x:auto, and per CSS spec setting
+       one axis to auto computes the OTHER axis to auto too, making the
+       wrapper a scroll container -- so `top: 0` anchored to a box that
+       never scrolls vertically instead of to the page. Measured: after
+       scrolling 1200px the header sat at top:-1004px, i.e. gone. With
+       table-layout:fixed the overflow wrapper is unnecessary, so it's
+       gone and sticky resolves against the viewport as intended. */
     position: sticky;
-    top: 0;
+    /* Measured from the real sticky header at runtime rather than
+       hardcoded -- the header's height changes with viewport width
+       (.header-top wraps) and a stale constant would either float the
+       column headers below the header or let rows slide under it. */
+    top: var(--header-h, 92px);
     background: var(--canvas);
     text-align: left;
     font-size: 11px;
@@ -276,32 +324,53 @@
     padding: 0 12px 10px;
     border-bottom: 1px solid var(--border-strong);
     white-space: nowrap;
+    z-index: 10;
   }
 
-  thead th.sortable { cursor: pointer; user-select: none; }
-  thead th.sortable:hover { color: var(--ink-secondary); }
   thead th.num { text-align: right; }
 
-  .sort-caret { color: var(--accent); margin-left: 3px; }
+  /* Sorting is a real <button>, not a click handler on a <th>. As a
+     bare th it was mouse-only -- tabIndex -1, no role, unreachable by
+     keyboard (WCAG 2.1.1) and silent to screen readers about both its
+     interactivity and the current sort direction. */
+  .sort-btn {
+    font: inherit;
+    color: inherit;
+    text-transform: inherit;
+    letter-spacing: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+  .sort-btn:hover { color: var(--ink-secondary); }
+  th.num .sort-btn { flex-direction: row-reverse; }
+  th[aria-sort] .sort-btn { color: var(--ink); }
+  .sort-caret { color: var(--accent); }
 
   tbody tr { border-bottom: 1px solid var(--border); }
   tbody tr:hover { background: var(--row-hover); }
   tbody td { padding: 11px 12px; vertical-align: top; }
 
-  .title-cell a {
-    color: var(--ink);
-    text-decoration: none;
-    font-weight: 500;
-  }
-  .title-cell a:hover { color: var(--accent); }
+  /* Every cell truncates rather than wraps, so one 102-char location
+     can't set the row height for the whole table. Full value stays
+     reachable via the title attribute (set in JS) and the link target. */
+  .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .company-cell { color: var(--ink-secondary); white-space: nowrap; }
-  .location-cell { color: var(--ink-tertiary); font-size: 12.5px; white-space: nowrap; }
+  .title-cell a { color: var(--ink); text-decoration: none; font-weight: 500; }
+  .title-cell a:hover { color: var(--accent); text-decoration: underline; }
+
+  .company-cell { color: var(--ink-secondary); }
+  .location-cell { color: var(--ink-tertiary); font-size: 12.5px; }
 
   .swatch-tag {
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    max-width: 100%;
     font-size: 11.5px;
     color: var(--ink-secondary);
     padding: 3px 8px 3px 6px;
@@ -309,6 +378,7 @@
     border: 1px solid var(--border);
     border-radius: 3px;
     white-space: nowrap;
+    overflow: hidden;
   }
   .swatch-tag::before {
     content: "";
@@ -318,6 +388,7 @@
     background: var(--swatch-color, var(--accent-dim));
     flex-shrink: 0;
   }
+  .swatch-label { overflow: hidden; text-overflow: ellipsis; }
 
   .status-cell {
     display: inline-flex;
@@ -326,13 +397,7 @@
     font-size: 12px;
     white-space: nowrap;
   }
-  .status-cell::before {
-    content: "";
-    width: 6px;
-    height: 6px;
-    border-radius: 1px;
-    flex-shrink: 0;
-  }
+  .status-cell::before { content: ""; width: 6px; height: 6px; border-radius: 1px; flex-shrink: 0; }
   .status-active::before, .status-promoted::before, .status-open::before { background: var(--ok); }
   .status-active, .status-promoted, .status-open { color: var(--ok); }
   .status-probation::before, .status-unchecked::before { background: var(--warn); }
@@ -343,130 +408,156 @@
   .status-no_match { color: var(--ink-tertiary); }
 
   .age-cell { color: var(--ink-tertiary); font-size: 12px; text-align: right; white-space: nowrap; }
-  .age-fresh { color: var(--ok); }
-
   .num-cell { text-align: right; }
 
-  .empty {
+  .empty { color: var(--ink-tertiary); padding: 48px 0; text-align: center; font-size: 13px; }
+
+  .legend {
     color: var(--ink-tertiary);
-    padding: 48px 0;
-    text-align: center;
-    font-size: 13px;
+    font-size: 12px;
+    margin-bottom: 10px;
+    line-height: 1.6;
   }
+  .legend b { color: var(--ink-secondary); font-weight: 500; }
 
   footer {
-    max-width: 1180px;
-    margin: 32px auto 0;
-    padding: 16px 28px 40px;
     border-top: 1px solid var(--border);
     color: var(--ink-tertiary);
     font-size: 12px;
-    display: flex;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px;
+    margin-top: 32px;
   }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding-top: 16px; padding-bottom: 40px; }
   footer a { color: var(--ink-tertiary); }
   footer a:hover { color: var(--accent); }
+
+  /* Below this width a 5-column table can only be read by dragging it
+     sideways (its min-content width measured 1680px against a 390px
+     phone viewport). Each row becomes a stacked card instead, labelled
+     from the data-label attributes the renderers set. */
+  @media (max-width: 719px) {
+    :root { --gutter: 16px; }
+    thead { display: none; }
+    table, tbody, tr, td { display: block; width: auto; }
+    tbody tr { padding: 12px 0; }
+    tbody td { padding: 2px 0; white-space: normal; overflow: visible; }
+    tbody td:empty { display: none; }
+    td[data-label]::before {
+      content: attr(data-label);
+      display: inline-block;
+      min-width: 74px;
+      color: var(--ink-tertiary);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    td.title-cell { font-size: 15px; margin-bottom: 4px; }
+    td.title-cell::before { display: none; }
+    .age-cell, .num-cell { text-align: left; }
+    .truncate { white-space: normal; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html { scroll-behavior: smooth; }
+  }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="header-top">
-    <div class="brand">
-      <h1>Internship Feed</h1>
-    </div>
-    <div class="status-line">
-      <div class="events-wrap">
-        <button class="events-badge" id="events-badge"></button>
-        <div class="events-panel" id="events-panel"></div>
+  <div class="wrap">
+    <div class="header-top">
+      <div class="brand"><h1>Internship Feed</h1></div>
+      <div class="status-line">
+        <div class="events-wrap">
+          <button class="events-badge" id="events-badge" aria-haspopup="true" aria-expanded="false"></button>
+          <div class="events-panel" id="events-panel" role="region" aria-label="Recent source events"></div>
+        </div>
+        <span class="status-dot" id="health-dot"></span>
+        <span id="health-sub">checking API&hellip;</span>
       </div>
-      <span class="status-dot" id="health-dot"></span>
-      <span id="health-sub">checking API&hellip;</span>
+    </div>
+    <div role="tablist" aria-label="Views">
+      <button role="tab" id="tabbtn-feed" data-tab="feed" aria-controls="tab-feed" aria-selected="true" tabindex="0">Feed</button>
+      <button role="tab" id="tabbtn-sources" data-tab="sources" aria-controls="tab-sources" aria-selected="false" tabindex="-1">Sources</button>
+      <button role="tab" id="tabbtn-candidates" data-tab="candidates" aria-controls="tab-candidates" aria-selected="false" tabindex="-1">Discovery</button>
+      <button role="tab" id="tabbtn-duplicates" data-tab="duplicates" aria-controls="tab-duplicates" aria-selected="false" tabindex="-1">Duplicates</button>
     </div>
   </div>
-  <nav>
-    <button data-tab="feed" class="active">Feed</button>
-    <button data-tab="sources">Sources</button>
-    <button data-tab="candidates">Discovery</button>
-    <button data-tab="duplicates">Duplicates</button>
-  </nav>
 </header>
 
-<main>
+<main class="wrap">
 
-  <section id="tab-feed">
+  <section id="tab-feed" role="tabpanel" aria-labelledby="tabbtn-feed" tabindex="0">
     <div class="toolbar">
       <div class="field">
-        <span class="field-icon">preset</span>
+        <label class="field-icon" for="preset">preset</label>
         <select id="preset"></select>
       </div>
       <div class="field">
-        <span class="field-icon">category</span>
+        <label class="field-icon" for="feed-category">category</label>
         <select id="feed-category"><option value="">All</option></select>
       </div>
       <div class="field grow">
-        <span class="field-icon">/</span>
-        <input type="text" id="search" placeholder="Filter by title or company&hellip;">
+        <label class="field-icon" for="search">/</label>
+        <input type="search" id="search" placeholder="Filter by title or company&hellip;">
       </div>
     </div>
-    <div class="result-line">
+    <div class="result-line" aria-live="polite">
       <span id="feed-count"></span>
-      <span id="feed-sort-line">sorted by posted date, newest first</span>
+      <span id="feed-sort-line"></span>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="sortable" data-sort="title">Title</th>
-            <th class="sortable" data-sort="company">Company</th>
-            <th class="sortable" data-sort="location">Location</th>
-            <th>Category</th>
-            <th class="sortable num" data-sort="first_seen">Posted</th>
-          </tr>
-        </thead>
-        <tbody id="feed-body"></tbody>
-      </table>
-    </div>
+    <table>
+      <colgroup>
+        <col style="width:38%"><col style="width:18%"><col style="width:21%"><col style="width:15%"><col style="width:8%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col"><button class="sort-btn" data-sort="title">Title</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="location">Location</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
+          <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen">Posted</button></th>
+        </tr>
+      </thead>
+      <tbody id="feed-body"></tbody>
+    </table>
   </section>
 
-  <section id="tab-sources" style="display:none">
+  <section id="tab-sources" role="tabpanel" aria-labelledby="tabbtn-sources" tabindex="0" hidden>
     <div class="toolbar">
       <div class="field">
-        <span class="field-icon">category</span>
+        <label class="field-icon" for="source-category">category</label>
         <select id="source-category"><option value="">All</option></select>
       </div>
       <div class="field grow">
-        <span class="field-icon">/</span>
-        <input type="text" id="source-search" placeholder="Filter by company&hellip;">
+        <label class="field-icon" for="source-search">/</label>
+        <input type="search" id="source-search" placeholder="Filter by company&hellip;">
       </div>
     </div>
-    <div class="result-line">
-      <span id="sources-count"></span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="sortable" data-sort="company">Company</th>
-            <th class="sortable" data-sort="ats">ATS</th>
-            <th class="sortable" data-sort="category">Category</th>
-            <th class="sortable" data-sort="status">Status</th>
-            <th class="sortable" data-sort="added_by">Added by</th>
-            <th class="sortable num" data-sort="consecutive_failures">Failures</th>
-            <th class="sortable num" data-sort="last_scraped_at">Last scraped</th>
-          </tr>
-        </thead>
-        <tbody id="sources-body"></tbody>
-      </table>
-    </div>
+    <div class="result-line" aria-live="polite"><span id="sources-count"></span></div>
+    <table>
+      <colgroup>
+        <col style="width:26%"><col style="width:11%"><col style="width:21%"><col style="width:12%"><col style="width:11%"><col style="width:9%"><col style="width:10%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="ats">ATS</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="status">Status</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="added_by">Added by</button></th>
+          <th scope="col" class="num"><button class="sort-btn" data-sort="consecutive_failures">Failures</button></th>
+          <th scope="col" class="num"><button class="sort-btn" data-sort="last_scraped_at">Scraped</button></th>
+        </tr>
+      </thead>
+      <tbody id="sources-body"></tbody>
+    </table>
   </section>
 
-  <section id="tab-candidates" style="display:none">
+  <section id="tab-candidates" role="tabpanel" aria-labelledby="tabbtn-candidates" tabindex="0" hidden>
     <div class="toolbar">
       <div class="field">
-        <span class="field-icon">status</span>
+        <label class="field-icon" for="candidate-status">status</label>
         <select id="candidate-status">
           <option value="">All</option>
           <option value="promoted">Promoted</option>
@@ -476,66 +567,79 @@
         </select>
       </div>
       <div class="field grow">
-        <span class="field-icon">/</span>
-        <input type="text" id="candidate-search" placeholder="Filter by company&hellip;">
+        <label class="field-icon" for="candidate-search">/</label>
+        <input type="search" id="candidate-search" placeholder="Filter by company&hellip;">
       </div>
     </div>
-    <div class="result-line">
-      <span id="candidates-count"></span>
-      <span>promoted = a real board was found and verified &middot; rejected = a board was found but failed verification (see Reason) &middot; no match = no board found on any connector &middot; unchecked = not probed yet</span>
-    </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="sortable" data-sort="company">Company</th>
-            <th class="sortable" data-sort="ats">ATS guess</th>
-            <th class="sortable" data-sort="review_status">Status</th>
-            <th>Reason</th>
-            <th class="sortable num" data-sort="checked_at">Checked</th>
-          </tr>
-        </thead>
-        <tbody id="candidates-body"></tbody>
-      </table>
-    </div>
+    <p class="legend">
+      <b>promoted</b> — a real board was found and its trial fetch verified.
+      <b>rejected</b> — a board <em>was</em> found, but the trial fetch failed verification (zero postings,
+      no internship-shaped titles, all-identical titles, or a company name that didn't match); see Reason.
+      <b>no match</b> — no board found on any connector.
+      <b>unchecked</b> — not probed yet.
+    </p>
+    <div class="result-line" aria-live="polite"><span id="candidates-count"></span></div>
+    <table>
+      <colgroup>
+        <col style="width:22%"><col style="width:11%"><col style="width:11%"><col style="width:46%"><col style="width:10%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="ats">ATS guess</button></th>
+          <th scope="col"><button class="sort-btn" data-sort="review_status">Status</button></th>
+          <th scope="col">Reason</th>
+          <th scope="col" class="num"><button class="sort-btn" data-sort="checked_at">Checked</button></th>
+        </tr>
+      </thead>
+      <tbody id="candidates-body"></tbody>
+    </table>
   </section>
 
-  <section id="tab-duplicates" style="display:none">
+  <section id="tab-duplicates" role="tabpanel" aria-labelledby="tabbtn-duplicates" tabindex="0" hidden>
     <div class="toolbar">
       <div class="field grow">
-        <span class="field-icon">/</span>
-        <input type="text" id="duplicate-search" placeholder="Filter by company&hellip;">
+        <label class="field-icon" for="duplicate-search">/</label>
+        <input type="search" id="duplicate-search" placeholder="Filter by company&hellip;">
       </div>
     </div>
-    <div class="result-line">
+    <div class="result-line" aria-live="polite">
       <span id="duplicates-count"></span>
-      <span>what the dedup sweep collapsed &mdash; not a feed, an audit view</span>
+      <span>what the dedup sweep collapsed &mdash; an audit view, not a feed</span>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Duplicate</th>
-            <th class="sortable" data-sort="source">Source</th>
-            <th>Canonical (kept open)</th>
-            <th class="sortable num" data-sort="first_seen">Seen</th>
-          </tr>
-        </thead>
-        <tbody id="duplicates-body"></tbody>
-      </table>
-    </div>
+    <table>
+      <colgroup>
+        <col style="width:34%"><col style="width:12%"><col style="width:34%"><col style="width:10%">
+      </colgroup>
+      <thead>
+        <tr>
+          <th scope="col">Duplicate</th>
+          <th scope="col"><button class="sort-btn" data-sort="source">Source</button></th>
+          <th scope="col">Canonical (kept open)</th>
+          <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen">Seen</button></th>
+        </tr>
+      </thead>
+      <tbody id="duplicates-body"></tbody>
+    </table>
   </section>
 
 </main>
 
 <footer>
-  <span>Sourced directly from company career sites &mdash; no third-party job-board aggregator in the loop.</span>
-  <span><a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
+  <div class="wrap">
+    <span>Sourced directly from company career sites &mdash; no third-party job-board aggregator in the loop.</span>
+    <span><a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
+  </div>
 </footer>
 
 <script>
+// "all" is the API's reserved no-filter sentinel (see service/api.py's
+// ALL_POSTINGS). Listed first because the raw corpus is ~13x larger than
+// what this fork's default filter matches, and before this option
+// existed there was no way to reach any of it from the UI.
 const PRESETS = [
   ["", "Default (this fork's filter)"],
+  ["all", "All postings (no filter)"],
   ["operations-logistics-supply-chain", "Supply Chain"],
   ["software-engineering", "Software Engineering"],
   ["data-analytics", "Data Analytics"],
@@ -544,6 +648,8 @@ const PRESETS = [
   ["marketing", "Marketing"],
   ["sales", "Sales"],
 ];
+
+const FEED_LIMIT = 1000;
 
 const presetSelect = document.getElementById("preset");
 for (const [value, label] of PRESETS) {
@@ -570,63 +676,39 @@ function timeAgo(iso) {
   return Math.floor(secs / 86400) + "d ago";
 }
 
-// A category dot used to be one flat --accent-dim color for every
-// category -- decorative, not informative, and worse than no dot at all
-// since it visually promises color-coding it doesn't deliver (a user
-// scanning for "the blue one" would never find it, because there was
-// never more than one color). This gives each category a stable color
-// derived from its own name, so the same category always renders the
-// same hue everywhere the tag appears. Hue-only (fixed saturation/
-// lightness tuned for the dark canvas) keeps every generated color at
-// roughly the same perceived brightness against --canvas, rather than
-// risking a hash landing on a near-black or near-white hue.
-function categoryColor(category) {
-  let hash = 0;
-  for (let i = 0; i < category.length; i++) hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
-  return `hsl(${hash % 360}, 55%, 62%)`;
+// Relative time is the right default for scanning ("2h ago" answers
+// "is this fresh?" faster than a date does), but it throws away the
+// actual timestamp -- so the exact local datetime goes in the title.
+function exactTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString();
 }
 
 function emptyRow(colspan, message) {
   return `<tr><td colspan="${colspan}"><div class="empty">${escapeHtml(message)}</div></td></tr>`;
 }
 
-// Repopulates a category <select> from whatever categories are actually
-// present in the current rows, instead of a hardcoded list -- the set
-// changes as sources get added/recategorized, so a static list would
-// silently drift out of sync. Keeps the current selection if it still
-// exists in the new option set.
+// A category dot used to be one flat --accent-dim for every category --
+// decorative, not informative, and worse than no dot at all since it
+// visually promises colour-coding it doesn't deliver. This gives each
+// category a stable colour derived from its own name, so the same
+// category always renders the same hue everywhere the tag appears.
+// Hue-only (fixed S/L tuned for the dark canvas) keeps every generated
+// colour at roughly equal perceived brightness, rather than risking a
+// hash landing on near-black or near-white.
+function categoryColor(category) {
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
+  return `hsl(${hash % 360}, 55%, 62%)`;
+}
+
 function populateCategoryOptions(selectEl, rows) {
   const categories = [...new Set(rows.map(r => r.category).filter(Boolean))].sort();
   const current = selectEl.value;
   selectEl.innerHTML = '<option value="">All</option>' +
     categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
   if (categories.includes(current)) selectEl.value = current;
-}
-
-// --- feed tab ---------------------------------------------------------
-
-let feedPostings = [];
-let feedSort = { key: "first_seen", dir: -1 };
-
-async function loadFeed() {
-  const preset = presetSelect.value;
-  const url = preset ? `/feed?preset=${encodeURIComponent(preset)}&limit=1000` : `/feed?limit=1000`;
-  document.getElementById("feed-count").textContent = "loading…";
-  try {
-    const res = await fetch(url);
-    const data = await res.json();
-    if (data.error) {
-      document.getElementById("feed-body").innerHTML = emptyRow(5, data.error);
-      document.getElementById("feed-count").textContent = "";
-      return;
-    }
-    feedPostings = data.postings || [];
-    populateCategoryOptions(document.getElementById("feed-category"), feedPostings);
-    renderFeed();
-  } catch (e) {
-    document.getElementById("feed-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
-    document.getElementById("feed-count").textContent = "";
-  }
 }
 
 function sortRows(rows, key, dir) {
@@ -639,30 +721,103 @@ function sortRows(rows, key, dir) {
   });
 }
 
-// Shared by every tab's table so sortability is consistent everywhere a
-// column header looks clickable, instead of only working on Feed --
-// mismatched affordances (a header that LOOKS the same as a sortable one
-// but does nothing) is a real usability failure (Nielsen's "consistency
-// and standards"), not just a missing nice-to-have.
-function wireSortable(containerId, state, renderFn) {
-  document.querySelectorAll(`#${containerId} th.sortable`).forEach(th => {
-    th.addEventListener("click", () => {
-      const key = th.dataset.sort;
-      state.dir = state.key === key ? -state.dir : 1;
+// Sort state lives on the <th> as aria-sort so the control announces its
+// own state instead of only drawing a caret sighted users can see.
+function applySort(containerId, state) {
+  document.querySelectorAll(`#${containerId} .sort-btn`).forEach(btn => {
+    const th = btn.closest("th");
+    const caret = btn.querySelector(".sort-caret");
+    if (caret) caret.remove();
+    if (btn.dataset.sort === state.key) {
+      th.setAttribute("aria-sort", state.dir === 1 ? "ascending" : "descending");
+      btn.insertAdjacentHTML("beforeend", `<span class="sort-caret" aria-hidden="true">${state.dir === 1 ? "▲" : "▼"}</span>`);
+    } else {
+      th.removeAttribute("aria-sort");
+    }
+  });
+}
+
+function wireSortable(containerId, state, renderFn, dateKeys = []) {
+  document.querySelectorAll(`#${containerId} .sort-btn`).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.sort;
+      // Dates default to newest-first; text defaults to A-Z. Toggling an
+      // already-active column just flips it.
+      state.dir = state.key === key ? -state.dir : (dateKeys.includes(key) ? -1 : 1);
       state.key = key;
       renderFn();
     });
   });
 }
 
-function applySortCarets(containerId, state) {
-  document.querySelectorAll(`#${containerId} th.sortable`).forEach(th => {
-    const caret = th.querySelector(".sort-caret");
-    if (caret) caret.remove();
-    if (th.dataset.sort === state.key) {
-      th.insertAdjacentHTML("beforeend", `<span class="sort-caret">${state.dir === 1 ? "▲" : "▼"}</span>`);
+// Search runs on every keystroke and rebuilds the whole tbody; measured
+// at ~13ms for 356 rows, so it scales to ~36ms at the 1000-row cap --
+// enough to feel like lag while typing. Debounced so a burst of
+// keystrokes costs one render, not one per character.
+function debounce(fn, ms = 140) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// --- URL state ----------------------------------------------------------
+// Filters live in the query string so a filtered view is linkable,
+// bookmarkable and survives a refresh. Previously every reload dumped you
+// back on the default preset with your search cleared.
+
+function syncUrl() {
+  const p = new URLSearchParams();
+  const tab = document.querySelector('[role="tab"][aria-selected="true"]').dataset.tab;
+  if (tab !== "feed") p.set("tab", tab);
+  if (presetSelect.value) p.set("preset", presetSelect.value);
+  const cat = document.getElementById("feed-category").value;
+  if (cat) p.set("category", cat);
+  const q = document.getElementById("search").value.trim();
+  if (q) p.set("q", q);
+  const qs = p.toString();
+  history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
+}
+
+const initialParams = new URLSearchParams(location.search);
+
+// --- feed tab ---------------------------------------------------------
+
+let feedPostings = [];
+let feedTotal = 0;
+let feedSort = { key: "first_seen", dir: -1 };
+
+async function loadFeed() {
+  const preset = presetSelect.value;
+  const url = preset
+    ? `/feed?preset=${encodeURIComponent(preset)}&limit=${FEED_LIMIT}`
+    : `/feed?limit=${FEED_LIMIT}`;
+  document.getElementById("feed-count").textContent = "loading…";
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.error) {
+      document.getElementById("feed-body").innerHTML = emptyRow(5, data.error);
+      document.getElementById("feed-count").textContent = "";
+      return;
     }
-  });
+    feedPostings = data.postings || [];
+    feedTotal = data.total ?? feedPostings.length;
+    populateCategoryOptions(document.getElementById("feed-category"), feedPostings);
+    if (initialParams.get("category")) {
+      const sel = document.getElementById("feed-category");
+      if ([...sel.options].some(o => o.value === initialParams.get("category"))) {
+        sel.value = initialParams.get("category");
+        initialParams.delete("category");
+      }
+    }
+    renderFeed();
+    // Re-sync after the category select is populated: on a deep link the
+    // first syncUrl() runs before the options exist, so ?category would
+    // otherwise be stripped from the URL it just came from.
+    syncUrl();
+  } catch (e) {
+    document.getElementById("feed-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
+    document.getElementById("feed-count").textContent = "";
+  }
 }
 
 function renderFeed() {
@@ -677,10 +832,18 @@ function renderFeed() {
   }
   filtered = sortRows(filtered, feedSort.key, feedSort.dir);
 
+  // Says plainly when the server capped the result set, rather than
+  // presenting a truncated list as if it were the whole match.
+  const truncated = feedTotal > feedPostings.length;
   document.getElementById("feed-count").innerHTML =
-    `<strong>${filtered.length}</strong> of ${feedPostings.length} open posting${feedPostings.length === 1 ? "" : "s"}`;
+    `<strong>${filtered.length}</strong> of ${feedPostings.length} shown` +
+    (truncated
+      ? ` <span class="truncated">(${feedTotal} match — capped at newest ${feedPostings.length})</span>`
+      : "");
+  document.getElementById("feed-sort-line").textContent =
+    `sorted by ${feedSort.key.replace("_", " ")}, ${feedSort.dir === 1 ? "ascending" : "descending"}`;
 
-  applySortCarets("tab-feed", feedSort);
+  applySort("tab-feed", feedSort);
 
   const body = document.getElementById("feed-body");
   if (!filtered.length) {
@@ -689,23 +852,14 @@ function renderFeed() {
   }
   body.innerHTML = filtered.map(p => `
     <tr>
-      <td class="title-cell"><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(p.title)}</a></td>
-      <td class="company-cell">${escapeHtml(p.company)}</td>
-      <td class="location-cell mono">${escapeHtml(p.location || "—")}</td>
-      <td>${p.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(p.category)}">${escapeHtml(p.category)}</span>` : ""}</td>
-      <td class="age-cell mono">${escapeHtml(timeAgo(p.first_seen))}</td>
+      <td class="title-cell truncate" data-label="Title"><a href="${escapeHtml(p.url)}" target="_blank" rel="noopener" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
+      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(p.company)}">${escapeHtml(p.company)}</td>
+      <td class="location-cell truncate" data-label="Location" title="${escapeHtml(p.location || "")}">${escapeHtml(p.location || "—")}</td>
+      <td data-label="Category">${p.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(p.category)}"><span class="swatch-label">${escapeHtml(p.category)}</span></span>` : ""}</td>
+      <td class="age-cell mono" data-label="Posted" title="${escapeHtml(exactTime(p.first_seen))}">${escapeHtml(timeAgo(p.first_seen))}</td>
     </tr>
   `).join("");
 }
-
-document.querySelectorAll('#tab-feed th.sortable').forEach(th => {
-  th.addEventListener("click", () => {
-    const key = th.dataset.sort;
-    feedSort.dir = feedSort.key === key ? -feedSort.dir : (key === "first_seen" ? -1 : 1);
-    feedSort.key = key;
-    renderFeed();
-  });
-});
 
 // --- sources tab --------------------------------------------------------
 
@@ -736,19 +890,19 @@ function renderSources() {
 
   document.getElementById("sources-count").innerHTML =
     `<strong>${filtered.length}</strong> of ${sourceRows.length} sources`;
-  applySortCarets("tab-sources", sourceSort);
+  applySort("tab-sources", sourceSort);
 
   document.getElementById("sources-body").innerHTML = filtered.length ? filtered.map(s => `
     <tr>
-      <td class="company-cell">${escapeHtml(s.company)}</td>
-      <td class="mono">${escapeHtml(s.ats)}</td>
-      <td class="location-cell">${escapeHtml(s.category || "—")}</td>
-      <td><span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span></td>
-      <td class="location-cell">${escapeHtml(s.added_by)}</td>
-      <td class="num-cell mono">${s.consecutive_failures}</td>
-      <td class="age-cell mono">${escapeHtml(timeAgo(s.last_scraped_at))}</td>
+      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(s.company)}">${escapeHtml(s.company)}</td>
+      <td class="mono truncate" data-label="ATS">${escapeHtml(s.ats)}</td>
+      <td data-label="Category">${s.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(s.category)}"><span class="swatch-label">${escapeHtml(s.category)}</span></span>` : "—"}</td>
+      <td data-label="Status"><span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span></td>
+      <td class="location-cell truncate" data-label="Added by">${escapeHtml(s.added_by)}</td>
+      <td class="num-cell mono" data-label="Failures">${s.consecutive_failures}</td>
+      <td class="age-cell mono" data-label="Scraped" title="${escapeHtml(exactTime(s.last_scraped_at))}">${escapeHtml(timeAgo(s.last_scraped_at))}</td>
     </tr>
-  `).join("") : emptyRow(7, "No sources.");
+  `).join("") : emptyRow(7, sourceRows.length ? "No sources match that filter." : "No sources.");
 }
 
 // --- candidates tab -------------------------------------------------------
@@ -777,19 +931,25 @@ function renderCandidates() {
   if (statusFilter) filtered = filtered.filter(c => c.review_status === statusFilter);
   filtered = sortRows(filtered, candidateSort.key, candidateSort.dir);
 
+  const shown = filtered.slice(0, 500);
   document.getElementById("candidates-count").innerHTML =
-    `<strong>${filtered.length}</strong> of ${candidateRows.length} candidates`;
-  applySortCarets("tab-candidates", candidateSort);
+    `<strong>${filtered.length}</strong> of ${candidateRows.length} candidates` +
+    (filtered.length > shown.length
+      ? ` <span class="truncated">(showing first ${shown.length})</span>`
+      : "");
+  applySort("tab-candidates", candidateSort);
 
-  document.getElementById("candidates-body").innerHTML = filtered.length ? filtered.slice(0, 500).map(c => `
+  document.getElementById("candidates-body").innerHTML = shown.length ? shown.map(c => {
+    const reason = c.evidence?.reason || "";
+    return `
     <tr>
-      <td class="company-cell">${escapeHtml(c.company)}</td>
-      <td class="mono">${escapeHtml(c.ats || "—")}</td>
-      <td><span class="status-cell status-${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</span></td>
-      <td class="location-cell">${escapeHtml(c.evidence?.reason || "—")}</td>
-      <td class="age-cell mono">${escapeHtml(timeAgo(c.checked_at))}</td>
-    </tr>
-  `).join("") : emptyRow(5, candidateRows.length ? "No candidates match that filter." : "No candidates yet.");
+      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(c.company)}">${escapeHtml(c.company)}</td>
+      <td class="mono truncate" data-label="ATS">${escapeHtml(c.ats || "—")}</td>
+      <td data-label="Status"><span class="status-cell status-${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</span></td>
+      <td class="location-cell truncate" data-label="Reason" title="${escapeHtml(reason)}">${escapeHtml(reason || "—")}</td>
+      <td class="age-cell mono" data-label="Checked" title="${escapeHtml(exactTime(c.checked_at))}">${escapeHtml(timeAgo(c.checked_at))}</td>
+    </tr>`;
+  }).join("") : emptyRow(5, candidateRows.length ? "No candidates match that filter." : "No candidates yet.");
 }
 
 // --- duplicates tab ---------------------------------------------------------
@@ -817,21 +977,21 @@ function renderDuplicates() {
 
   document.getElementById("duplicates-count").innerHTML =
     `<strong>${filtered.length}</strong> of ${duplicateRows.length} duplicates`;
-  applySortCarets("tab-duplicates", duplicateSort);
+  applySort("tab-duplicates", duplicateSort);
 
   document.getElementById("duplicates-body").innerHTML = filtered.length ? filtered.map(d => `
     <tr>
-      <td>
-        <div class="title-cell">${escapeHtml(d.title)}</div>
-        <div class="company-cell">${escapeHtml(d.company)}${d.location ? " &middot; " + escapeHtml(d.location) : ""}</div>
+      <td data-label="Duplicate">
+        <div class="truncate" title="${escapeHtml(d.title)}">${escapeHtml(d.title)}</div>
+        <div class="company-cell truncate">${escapeHtml(d.company)}${d.location ? " &middot; " + escapeHtml(d.location) : ""}</div>
       </td>
-      <td class="mono">${escapeHtml(d.source || "—")}</td>
-      <td>
+      <td class="mono truncate" data-label="Source">${escapeHtml(d.source || "—")}</td>
+      <td data-label="Canonical">
         ${d.canonical_id
-          ? `${escapeHtml(d.canonical_title)}<div class="company-cell">${escapeHtml(d.canonical_company)} &middot; <span class="mono">${escapeHtml(d.canonical_source)}</span></div>`
-          : `<span class="empty" style="padding:0">canonical posting no longer open</span>`}
+          ? `<div class="truncate" title="${escapeHtml(d.canonical_title)}">${escapeHtml(d.canonical_title)}</div><div class="company-cell truncate">${escapeHtml(d.canonical_company)} &middot; <span class="mono">${escapeHtml(d.canonical_source)}</span></div>`
+          : `<span class="location-cell">canonical posting no longer open</span>`}
       </td>
-      <td class="age-cell mono">${escapeHtml(timeAgo(d.first_seen))}</td>
+      <td class="age-cell mono" data-label="Seen" title="${escapeHtml(exactTime(d.first_seen))}">${escapeHtml(timeAgo(d.first_seen))}</td>
     </tr>
   `).join("") : emptyRow(4, duplicateRows.length ? "No duplicates match that filter." : "No duplicates caught yet — either genuinely none, or the dedup sweep hasn't run since these sources were added.");
 }
@@ -839,34 +999,55 @@ function renderDuplicates() {
 // --- tabs / wiring --------------------------------------------------------
 
 const tabs = { feed: loadFeed, sources: loadSources, candidates: loadCandidates, duplicates: loadDuplicates };
+const tabButtons = [...document.querySelectorAll('[role="tab"]')];
 let loaded = {};
 
-document.querySelectorAll("nav button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    for (const name of Object.keys(tabs)) {
-      document.getElementById(`tab-${name}`).style.display = name === btn.dataset.tab ? "" : "none";
-    }
-    if (!loaded[btn.dataset.tab]) {
-      loaded[btn.dataset.tab] = true;
-      tabs[btn.dataset.tab]();
-    }
+function selectTab(name, { focus = false } = {}) {
+  tabButtons.forEach(b => {
+    const on = b.dataset.tab === name;
+    b.setAttribute("aria-selected", String(on));
+    b.tabIndex = on ? 0 : -1;
+    if (on && focus) b.focus();
+    document.getElementById(`tab-${b.dataset.tab}`).hidden = !on;
   });
+  if (!loaded[name]) {
+    loaded[name] = true;
+    tabs[name]();
+  }
+  syncUrl();
+}
+
+tabButtons.forEach(btn => btn.addEventListener("click", () => selectTab(btn.dataset.tab)));
+
+// Arrow-key navigation between tabs, per the WAI-ARIA tabs pattern --
+// without it a keyboard user has to tab through every control on the
+// current panel to reach the next tab.
+document.querySelector('[role="tablist"]').addEventListener("keydown", (e) => {
+  const i = tabButtons.findIndex(b => b.getAttribute("aria-selected") === "true");
+  let next = null;
+  if (e.key === "ArrowRight") next = (i + 1) % tabButtons.length;
+  else if (e.key === "ArrowLeft") next = (i - 1 + tabButtons.length) % tabButtons.length;
+  else if (e.key === "Home") next = 0;
+  else if (e.key === "End") next = tabButtons.length - 1;
+  if (next !== null) {
+    e.preventDefault();
+    selectTab(tabButtons[next].dataset.tab, { focus: true });
+  }
 });
 
-wireSortable("tab-sources", sourceSort, renderSources);
-wireSortable("tab-candidates", candidateSort, renderCandidates);
-wireSortable("tab-duplicates", duplicateSort, renderDuplicates);
+wireSortable("tab-feed", feedSort, renderFeed, ["first_seen"]);
+wireSortable("tab-sources", sourceSort, renderSources, ["last_scraped_at"]);
+wireSortable("tab-candidates", candidateSort, renderCandidates, ["checked_at"]);
+wireSortable("tab-duplicates", duplicateSort, renderDuplicates, ["first_seen"]);
 
-presetSelect.addEventListener("change", loadFeed);
-document.getElementById("search").addEventListener("input", renderFeed);
-document.getElementById("feed-category").addEventListener("change", renderFeed);
-document.getElementById("source-search").addEventListener("input", renderSources);
+presetSelect.addEventListener("change", () => { loadFeed(); syncUrl(); });
+document.getElementById("search").addEventListener("input", debounce(() => { renderFeed(); syncUrl(); }));
+document.getElementById("feed-category").addEventListener("change", () => { renderFeed(); syncUrl(); });
+document.getElementById("source-search").addEventListener("input", debounce(renderSources));
 document.getElementById("source-category").addEventListener("change", renderSources);
-document.getElementById("candidate-search").addEventListener("input", renderCandidates);
+document.getElementById("candidate-search").addEventListener("input", debounce(renderCandidates));
 document.getElementById("candidate-status").addEventListener("change", renderCandidates);
-document.getElementById("duplicate-search").addEventListener("input", renderDuplicates);
+document.getElementById("duplicate-search").addEventListener("input", debounce(renderDuplicates));
 
 fetch("/health").then(r => r.json()).then(d => {
   document.getElementById("health-sub").textContent = d.ok ? "API live" : "API unhealthy";
@@ -880,12 +1061,12 @@ fetch("/health").then(r => r.json()).then(d => {
 //
 // "Proactive" without a persistent process or SMTP/webhook credentials to
 // drive one -- see docs/service-architecture.md's "Staying informed"
-// section. This surfaces new sources promoted/disabled/reinstated and
-// backup restore-test results the moment the page loads, instead of
-// requiring anyone to dig through the Sources/Discovery tabs by hand.
-// "Seen" state lives in localStorage (per-browser, not server-side) --
-// good enough for a single-operator tool; a multi-viewer deployment would
-// need this tracked server-side instead.
+// section. Surfaces sources promoted/disabled/reinstated and backup
+// restore-test results on page load, instead of requiring anyone to dig
+// through the Sources/Discovery tabs by hand. "Seen" state lives in
+// localStorage (per-browser, not server-side) -- fine for a
+// single-operator tool; a multi-viewer deployment would need it tracked
+// server-side instead.
 
 const EVENTS_LAST_SEEN_KEY = "internship-feed-events-last-seen";
 
@@ -900,6 +1081,7 @@ async function loadEvents() {
     const badge = document.getElementById("events-badge");
     if (unseen.length > 0) {
       badge.textContent = `${unseen.length} new`;
+      badge.setAttribute("aria-label", `${unseen.length} new source events`);
       badge.classList.add("visible");
     }
 
@@ -912,13 +1094,14 @@ async function loadEvents() {
       <div class="event-row">
         <div class="event-kind k-${escapeHtml(e.kind)}">${escapeHtml(KIND_LABEL[e.kind] || e.kind)}${e.company ? " &middot; " + escapeHtml(e.company) : ""}</div>
         <div class="event-detail">${escapeHtml(e.detail)}</div>
-        <div class="event-time mono">${escapeHtml(timeAgo(e.created_at))}</div>
+        <div class="event-time mono" title="${escapeHtml(exactTime(e.created_at))}">${escapeHtml(timeAgo(e.created_at))}</div>
       </div>
     `).join("") : `<div class="empty">Nothing logged yet.</div>`;
 
     badge.addEventListener("click", () => {
-      panel.classList.toggle("open");
-      if (panel.classList.contains("open") && eventRows.length) {
+      const open = panel.classList.toggle("open");
+      badge.setAttribute("aria-expanded", String(open));
+      if (open && eventRows.length) {
         localStorage.setItem(EVENTS_LAST_SEEN_KEY, eventRows[0].created_at);
         badge.classList.remove("visible");
       }
@@ -934,11 +1117,42 @@ document.addEventListener("click", (ev) => {
   const wrap = document.querySelector(".events-wrap");
   if (wrap && !wrap.contains(ev.target)) {
     document.getElementById("events-panel").classList.remove("open");
+    document.getElementById("events-badge").setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    document.getElementById("events-panel").classList.remove("open");
+    document.getElementById("events-badge").setAttribute("aria-expanded", "false");
   }
 });
 
-loaded.feed = true;
-loadFeed();
+// --- boot ---------------------------------------------------------------
+
+// Feeds the real sticky-header height to CSS so the sticky <thead> parks
+// exactly beneath it at any viewport width.
+const headerEl = document.querySelector("header");
+function measureHeader() {
+  document.documentElement.style.setProperty("--header-h", `${Math.round(headerEl.getBoundingClientRect().height)}px`);
+}
+measureHeader();
+if (window.ResizeObserver) new ResizeObserver(measureHeader).observe(headerEl);
+else addEventListener("resize", debounce(measureHeader, 100));
+
+if (initialParams.get("preset") !== null &&
+    [...presetSelect.options].some(o => o.value === initialParams.get("preset"))) {
+  presetSelect.value = initialParams.get("preset");
+}
+if (initialParams.get("q")) document.getElementById("search").value = initialParams.get("q");
+
+const initialTab = initialParams.get("tab");
+if (initialTab && tabs[initialTab]) {
+  selectTab(initialTab);
+  if (initialTab !== "feed") { loaded.feed = true; loadFeed(); }
+} else {
+  loaded.feed = true;
+  loadFeed();
+}
 </script>
 
 </body>
