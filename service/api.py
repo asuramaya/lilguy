@@ -12,6 +12,7 @@ here exactly as-is rather than reimplemented against SQL.
 Run with: uvicorn service.api:app --host 0.0.0.0 --port 8000
 """
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Optional
@@ -72,6 +73,27 @@ FEED_EXCLUDED_COLUMNS = frozenset({
     "description_next_attempt_at",
 })
 
+# How long the in-process corpus snapshot is reused.
+#
+# Operator ruling, 2026-08-17: cache rather than rate-limit. A RESPONSE
+# cache keyed on the query string would be bypassed by ?q=<random> and
+# would never bound worst-case load; caching the CORPUS READ works
+# because that read is identical for every request regardless of query,
+# and it is the expensive half. A flood of distinct queries then costs
+# one database read per TTL instead of one per request.
+#
+# A plain TTL, deliberately, rather than invalidating on change: the
+# scheduler writes constantly (41 postings touched in a representative
+# 60 seconds), so a change-keyed cache would thrash and never serve a
+# hit. Staleness of up to a minute is invisible for postings that live
+# for weeks.
+#
+# Safe as process-local state because the API runs a SINGLE uvicorn
+# worker (docker-compose.yml). Under multiple workers this stays
+# CORRECT -- each worker just keeps its own snapshot and they may be up
+# to one TTL apart -- but that is worth knowing before adding --workers.
+CORPUS_TTL_SECONDS = 45
+
 app = FastAPI(title="Internship feed", description="Live feed of sourced internship postings.")
 
 
@@ -130,6 +152,47 @@ def _search_ranks(q: str) -> dict:
         return {r["id"]: float(r["rank"]) for r in cur.fetchall()}
 
 
+_corpus_cache: dict = {"rows": None, "fetched_at": 0.0, "truncated": False}
+
+
+def _open_corpus() -> tuple[list, bool]:
+    """The open postings, as a cached snapshot shared by every request.
+
+    Returns the SAME list object to every caller, so callers must not
+    mutate it -- feed() only ever builds new filtered lists from it.
+
+    Ordered by the employer's own posting date rather than first_seen
+    (our discovery time) -- see service/posted_at.py. NULLS LAST so
+    postings whose source gave no date sink to the bottom instead of
+    heading a "newest first" list.
+    """
+    now = time.monotonic()
+    if _corpus_cache["rows"] is not None and now - _corpus_cache["fetched_at"] < CORPUS_TTL_SECONDS:
+        return _corpus_cache["rows"], _corpus_cache["truncated"]
+
+    with cursor() as cur:
+        cur.execute(
+            # `id` is a tiebreaker, not decoration: without it the sort
+            # is not TOTAL, and offset paging over a non-total sort
+            # silently repeats and skips rows. Measured here -- 88 open
+            # postings shared an identical (posted_at_ts, first_seen)
+            # pair, Postgres may order ties differently per query, and
+            # paging three pages of 200 returned 592 distinct rows out
+            # of 600. A unique final key makes the order deterministic
+            # across separate requests, which is what offset paging
+            # assumes and never states.
+            f"SELECT {_feed_columns(cur)} FROM postings WHERE status = 'open' "
+            "ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC, id LIMIT %s",
+            (SOURCE_ROW_CAP,),
+        )
+        rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    # A cap this high should never bind, but if it ever does the caller
+    # is told rather than served a silently short corpus.
+    _corpus_cache.update(rows=rows, fetched_at=now, truncated=len(rows) >= SOURCE_ROW_CAP)
+    return rows, _corpus_cache["truncated"]
+
+
 def _row_to_filter_dict(row: dict) -> dict:
     d = dict(row)
     for field in ("first_seen", "last_seen", "posted_at_ts"):
@@ -173,30 +236,7 @@ def feed(
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(le=5000)] = 200,
 ):
-    with cursor() as cur:
-        # Ordered by the employer's own posting date rather than
-        # first_seen (our discovery time) -- see service/posted_at.py.
-        # NULLS LAST so postings whose source gave no date sink to the
-        # bottom instead of heading a "newest first" list.
-        cur.execute(
-            # `id` is a tiebreaker, not decoration: without it the sort
-            # is not TOTAL, and offset paging over a non-total sort
-            # silently repeats and skips rows. Measured here -- 88 open
-            # postings share an identical (posted_at_ts, first_seen)
-            # pair, Postgres may order ties differently per query, and
-            # paging three pages of 200 returned 592 distinct rows out
-            # of 600. A unique final key makes the order deterministic
-            # across separate requests, which is what offset paging
-            # assumes and never states.
-            f"SELECT {_feed_columns(cur)} FROM postings WHERE status = 'open' "
-            "ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC, id LIMIT %s",
-            (SOURCE_ROW_CAP,),
-        )
-        rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
-
-    # A cap this high should never bind, but if it ever does the caller
-    # is told rather than served a silently short corpus.
-    source_truncated = len(rows) >= SOURCE_ROW_CAP
+    rows, source_truncated = _open_corpus()
 
     if preset == ALL_POSTINGS:
         matched = rows
@@ -665,6 +705,42 @@ def candidates():
             "FROM discovery_candidates ORDER BY checked_at DESC NULLS FIRST"
         )
         return {"candidates": cur.fetchall()}
+
+
+# Set on every response, including the static page.
+#
+# This deployment binds 127.0.0.1 and is reached over Tailscale, so the
+# exposure here is small -- but this project exists to be FORKED, and a
+# forker who puts it on a public host inherits whatever we ship. Before
+# this the only header set was cache-control.
+#
+# The CSP is unusually strict because the frontend is a single static
+# file with all CSS and JS inline and no external requests at all:
+# 'self' plus 'unsafe-inline' for style and script is exactly what the
+# page already does, and nothing is given up by forbidding the rest.
+SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "form-action 'none'; "
+        "base-uri 'none'; "
+        "frame-ancestors 'none'"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "X-Frame-Options": "DENY",
+}
+
+
+@app.middleware("http")
+async def _security_headers(request: Request, call_next):
+    response = await call_next(request)
+    for header, value in SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    return response
 
 
 class RevalidatingStaticFiles(StaticFiles):

@@ -238,6 +238,36 @@ scheduler's upsert COALESCEs rather than overwrites for the same reason —
 Workday's connector sends empty every cycle, and a plain overwrite would
 erase the fetched text and re-fetch it forever.
 
+## Exposing this publicly
+
+This deployment binds `127.0.0.1:8000` and is reached over Tailscale, so
+it is not on the public internet. If you fork this and put it on one,
+two things are your responsibility rather than the app's, and both are
+deliberate omissions rather than oversights.
+
+**There is no rate limiting.** Not in the app, not planned. What the app
+does instead is remove the reason one was needed: `/feed` used to re-read
+the entire open corpus from Postgres on every request, so a flood of
+requests was a flood of database reads. That read is now an in-process
+snapshot with a short TTL (`CORPUS_TTL_SECONDS`), which means a burst of
+*distinct* queries costs one database read per TTL rather than one per
+request. A response cache would not have achieved this — keyed on the
+query string, `?q=<random>` walks straight past it.
+
+What that does not cover is bandwidth and connection exhaustion, which
+genuinely belong to a reverse proxy. Put nginx or Caddy in front and set
+limits there.
+
+**The API runs a single uvicorn worker.** The corpus cache is
+process-local, so adding `--workers` does not break correctness — each
+worker keeps its own snapshot — but the workers may be up to one TTL
+apart from each other. Know that before you add them.
+
+Security headers (CSP, `nosniff`, referrer policy, frame-ancestors) ARE
+set on every response, in `SECURITY_HEADERS`. The CSP is strict because
+the frontend is a single static file with all CSS and JS inline and no
+external requests, so forbidding everything else costs nothing.
+
 ## Deploying
 
 ```

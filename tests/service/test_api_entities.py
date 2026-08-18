@@ -369,3 +369,13 @@ def test_an_axis_with_nothing_open_is_omitted_from_its_list():
     with db.cursor() as cur:
         cur.execute("UPDATE postings SET status = 'closed' WHERE id = 'gone'")
     assert api.categories()["job_functions"] == []
+
+
+def test_security_headers_are_declared_for_forkers():
+    # This deployment sits behind Tailscale, but the project exists to be
+    # forked and a public deployment inherits whatever ships here.
+    assert api.SECURITY_HEADERS["X-Content-Type-Options"] == "nosniff"
+    assert "frame-ancestors 'none'" in api.SECURITY_HEADERS["Content-Security-Policy"]
+    # The page is one static file with everything inline and no external
+    # requests, so nothing is given up by forbidding other origins.
+    assert "default-src 'self'" in api.SECURITY_HEADERS["Content-Security-Policy"]

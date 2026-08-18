@@ -286,3 +286,47 @@ def test_search_vector_is_maintained_by_the_database_not_the_caller():
         cur.execute("UPDATE postings SET description = 'Completely different: hydraulics.' WHERE id = 'gen'")
     assert api.feed(preset="all", q="robotics")["total"] == 0, "stale vector after an update"
     assert [p["id"] for p in api.feed(preset="all", q="hydraulics")["postings"]] == ["gen"]
+
+
+# --- corpus cache -------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def _clear_corpus_cache():
+    # The cache is process-local and survives between tests, which would
+    # let one test's corpus leak into the next.
+    api._corpus_cache.update(rows=None, fetched_at=0.0, truncated=False)
+    yield
+    api._corpus_cache.update(rows=None, fetched_at=0.0, truncated=False)
+
+
+def test_the_corpus_read_is_cached_across_requests():
+    # The point of the cache: a flood of DISTINCT queries costs one
+    # database read per TTL rather than one per request. A response
+    # cache keyed on the query string would be bypassed by ?q=<random>.
+    _posting("a", "Supply Chain Intern", "Acme")
+    api.feed(preset="all")
+
+    # Written straight to the database, bypassing the cache.
+    _posting("b", "Second Intern", "Globex")
+    assert api.feed(preset="all")["total"] == 1, "second request re-read the corpus"
+    assert api.feed(preset="all", q="second")["total"] == 0, "a distinct query bypassed the cache"
+
+
+def test_the_cache_expires_so_new_postings_appear():
+    _posting("a", "Supply Chain Intern", "Acme")
+    api.feed(preset="all")
+    _posting("b", "Second Intern", "Globex")
+
+    api._corpus_cache["fetched_at"] -= api.CORPUS_TTL_SECONDS + 1
+    assert api.feed(preset="all")["total"] == 2
+
+
+def test_filtering_never_mutates_the_shared_snapshot():
+    # Every caller gets the SAME list object, so a filter that mutated
+    # it would corrupt the corpus for every later request.
+    for i in range(3):
+        _posting(f"p{i}", f"Intern {i}", "Acme", days_old=i + 1)
+    api.feed(preset="all")
+    before = list(api._corpus_cache["rows"])
+    api.feed(preset="all", q="intern", category="Logistics", max_age_days=5, limit=1)
+    assert api._corpus_cache["rows"] == before
