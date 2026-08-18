@@ -238,6 +238,29 @@ scheduler's upsert COALESCEs rather than overwrites for the same reason —
 Workday's connector sends empty every cycle, and a plain overwrite would
 erase the fetched text and re-fetch it forever.
 
+## Locations are free text
+
+There are 1,785 distinct location strings across ~4,600 open postings.
+They come from whatever each employer typed, and they are not
+normalized: "Remote", "Remote - United States", "Flexible / Remote",
+"United States - Remote" and "2 Locations" all occur.
+
+That is fine for DISPLAY and for SEARCH (the full-text vector includes
+location, so searching "Chicago" works). It is not enough for a location
+FILTER — a dropdown of 1,785 options is not a control, and matching
+"New York" against that spread needs real normalization first. Nobody
+should promise location filtering without doing that work.
+
+The one place this already mattered is the Google Maps link. A pin on a
+whole country is a worse answer than no link, so `placeParts()` in
+index.html strips working-arrangement words ("Remote", "Hybrid",
+"Flexible") and country-level terms ("USA", "United States", "EMEA")
+and only links if a real place survives. "Remote - New York" pins New
+York; "Remote - USA" gets no link. Covered by
+`tests/frontend/test_maps_url.js`, which extracts the functions out of
+index.html rather than copying them, so the test cannot drift from what
+ships.
+
 ## Exposing this publicly
 
 This deployment binds `127.0.0.1:8000` and is reached over Tailscale, so

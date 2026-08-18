@@ -64,6 +64,18 @@ fi
 echo "==> installing deps"
 "$VENV/bin/pip" install -q -r service/requirements.txt -r requirements-dev.txt
 
+# The frontend is a single static file with no build step, so its few
+# testable pure functions are exercised by extracting them out of
+# index.html with node. Skipped rather than failed where node is absent:
+# node is not otherwise a dependency of this project, and making it one
+# to run a handful of assertions would be a poor trade.
+if command -v node >/dev/null 2>&1; then
+  echo "==> running frontend tests"
+  for js in tests/frontend/*.js; do node "$js"; done
+else
+  echo "==> skipping frontend tests (node not installed)"
+fi
+
 echo "==> running tests against scratch postgres on port $PORT"
 DATABASE_URL="postgresql://postgres:test@127.0.0.1:$PORT/postgres" \
   "$VENV/bin/python" -m pytest tests/ "$@"

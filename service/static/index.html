@@ -1593,11 +1593,44 @@ const DETAIL_ROUTES = ["posting", "company", "source", "ats"];
 const NON_PLACE_RE = /^(remote|hybrid|virtual|various|multiple locations?|flexible|anywhere|worldwide|n\/?a|tbd|—|-)$/i;
 const MULTI_LOCATION_RE = /^\d+\s+locations?$/i;
 
+// Words that describe a WORKING ARRANGEMENT rather than a place.
+const ARRANGEMENT_RE = /^(remote|hybrid|onsite|on-site|virtual|flexible|anywhere|various|field|telework)$/i;
+// Country-and-larger terms. A map pin on "United States" is not a
+// useful answer to "where is this job", so a location that reduces to
+// one of these is treated as placeless rather than linked.
+const COUNTRY_ONLY_RE = /^(usa?|u\.s\.a?\.?|united states( of america)?|canada|global|worldwide|international|emea|apac|americas|europe|north america)$/i;
+
+// The corpus holds 1,785 distinct free-text location strings, and the
+// exact-match list above only caught the tidiest of them. "Remote -
+// United States", "Flexible / Remote" and "United States - Remote" all
+// slipped through and produced a Google Maps link to a whole country,
+// which is a worse answer than no link at all.
+//
+// So: split on the separators these strings actually use, drop the
+// arrangement words and the country-level words, and see whether any
+// real place is left. "Remote - New York" keeps its link because New
+// York survives that filter; "Remote - USA" does not.
+// Also strips a LEADING arrangement word inside a part, because not
+// every string uses a separator: "Remote United States of America" has
+// nothing to split on, and without this it would survive as a place.
+const LEADING_ARRANGEMENT_RE = /^(remote|hybrid|onsite|on-site|virtual|flexible|field|telework)\s+/i;
+
+function placeParts(location) {
+  return (location || "")
+    .split(/[-–—,/|]|\bor\b/i)
+    .map(part => part.trim().replace(LEADING_ARRANGEMENT_RE, "").trim())
+    .filter(part => part && !ARRANGEMENT_RE.test(part) && !COUNTRY_ONLY_RE.test(part));
+}
+
 function mapsUrl(location) {
   const t = (location || "").trim();
   if (!t || NON_PLACE_RE.test(t) || MULTI_LOCATION_RE.test(t)) return null;
   if (!/[a-z]/i.test(t)) return null;   // no letters means nothing to search
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(t)}`;
+  const parts = placeParts(t);
+  if (!parts.length) return null;
+  // Search the surviving place text, not the original: "Remote - New
+  // York" should pin New York, not confuse the query with "Remote".
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(", "))}`;
 }
 
 function locationHtml(location) {
