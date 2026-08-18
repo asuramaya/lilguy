@@ -51,6 +51,7 @@ from db import cursor  # noqa: E402
 from dedup import compute_company_key, compute_dedup_key, run_dedup_sweep  # noqa: E402
 from posted_at import parse_posted_at  # noqa: E402
 from source_sync import run_source_sync_sweep  # noqa: E402
+from cycle import parse_cycle  # noqa: E402
 from liveness import run_liveness_sweep  # noqa: E402
 from workday_descriptions import fetch_missing_descriptions  # noqa: E402
 
@@ -136,14 +137,15 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
         # same thing whenever it's computed -- Workday's "Posted 2 Days
         # Ago" is only meaningful relative to when the page was fetched.
         posted_ts, posted_approx = parse_posted_at(p.posted_at, seen_at)
+        cycle_season, cycle_year = parse_cycle(p.title)
         cur.execute(
             """
             INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
-                                   ats, category, job_function, posted_at, posted_at_ts,
-                                   posted_at_approx,
+                                   ats, category, job_function, cycle_season, cycle_year,
+                                   posted_at, posted_at_ts, posted_at_approx,
                                    description_snippet, description, status,
                                    dedup_key, company_key, first_seen, last_seen)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 location = EXCLUDED.location,
@@ -178,6 +180,12 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 -- report that axis" -- matching how `category` has
                 -- always spelled it in this table.
                 job_function = EXCLUDED.job_function,
+                -- Derived from the title, so it must be recomputed
+                -- whenever the title changes -- an employer editing
+                -- "Summer 2026" to "Summer 2027" is exactly the case
+                -- this filter exists to track.
+                cycle_season = EXCLUDED.cycle_season,
+                cycle_year = EXCLUDED.cycle_year,
                 company = EXCLUDED.company,
                 posted_at = EXCLUDED.posted_at,
                 -- Exact dates just take the new value (successive
@@ -211,7 +219,7 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
             """,
             (
                 p.id, source_id, source_entry, p.company, p.title, p.location, p.url,
-                p.source, p.category, p.job_function,
+                p.source, p.category, p.job_function, cycle_season, cycle_year,
                 p.posted_at, posted_ts, posted_approx,
                 p.description_snippet,
                 # NULLIF so "the connector had no description" stores as

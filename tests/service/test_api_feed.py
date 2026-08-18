@@ -330,3 +330,81 @@ def test_filtering_never_mutates_the_shared_snapshot():
     before = list(api._corpus_cache["rows"])
     api.feed(preset="all", q="intern", category="Logistics", max_age_days=5, limit=1)
     assert api._corpus_cache["rows"] == before
+
+
+# --- hiring cycle -------------------------------------------------------
+
+def _cycled(pid, title, season="", year=None):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_entry, company, title, location, url, ats,
+                                   category, status, cycle_season, cycle_year,
+                                   posted_at_ts, first_seen, last_seen)
+            VALUES (%s, 'x', 'Acme', %s, 'Remote', %s, 'greenhouse', 'Logistics', 'open',
+                    %s, %s, now(), now(), now())
+            """,
+            (pid, title, f"https://x/{pid}", season, year),
+        )
+
+
+def test_cycle_filter_matches_season_and_year():
+    _cycled("s27", "Summer 2027 Intern", "summer", 2027)
+    _cycled("f27", "Fall 2027 Intern", "fall", 2027)
+    _cycled("s26", "Summer 2026 Intern", "summer", 2026)
+
+    out = api.feed(preset="all", cycle_season="summer", cycle_year=2027,
+                   include_unstated_cycle=False)
+    assert [p["id"] for p in out["postings"]] == ["s27"]
+
+
+def test_postings_with_no_stated_cycle_are_kept_but_separated():
+    # 60% of titles state no cycle. Excluding them would hide postings
+    # that may well be the cycle asked for; mixing them in would leave a
+    # filter whose results are mostly unconfirmed.
+    _cycled("stated", "Summer 2027 Intern", "summer", 2027)
+    _cycled("silent", "Operations Intern")
+
+    out = api.feed(preset="all", cycle_season="summer", cycle_year=2027)
+    assert out["total"] == 2
+    assert out["unstated_cycle"] == 1
+    assert [p["id"] for p in out["postings"]] == ["stated", "silent"], \
+        "confirmed matches must come before the unconfirmed ones"
+
+
+def test_unstated_cycle_postings_can_be_excluded_outright():
+    _cycled("stated", "Summer 2027 Intern", "summer", 2027)
+    _cycled("silent", "Operations Intern")
+    out = api.feed(preset="all", cycle_year=2027, include_unstated_cycle=False)
+    assert out["total"] == 1
+    assert out["unstated_cycle"] == 0
+
+
+def test_a_posting_stating_the_wrong_cycle_is_excluded_not_treated_as_unknown():
+    # The distinction that makes the separate group honest: "Summer 2026"
+    # is a real answer, and it is NO. It must not be quietly rescued into
+    # the unconfirmed group.
+    _cycled("wrong", "Summer 2026 Intern", "summer", 2026)
+    out = api.feed(preset="all", cycle_year=2027)
+    assert out["total"] == 0
+
+
+def test_season_matching_is_case_insensitive():
+    _cycled("s", "Summer 2027 Intern", "summer", 2027)
+    assert api.feed(preset="all", cycle_season="Summer", include_unstated_cycle=False)["total"] == 1
+
+
+def test_no_cycle_filter_reports_zero_unstated():
+    _cycled("a", "Operations Intern")
+    assert api.feed(preset="all")["unstated_cycle"] == 0
+
+
+def test_categories_lists_cycle_years_in_timeline_order():
+    # Ascending, unlike the other facets: a cycle list is a timeline, not
+    # a popularity ranking.
+    _cycled("a", "x", "summer", 2027)
+    _cycled("b", "x", "summer", 2026)
+    _cycled("c", "x", "summer", 2026)
+    out = api.categories()
+    assert [y["value"] for y in out["cycle_years"]] == [2026, 2027]
+    assert out["coverage"]["with_cycle"] == 3

@@ -332,3 +332,20 @@ ALTER TABLE postings ADD COLUMN IF NOT EXISTS search_vector tsvector
     ) STORED;
 
 CREATE INDEX IF NOT EXISTS postings_search_idx ON postings USING GIN (search_vector);
+
+-- Hiring cycle, parsed from the posting title (see service/cycle.py).
+--
+-- Internships are seasonal and the cycle is what a student filters on
+-- first: in August 2026 the live question is "what is open for Summer
+-- 2027". Nothing recorded it, so the only way to ask was to read all
+-- 4,190 titles.
+--
+-- Coverage is about 40% (1,677 titles name a year, 897 a season), which
+-- everything downstream must state rather than hide. cycle_year is
+-- nullable because 0 is not a year; cycle_season uses '' for "not
+-- stated", matching how `category` already spells it.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS cycle_season TEXT NOT NULL DEFAULT '';
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS cycle_year SMALLINT;
+
+CREATE INDEX IF NOT EXISTS postings_cycle_idx
+    ON postings (cycle_year, cycle_season) WHERE status = 'open';

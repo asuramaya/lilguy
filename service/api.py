@@ -233,6 +233,12 @@ def feed(
     q: Annotated[Optional[str], Query(description="Free-text match against title and company")] = None,
     category: Annotated[Optional[str], Query(description="Exact match on the employer's industry")] = None,
     job_function: Annotated[Optional[str], Query(description="Exact match on the job's function")] = None,
+    cycle_season: Annotated[Optional[str], Query(
+        description="Hiring cycle season: summer, fall, winter or spring")] = None,
+    cycle_year: Annotated[Optional[int], Query(description="Hiring cycle year, e.g. 2027")] = None,
+    include_unstated_cycle: Annotated[bool, Query(
+        description="Keep postings whose title states no cycle. They sort after confirmed "
+                    "matches rather than among them.")] = True,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(le=5000)] = 200,
 ):
@@ -288,6 +294,34 @@ def feed(
         matched = [r for r in matched if (r.get("category") or "") == category]
     if job_function:
         matched = [r for r in matched if (r.get("job_function") or "") == job_function]
+    # Cycle filtering, with the unstated ones kept but SEPARATED.
+    #
+    # Only ~40% of titles state a cycle. Excluding the rest would hide
+    # roughly 2,500 postings that may well be the cycle asked for and
+    # simply did not say so in the title; mixing them in would leave a
+    # filter whose results are mostly unconfirmed. So they are kept and
+    # ordered last, and the response counts them separately so the UI can
+    # put them under their own heading rather than implying they matched.
+    unstated_cycle = 0
+    if cycle_season or cycle_year:
+        def _states_a_cycle(r):
+            return bool(r.get("cycle_season")) or r.get("cycle_year") is not None
+
+        def _matches(r):
+            if cycle_season and (r.get("cycle_season") or "") != cycle_season.lower():
+                return False
+            if cycle_year and r.get("cycle_year") != cycle_year:
+                return False
+            return True
+
+        confirmed = [r for r in matched if _states_a_cycle(r) and _matches(r)]
+        if include_unstated_cycle:
+            unstated = [r for r in matched if not _states_a_cycle(r)]
+            unstated_cycle = len(unstated)
+            matched = confirmed + unstated
+        else:
+            matched = confirmed
+
     ranks = None
     if q and q.strip():
         ranks = _search_ranks(q.strip())
@@ -327,6 +361,10 @@ def feed(
         "offset": offset,
         "limit": limit,
         "source_truncated": source_truncated,
+        # How many of `total` are postings that state NO cycle and are
+        # therefore unconfirmed rather than matched. 0 when no cycle
+        # filter is active.
+        "unstated_cycle": unstated_cycle,
         "postings": page,
     }
 
@@ -586,15 +624,36 @@ def categories():
         cur.execute(
             "SELECT count(*) AS total, "
             "count(*) FILTER (WHERE category IS NOT NULL AND category <> '') AS with_industry, "
-            "count(*) FILTER (WHERE job_function IS NOT NULL AND job_function <> '') AS with_function "
+            "count(*) FILTER (WHERE job_function IS NOT NULL AND job_function <> '') AS with_function, "
+            "count(*) FILTER (WHERE cycle_year IS NOT NULL OR cycle_season <> '') AS with_cycle "
             "FROM postings WHERE status = 'open'"
         )
         coverage = _row_to_filter_dict(cur.fetchone())
+
+        # Years ASCENDING, unlike every other facet here. A cycle list is
+        # a timeline, not a popularity ranking -- a reader scanning for
+        # "2027" expects to find it after 2026, not wherever volume put
+        # it.
+        cur.execute(
+            "SELECT cycle_year AS value, count(*) AS open_postings FROM postings "
+            "WHERE status = 'open' AND cycle_year IS NOT NULL "
+            "GROUP BY cycle_year ORDER BY cycle_year"
+        )
+        years = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+        cur.execute(
+            "SELECT cycle_season AS value, count(*) AS open_postings FROM postings "
+            "WHERE status = 'open' AND cycle_season <> '' "
+            "GROUP BY cycle_season ORDER BY open_postings DESC, cycle_season"
+        )
+        seasons = [_row_to_filter_dict(r) for r in cur.fetchall()]
 
     return {
         "categories": industries,   # kept: the industry axis under its original name
         "industries": industries,
         "job_functions": functions,
+        "cycle_years": years,
+        "cycle_seasons": seasons,
         "coverage": coverage,
     }
 
