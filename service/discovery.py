@@ -775,8 +775,13 @@ def recheck_disabled_sources(limit: int = 5, max_workers: int = DISCOVERY_CANDID
     is short."""
     with cursor() as cur:
         cur.execute(
+            # `id` makes this total. Checked live and no source
+            # currently ties on last_scraped_at, so this is prevention
+            # rather than a fix -- but a source that has NEVER been
+            # scraped has NULL there, and several such sources would all
+            # tie, letting one starve behind the others indefinitely.
             "SELECT id, company, ats, config FROM sources WHERE status = 'disabled' "
-            "ORDER BY last_scraped_at LIMIT %s FOR UPDATE SKIP LOCKED",
+            "ORDER BY last_scraped_at, id LIMIT %s FOR UPDATE SKIP LOCKED",
             (limit,),
         )
         disabled = cur.fetchall()

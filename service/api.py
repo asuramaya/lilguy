@@ -740,7 +740,12 @@ def events(limit: int = Query(50, le=500)):
     """
     with cursor() as cur:
         cur.execute(
-            "SELECT id, kind, company, detail, created_at FROM events ORDER BY created_at DESC LIMIT %s",
+            # `id DESC` makes this total. Checked live and no two events
+            # currently share a created_at -- each is its own statement --
+            # but the guard is right that nothing enforces that, and a
+            # future bulk insert would tie every row it wrote.
+            "SELECT id, kind, company, detail, created_at FROM events "
+            "ORDER BY created_at DESC, id DESC LIMIT %s",
             (limit,),
         )
         return {"events": [_row_to_filter_dict(r) for r in cur.fetchall()]}
