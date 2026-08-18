@@ -49,11 +49,16 @@ def _claim_batch(limit: int) -> list[dict]:
             WHERE s.ats = 'workday'
               AND s.status IN ('active', 'probation')
               -- The unresolved signal: discovery.py seeds a Common-Crawl
-              -- Workday tenant with company=tenant verbatim (see its own
-              -- comment on that line). A source with any other name --
-              -- from sources.yaml, or already fixed by this sweep or the
-              -- per-posting hook -- is left alone.
-              AND lower(s.company) = lower(s.config->>'tenant')
+              -- Workday tenant with company=tenant VERBATIM (see its own
+              -- comment on that line) -- an exact, case-sensitive match,
+              -- not lower(company)=lower(tenant). That distinction is
+              -- load-bearing: caught live, ABB's tenant is "abb", and a
+              -- case-folded compare flagged "ABB" itself as unresolved
+              -- even though it's already the company's correct, properly
+              -- cased name (same story for Accenture/accenture,
+              -- Expedia/expedia, Unilever/unilever -- any company whose
+              -- real name happens to fold onto its own tenant string).
+              AND s.company = s.config->>'tenant'
             ORDER BY s.id
             LIMIT %s
             """,
