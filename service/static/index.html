@@ -572,76 +572,171 @@
   .banner b { color: var(--ink); font-weight: 600; }
 
 
-  /* --- search bar + filters popover ------------------------------- */
+  /* --- search bar + filters aside ----------------------------------
+     Docked filter panel, not a popover: on desktop it's a true flex
+     SIBLING of the results column (a real `<aside>` in the same flex
+     row), so the browser reflows the table around it for free instead
+     of it floating on top and covering rows. On a narrow viewport there
+     is no room for a side-by-side panel, so the same element becomes a
+     fixed bottom sheet instead -- one element, two position strategies,
+     picked by a single media query rather than two markup branches. */
 
-  .search-bar { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; }
-  .search-field input { font-size: 14px; }
-  .search-field .field-icon { font-size: 14px; }
+  .feed-layout { display: flex; align-items: flex-start; gap: 20px; }
+  .feed-main { min-width: 0; flex: 1; }
 
-  .filters-menu { position: relative; flex-shrink: 0; }
-
-  .filters-toggle {
-    display: flex; align-items: center; gap: 7px;
+  .search-embedded { position: relative; }
+  .search-embedded input {
+    width: 100%; box-sizing: border-box;
     background: var(--row); border: 1px solid var(--border); color: var(--ink);
-    border-radius: 4px; padding: 7px 12px; font-size: 13px; font-family: inherit;
-    cursor: pointer; height: 100%;
+    border-radius: 4px; padding: 9px 40px; font-size: 14px; font-family: inherit;
   }
-  .filters-toggle:hover { border-color: var(--border-strong); }
-  .filters-toggle[aria-expanded="true"] { border-color: var(--accent-dim); color: var(--accent); }
+  .search-embedded input::placeholder { color: var(--ink-tertiary); }
+  .search-embedded-icon {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--ink-tertiary); font-size: 14px; pointer-events: none;
+  }
+  /* The filter TOGGLE lives inside the search field's own trailing edge
+     rather than as a separate button beside it -- one control reads as
+     the toolbar, not a search box plus a second widget competing for
+     attention next to it. */
+  .search-embedded-filter-btn {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 4px;
+    background: none; border: none; color: var(--ink-tertiary); cursor: pointer;
+    font-size: 13px;
+  }
+  .search-embedded-filter-btn:hover { color: var(--ink); background: var(--row-hover); }
+  .search-embedded-filter-btn[aria-expanded="true"] { color: var(--accent); }
 
   /* display:none by default, an explicit .visible class to turn it back
      on -- NOT the [hidden] attribute. [hidden] and a class selector tie
-     on specificity, and this rule is declared after [hidden] in the
-     cascade, so [hidden] would silently lose and the badge would show
-     "0" forever. Same failure shape as .events-badge above; same fix. */
+     on specificity, so a later `display` rule on this same class would
+     silently outrank [hidden] and the badge would show "0" forever
+     (measured live on the popover version of this control -- same
+     failure shape as .events-badge above; same fix). */
   .filters-badge {
     display: none; align-items: center; justify-content: center;
-    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
-    background: var(--accent); color: #14120d; font-size: 10.5px; font-weight: 700;
+    position: absolute; top: 1px; right: 1px;
+    min-width: 14px; height: 14px; padding: 0 3px; border-radius: 999px;
+    background: var(--accent); color: #14120d; font-size: 9.5px; font-weight: 700;
   }
   .filters-badge.visible { display: inline-flex; }
 
-  /* Anchored to .filters-menu, not the button itself, so the popover's
-     position doesn't jump if the button's own width changes (e.g. the
-     badge appearing/disappearing). */
-  .filters-panel {
-    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
-    width: min(560px, calc(100vw - 2 * var(--gutter)));
-    background: var(--row); border: 1px solid var(--border-strong);
-    border-radius: 6px; padding: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  .filters-aside {
+    display: none; flex-direction: column;
+    width: 300px; flex-shrink: 0;
+    background: var(--row); border: 1px solid var(--border-strong); border-radius: 6px;
+    overflow: hidden;
+  }
+  /* Desktop: sticky in-flow, not fixed -- flexbox reflows .feed-main
+     around it for free the moment it opens, no manual width math on the
+     table side. A fixed height (not max-height) that fills the viewport
+     minus the sticky header, regardless of how few sections are
+     expanded -- a panel that shrinks to whatever's open would read as
+     an accident of content rather than a deliberately sized console;
+     its OWN body scrolls internally for a genuinely tall expansion. */
+  .filters-aside.open {
+    display: flex;
+    position: sticky; top: calc(var(--header-h, 92px) + 16px);
+    height: calc(100vh - var(--header-h, 92px) - 32px);
   }
 
-  .filters-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-  .filters-grid .field { flex: 1 1 160px; }
-
-  .filters-panel .field-hint { display: block; margin-top: 8px; max-width: none; }
-
-  .filters-actions {
-    display: flex; justify-content: space-between; align-items: center;
-    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+  .filters-aside-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
+  .filters-aside-header .title { font-size: 13px; font-weight: 650; }
+  .filters-aside-actions { display: flex; align-items: center; gap: 12px; }
+
+  .icon-btn {
+    background: none; border: none; color: var(--ink-tertiary); cursor: pointer;
+    font-size: 14px; line-height: 1; padding: 2px;
+  }
+  .icon-btn:hover { color: var(--ink); }
 
   .btn-link {
     background: none; border: none; color: var(--ink-tertiary); font-size: 12px;
-    font-family: inherit; cursor: pointer; padding: 4px 0; text-decoration: underline;
+    font-family: inherit; cursor: pointer; padding: 0; text-decoration: underline;
   }
   .btn-link:hover { color: var(--ink); }
 
-  /* Selected filters surfaced as removable chips outside the popover, so
-     what's narrowing the list is visible without opening it -- the
-     popover hides state, chips don't. */
-  .chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-  .chips-row:empty { display: none; margin-bottom: 0; }
+  .filters-aside-body { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .filters-aside-footer { padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+  .filters-aside-footer .btn { width: 100%; }
 
-  .chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: var(--row); border: 1px solid var(--border-strong); color: var(--ink-secondary);
-    border-radius: 999px; padding: 4px 6px 4px 10px; font-size: 12px; font-family: inherit;
-    cursor: pointer;
+  /* Every field in the panel goes through this one collapsible wrapper,
+     so "collapse all" and per-section memory work uniformly instead of
+     each field owning its own header markup. */
+  .filter-section { border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 2px; }
+  .filter-section:last-child { border-bottom: none; }
+  .filter-section-toggle {
+    display: flex; width: 100%; align-items: center; justify-content: space-between;
+    background: none; border: none; color: var(--ink-tertiary); font-family: inherit;
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em;
+    cursor: pointer; padding: 8px 0 6px;
   }
-  .chip:hover { color: var(--ink); border-color: var(--accent-dim); }
-  .chip span { color: var(--ink-tertiary); font-size: 13px; line-height: 1; }
-  .chip:hover span { color: var(--bad); }
+  .filter-section-toggle:hover { color: var(--ink); }
+  .filter-section-chevron { transition: transform 0.15s; color: var(--ink-tertiary); }
+  .filter-section.collapsed .filter-section-chevron { transform: rotate(-90deg); }
+  .filter-section-body { display: flex; flex-direction: column; gap: 6px; }
+  .filter-section.collapsed .filter-section-body { display: none; }
+  /* .field's dark styling used to come ENTIRELY from a `.toolbar .field`
+     ancestor selector -- fine while every .field lived in a .toolbar,
+     but this panel uses the same class outside one, so its inputs and
+     selects fell back to the browser's default white-on-black-text
+     controls (confirmed live: a glaring white box in an otherwise dark
+     panel). Scoped to .filters-aside rather than promoted to a bare
+     `.field` rule, so it can't silently double up with .toolbar .field
+     if a toolbar field is ever nested inside the panel later. */
+  .filters-aside .field {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--canvas); border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px;
+    width: 100%;
+  }
+  .filters-aside .field input, .filters-aside .field select {
+    background: none; border: none; color: var(--ink); font-size: 13px;
+    font-family: inherit; outline: none; width: 100%;
+  }
+  .filters-aside .field input::placeholder { color: var(--ink-tertiary); }
+  /* Native <select> popups don't inherit page CSS -- see the .toolbar
+     select option comment above for the measured contrast reasoning;
+     same fix, same failure, a second control this time. */
+  .filters-aside .field select option { background: var(--row); color: var(--ink); }
+
+  /* Anywhere/Remote/Hybrid/Onsite, Any/Summer/Fall/..., Any time/Past
+     week/... -- every small fixed-choice axis in the panel uses the same
+     equal-width pill row instead of three different `<select>` looks. */
+  .pill-group { display: flex; flex-wrap: wrap; gap: 4px; border: 1px solid var(--border); border-radius: 5px; padding: 3px; }
+  .pill-btn {
+    flex: 1 1 auto; background: none; border: none; color: var(--ink-tertiary);
+    font-family: inherit; font-size: 12px; font-weight: 500; border-radius: 4px;
+    padding: 6px 8px; cursor: pointer; white-space: nowrap;
+  }
+  .pill-btn:hover { color: var(--ink); }
+  .pill-btn.active { background: var(--border-strong); color: var(--ink); }
+
+  /* Mobile: no room for a side-by-side panel, so the exact same element
+     becomes a fixed bottom sheet -- one implementation, position
+     strategy picked by media query rather than a second component. */
+  @media (max-width: 1023.98px) {
+    .filters-aside.open {
+      position: fixed; inset: auto 0 0 0; top: auto; z-index: 60;
+      width: auto; max-height: 85vh;
+      border-radius: 10px 10px 0 0; box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.5);
+    }
+  }
+
+  .filters-backdrop {
+    display: none; position: fixed; inset: 0; z-index: 55;
+    background: rgba(0, 0, 0, 0.5);
+  }
+  .filters-backdrop.visible { display: block; }
+  @media (min-width: 1024px) {
+    /* Desktop panel is persistent, non-modal -- no dimming, both the
+       list and the panel stay usable at once. */
+    .filters-backdrop { display: none !important; }
+  }
 
   /* --- pagination ---------------------------------------------------- */
 
@@ -733,118 +828,153 @@
 <main class="wrap">
 
   <section id="tab-feed" role="tabpanel" aria-labelledby="tabbtn-feed" tabindex="0">
-    <!-- One search bar carries the whole query: preset stays beside it
-         because it's a different KIND of choice (which corpus, not a
-         narrowing of it), and everything else -- industry, function,
-         where, cycle, posted age -- lives behind the Filters popover so
-         the bar reads as one control instead of six competing ones.
-         Selected filters still surface as removable chips below, so
-         narrowing the view is never invisible just because the popover
-         is closed. -->
-    <div class="search-bar">
-      <div class="field search-field grow">
-        <label class="field-icon" for="search">⌕</label>
-        <input type="search" id="search" placeholder="Search title or company&hellip;">
-      </div>
-      <div class="field">
-        <label class="field-icon" for="preset">preset</label>
-        <select id="preset"></select>
-      </div>
-      <div class="filters-menu">
-        <button type="button" id="filters-toggle" class="filters-toggle"
-                aria-haspopup="true" aria-expanded="false" aria-controls="filters-panel">
-          <span aria-hidden="true">&#9776;</span> Filters
-          <span id="filters-badge" class="filters-badge" hidden>0</span>
-        </button>
-        <!-- Comboboxes, not <select>s, for industry/function: the industry
-             taxonomy alone is ~330 labels, and an alphabetical dropdown
-             that long is a scroll, not a control. <input list> gives
-             native typeahead with no build step, and each datalist is
-             ordered by open-posting count so the values that actually
-             return something come first.
-
-             TWO controls because there are two axes. Industry is what the
-             EMPLOYER does and only direct boards know it; function is what
-             the JOB is and only aggregators indexing by function know it.
-             They shared one column until 2026-08-17 and the vocabularies
-             were disjoint. -->
-        <div id="filters-panel" class="filters-panel" hidden>
-          <div class="filters-grid">
-            <div class="field">
-              <label class="field-icon" for="feed-category">industry</label>
-              <input id="feed-category" list="category-options" autocomplete="off"
-                     placeholder="Any industry" aria-describedby="category-hint">
-              <datalist id="category-options"></datalist>
-            </div>
-            <div class="field">
-              <label class="field-icon" for="feed-function">role</label>
-              <input id="feed-function" list="function-options" autocomplete="off"
-                     placeholder="Any function" aria-describedby="category-hint">
-              <datalist id="function-options"></datalist>
-            </div>
-            <!-- The cycle a posting advertises. Internships are seasonal,
-                 and in August 2026 the live question is "what is open for
-                 Summer 2027" -- which was unaskable until titles were
-                 parsed for it. Coverage is only ~40%, which the hint
-                 states rather than hides. -->
-            <div class="field">
-              <label class="field-icon" for="feed-arrangement">where</label>
-              <select id="feed-arrangement"><option value="">Anywhere</option></select>
-            </div>
-            <div class="field">
-              <label class="field-icon" for="feed-cycle-season">cycle</label>
-              <select id="feed-cycle-season"><option value="">Any season</option></select>
-              <select id="feed-cycle-year"><option value="">Any year</option></select>
-            </div>
-            <div class="field">
-              <label class="field-icon" for="feed-age">posted</label>
-              <select id="feed-age">
-                <option value="">Any time</option>
-                <option value="7">Past week</option>
-                <option value="30">Past month</option>
-                <option value="90">Past 3 months</option>
-                <option value="365">Past year</option>
-              </select>
-            </div>
-          </div>
-          <!-- aria-live so a screen-reader user hears that their typed
-               text matched nothing, rather than silently getting the
-               whole feed back with no explanation of why. -->
-          <span id="category-hint" class="field-hint" role="status" aria-live="polite"></span>
-          <div class="filters-actions">
-            <button type="button" id="filters-clear" class="btn-link">Clear filters</button>
-            <button type="button" id="filters-done" class="btn">Done</button>
+    <div class="feed-layout">
+      <!-- A docked panel, not a popover: on desktop this is a real flex
+           SIBLING of .feed-main below, so opening it reflows the table
+           column instead of floating on top of it. On a narrow viewport
+           the same element becomes a fixed bottom sheet (see the
+           @media rule on .filters-aside.open) -- one element, two
+           position strategies, picked by CSS rather than duplicated
+           markup. Starts closed; the search bar's own embedded toggle
+           opens it. -->
+      <aside id="filters-aside" class="filters-aside" aria-label="Filters">
+        <div class="filters-aside-header">
+          <span class="title">Filters</span>
+          <div class="filters-aside-actions">
+            <button type="button" id="filters-reset" class="btn-link" hidden>Reset all</button>
+            <button type="button" id="filters-collapse-all" class="icon-btn" aria-label="Collapse all sections" title="Collapse all">&#8963;</button>
+            <button type="button" id="filters-close" class="icon-btn" aria-label="Close filters">&times;</button>
           </div>
         </div>
+        <div class="filters-aside-body">
+          <div class="filter-section" data-section="preset">
+            <button type="button" class="filter-section-toggle"><span>Preset</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field"><select id="preset"></select></div>
+            </div>
+          </div>
+          <!-- Comboboxes, not <select>s, for industry/function: the
+               industry taxonomy alone is ~330 labels, and an alphabetical
+               dropdown that long is a scroll, not a control. <input list>
+               gives native typeahead with no build step, and each
+               datalist is ordered by open-posting count so the values
+               that actually return something come first.
+
+               TWO controls because there are two axes. Industry is what
+               the EMPLOYER does and only direct boards know it; function
+               is what the JOB is and only aggregators indexing by
+               function know it. They shared one column until 2026-08-17
+               and the vocabularies were disjoint. -->
+          <div class="filter-section" data-section="industry">
+            <button type="button" class="filter-section-toggle"><span>Industry</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field">
+                <input id="feed-category" list="category-options" autocomplete="off"
+                       placeholder="Any industry" aria-describedby="category-hint">
+                <datalist id="category-options"></datalist>
+              </div>
+            </div>
+          </div>
+          <div class="filter-section" data-section="function">
+            <button type="button" class="filter-section-toggle"><span>Function</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field">
+                <input id="feed-function" list="function-options" autocomplete="off"
+                       placeholder="Any function" aria-describedby="category-hint">
+                <datalist id="function-options"></datalist>
+              </div>
+              <!-- aria-live so a screen-reader user hears that their typed
+                   text matched nothing, rather than silently getting the
+                   whole feed back with no explanation of why. Shared by
+                   both axes since only one is ever non-empty at a time. -->
+              <span id="category-hint" class="field-hint" role="status" aria-live="polite"></span>
+            </div>
+          </div>
+          <div class="filter-section" data-section="where">
+            <button type="button" class="filter-section-toggle"><span>Where</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div id="feed-arrangement" class="pill-group" data-value="">
+                <button type="button" class="pill-btn active" data-value="">Anywhere</button>
+              </div>
+            </div>
+          </div>
+          <!-- The cycle a posting advertises. Internships are seasonal,
+               and in August 2026 the live question is "what is open for
+               Summer 2027" -- which was unaskable until titles were
+               parsed for it. Coverage is only ~40%, which the hint
+               states rather than hides. -->
+          <div class="filter-section" data-section="cycle">
+            <button type="button" class="filter-section-toggle"><span>Cycle</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div id="feed-cycle-season" class="pill-group" data-value="">
+                <button type="button" class="pill-btn active" data-value="">Any season</button>
+              </div>
+              <div class="field"><select id="feed-cycle-year"><option value="">Any year</option></select></div>
+            </div>
+          </div>
+          <div class="filter-section" data-section="age">
+            <button type="button" class="filter-section-toggle"><span>Posted</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div id="feed-age" class="pill-group" data-value="">
+                <button type="button" class="pill-btn active" data-value="">Any time</button>
+                <button type="button" class="pill-btn" data-value="7">Past week</button>
+                <button type="button" class="pill-btn" data-value="30">Past month</button>
+                <button type="button" class="pill-btn" data-value="90">Past 3 months</button>
+                <button type="button" class="pill-btn" data-value="365">Past year</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="filters-aside-footer">
+          <button type="button" id="filters-done" class="btn">Done</button>
+        </div>
+      </aside>
+
+      <div class="feed-main">
+        <!-- The search bar IS the toolbar now: the filter toggle lives
+             embedded in its own trailing edge (with the active-count
+             badge) instead of sitting as a separate button beside it,
+             and preset moved into the panel above as just another
+             section -- one control at the top of the page, not several
+             competing for width. -->
+        <div class="search-embedded">
+          <span class="search-embedded-icon" aria-hidden="true">&#9906;</span>
+          <input type="search" id="search" placeholder="Search title or company&hellip;">
+          <button type="button" id="filters-toggle" class="search-embedded-filter-btn"
+                  aria-haspopup="true" aria-expanded="false" aria-controls="filters-aside" aria-label="Filters">
+            &#9776;<span id="filters-badge" class="filters-badge">0</span>
+          </button>
+        </div>
+        <div id="feed-pager-top" class="pager"></div>
+        <div class="result-line" aria-live="polite">
+          <span id="feed-count"></span>
+          <span id="feed-sort-line"></span>
+        </div>
+        <table>
+          <colgroup>
+            <!-- Weighted by what someone scanning a job feed actually
+                 reads first: title, then who it's at, then what field,
+                 then where. Location is the most verbose and the least
+                 decisive, so it gets the smallest share of the three
+                 text columns. -->
+            <col style="width:32%"><col style="width:16%"><col style="width:16%"><col style="width:18%"><col style="width:10%"><col style="width:8%">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col"><button class="sort-btn" data-sort="title">Title</button></th>
+              <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
+              <th scope="col"><button class="sort-btn" data-sort="location">Location</button></th>
+              <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
+              <th scope="col" class="num"><button class="sort-btn" data-sort="posted_at_ts" title="When the employer posted the job">Posted</button></th>
+              <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting — not the same as Posted">Found</button></th>
+            </tr>
+          </thead>
+          <tbody id="feed-body"></tbody>
+        </table>
+        <div id="feed-pager" class="pager"></div>
       </div>
     </div>
-    <div id="active-chips" class="chips-row" aria-live="polite"></div>
-    <div id="feed-pager-top" class="pager"></div>
-    <div class="result-line" aria-live="polite">
-      <span id="feed-count"></span>
-      <span id="feed-sort-line"></span>
-    </div>
-    <table>
-      <colgroup>
-        <!-- Weighted by what someone scanning a job feed actually reads
-             first: title, then who it's at, then what field, then where.
-             Location is the most verbose and the least decisive, so it
-             gets the smallest share of the three text columns. -->
-        <col style="width:32%"><col style="width:16%"><col style="width:16%"><col style="width:18%"><col style="width:10%"><col style="width:8%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col"><button class="sort-btn" data-sort="title">Title</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="location">Location</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
-          <th scope="col" class="num"><button class="sort-btn" data-sort="posted_at_ts" title="When the employer posted the job">Posted</button></th>
-          <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting — not the same as Posted">Found</button></th>
-        </tr>
-      </thead>
-      <tbody id="feed-body"></tbody>
-    </table>
-    <div id="feed-pager" class="pager"></div>
+    <div id="filters-backdrop" class="filters-backdrop"></div>
   </section>
 
   <section id="tab-sources" role="tabpanel" aria-labelledby="tabbtn-sources" tabindex="0" hidden>
@@ -1169,6 +1299,49 @@ function populateCycleSelect(id, rows, anyLabel, format) {
   if ([...el.options].some(o => o.value === current)) el.value = current;
 }
 
+// Anywhere/Remote/Hybrid/..., Any season/Summer/Fall/..., Any time/Past
+// week/... -- every small fixed-choice axis in the panel is a row of
+// pill buttons rather than a <select>, matching the panel's own visual
+// language. The container stands in for a form control: its
+// `dataset.value` IS the current value, read by pillValue() and written
+// by setPillValue(), and a real "change" Event is dispatched on it so
+// existing `el.addEventListener("change", ...)` wiring works unchanged
+// whether the target is this or a native <select> (cycle year still is
+// one -- numeric and open-ended, unlike four seasons or five age
+// buckets).
+function pillValue(id) {
+  return document.getElementById(id).dataset.value || "";
+}
+
+function setPillValue(id, value, { silent = false } = {}) {
+  const el = document.getElementById(id);
+  el.dataset.value = value;
+  el.querySelectorAll(".pill-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.value === value));
+  if (!silent) el.dispatchEvent(new Event("change"));
+}
+
+// Re-clicking the already-active pill clears back to "" -- these are
+// optional filters being narrowed, not a required lens that always has
+// exactly one value.
+function wirePillGroup(id) {
+  document.getElementById(id).querySelectorAll(".pill-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setPillValue(id, btn.dataset.value === pillValue(id) ? "" : btn.dataset.value);
+    });
+  });
+}
+
+function populatePillGroup(id, rows, anyLabel, format) {
+  const el = document.getElementById(id);
+  const current = el.dataset.value || "";
+  el.innerHTML = `<button type="button" class="pill-btn" data-value="">${escapeHtml(anyLabel)}</button>` + rows.map(r =>
+    `<button type="button" class="pill-btn" data-value="${escapeHtml(String(r.value))}">${escapeHtml(format(r.value))} (${r.open_postings})</button>`
+  ).join("");
+  wirePillGroup(id);
+  const stillValid = current === "" || [...el.querySelectorAll(".pill-btn")].some(b => b.dataset.value === current);
+  setPillValue(id, stillValid ? current : "", { silent: true });
+}
+
 function populateAxisDatalist(axis, rows) {
   axis.names = new Set(rows.map(r => r.value));
   document.getElementById(axis.list).innerHTML = rows.map(r =>
@@ -1300,15 +1473,15 @@ function syncUrl() {
   if (cat) p.set("category", cat);
   const fn = feedFunctionValue();
   if (fn) p.set("function", fn);
-  const season = document.getElementById("feed-cycle-season").value;
+  const season = pillValue("feed-cycle-season");
   if (season) p.set("season", season);
   const year = document.getElementById("feed-cycle-year").value;
   if (year) p.set("year", year);
-  const where = document.getElementById("feed-arrangement").value;
+  const where = pillValue("feed-arrangement");
   if (where) p.set("where", where);
   const q = document.getElementById("search").value.trim();
   if (q) p.set("q", q);
-  const age = document.getElementById("feed-age").value;
+  const age = pillValue("feed-age");
   if (age) p.set("age", age);
   const qs = p.toString();
   history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
@@ -1338,13 +1511,13 @@ function feedQueryUrl() {
   if (category) p.set("category", category);
   const jobFunction = feedFunctionValue();
   if (jobFunction) p.set("job_function", jobFunction);
-  const season = document.getElementById("feed-cycle-season").value;
+  const season = pillValue("feed-cycle-season");
   if (season) p.set("cycle_season", season);
   const year = document.getElementById("feed-cycle-year").value;
   if (year) p.set("cycle_year", year);
-  const where = document.getElementById("feed-arrangement").value;
+  const where = pillValue("feed-arrangement");
   if (where) p.set("work_arrangement", where);
-  const age = document.getElementById("feed-age").value;
+  const age = pillValue("feed-age");
   if (age) p.set("max_age_days", age);
   p.set("limit", String(FEED_PAGE_SIZE));
   if (feedOffset) p.set("offset", String(feedOffset));
@@ -1370,20 +1543,27 @@ async function loadFeedCategories() {
     const data = await res.json();
     populateAxisDatalist(AXES.industry, data.industries || []);
     populateAxisDatalist(AXES.function, data.job_functions || []);
-    populateCycleSelect("feed-cycle-season", data.cycle_seasons || [], "Any season",
-                        v => v.charAt(0).toUpperCase() + v.slice(1));
+    populatePillGroup("feed-cycle-season", data.cycle_seasons || [], "Any season",
+                      v => v.charAt(0).toUpperCase() + v.slice(1));
     populateCycleSelect("feed-cycle-year", data.cycle_years || [], "Any year", String);
-    populateCycleSelect("feed-arrangement", data.work_arrangements || [], "Anywhere",
-                        v => v.charAt(0).toUpperCase() + v.slice(1));
+    populatePillGroup("feed-arrangement", data.work_arrangements || [], "Anywhere",
+                      v => v.charAt(0).toUpperCase() + v.slice(1));
     feedCoverage = data.coverage || null;
     feedCategoriesLoaded = true;
     let restored = false;
-    for (const [param, id] of [["season", "feed-cycle-season"], ["year", "feed-cycle-year"],
-                               ["where", "feed-arrangement"]]) {
+    for (const [param, id] of [["year", "feed-cycle-year"]]) {
       const wanted = initialParams.get(param);
       const el = document.getElementById(id);
       if (wanted && [...el.options].some(o => o.value === wanted)) {
         el.value = wanted;
+        restored = true;
+      }
+      initialParams.delete(param);
+    }
+    for (const [param, id] of [["season", "feed-cycle-season"], ["where", "feed-arrangement"]]) {
+      const wanted = initialParams.get(param);
+      if (wanted && document.querySelector(`#${id} .pill-btn[data-value="${CSS.escape(wanted)}"]`)) {
+        setPillValue(id, wanted, { silent: true });
         restored = true;
       }
       initialParams.delete(param);
@@ -1770,91 +1950,111 @@ for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement", "f
   document.getElementById(id).addEventListener("change", onFilterChanged);
 }
 
-// --- filters popover -----------------------------------------------------
+// --- filters aside -------------------------------------------------------
 //
-// Six controls used to sit in the toolbar all the time, competing with
-// the search box for attention and eating most of the width on anything
-// narrower than a wide desktop. Now there is one search bar and a
-// "Filters" button; the popover holds the rest, and active choices still
-// surface as chips below the bar so narrowing the view is never hidden
-// just because the popover itself is closed.
+// Docked, not a popover: on desktop a genuine flex sibling of .feed-main
+// (see .filters-aside.open in <style>), so opening it reflows the table
+// instead of covering it, and it stays open across clicks elsewhere on
+// the page -- a persistent console, not a menu that dismisses itself.
+// The same element becomes a fixed bottom sheet under 1024px, with a
+// backdrop to dismiss it (a side-by-side panel has nowhere to go on a
+// narrow viewport, so this is the accepted modal tradeoff there only).
+const filtersAside = document.getElementById("filters-aside");
 const filtersToggle = document.getElementById("filters-toggle");
-const filtersPanel = document.getElementById("filters-panel");
+const filtersBackdrop = document.getElementById("filters-backdrop");
 
 function openFilters() {
-  filtersPanel.hidden = false;
+  filtersAside.classList.add("open");
   filtersToggle.setAttribute("aria-expanded", "true");
-  document.addEventListener("click", onOutsideFiltersClick, { capture: true });
+  filtersBackdrop.classList.add("visible");
   document.addEventListener("keydown", onFiltersKeydown);
 }
 function closeFilters() {
-  filtersPanel.hidden = true;
+  filtersAside.classList.remove("open");
   filtersToggle.setAttribute("aria-expanded", "false");
-  document.removeEventListener("click", onOutsideFiltersClick, { capture: true });
+  filtersBackdrop.classList.remove("visible");
   document.removeEventListener("keydown", onFiltersKeydown);
-}
-function onOutsideFiltersClick(e) {
-  if (!filtersPanel.contains(e.target) && e.target !== filtersToggle && !filtersToggle.contains(e.target)) {
-    closeFilters();
-  }
 }
 function onFiltersKeydown(e) {
   if (e.key === "Escape") { closeFilters(); filtersToggle.focus(); }
 }
 filtersToggle.addEventListener("click", () => {
-  if (filtersPanel.hidden) openFilters(); else closeFilters();
+  filtersAside.classList.contains("open") ? closeFilters() : openFilters();
 });
+document.getElementById("filters-close").addEventListener("click", closeFilters);
 document.getElementById("filters-done").addEventListener("click", closeFilters);
-document.getElementById("filters-clear").addEventListener("click", () => {
-  for (const id of ["feed-category", "feed-function", "feed-arrangement", "feed-cycle-season", "feed-cycle-year", "feed-age"]) {
-    document.getElementById(id).value = "";
-  }
+// The backdrop only renders on mobile (see the min-width:1024px override
+// in <style>), so this listener is a no-op on desktop -- clicking outside
+// a persistent panel there should not close it.
+filtersBackdrop.addEventListener("click", closeFilters);
+
+document.getElementById("filters-reset").addEventListener("click", () => {
+  document.getElementById("feed-category").value = "";
+  document.getElementById("feed-function").value = "";
+  setPillValue("feed-arrangement", "", { silent: true });
+  setPillValue("feed-cycle-season", "", { silent: true });
+  document.getElementById("feed-cycle-year").value = "";
+  setPillValue("feed-age", "", { silent: true });
   onFilterChanged();
 });
 
-// The single definition of "what filters are active", shared by the
-// Filters button's badge count and the removable chip row -- one list,
-// two renderings, rather than two places that could disagree about what
-// counts as a filter.
-const FEED_AGE_LABELS = { "7": "past week", "30": "past month", "90": "past 3 months", "365": "past year" };
+// Each section announces its own collapsed/expanded state into
+// localStorage, scoped per-id, so a reader who folds away the sections
+// they never use (e.g. Cycle, if they never filter by season) doesn't
+// have to re-fold them on every visit.
+const COLLAPSED_SECTIONS_KEY = "internships:feed:collapsedSections";
+function loadCollapsedSections() {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS_KEY) || "[]")); }
+  catch (e) { return new Set(); }
+}
+function saveCollapsedSections(set) {
+  try { localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify([...set])); } catch (e) { /* private browsing etc. */ }
+}
+const collapsedSections = loadCollapsedSections();
+const filterSectionEls = [...document.querySelectorAll("#filters-aside .filter-section")];
+function applySectionCollapse(el) {
+  const collapsed = collapsedSections.has(el.dataset.section);
+  el.classList.toggle("collapsed", collapsed);
+  el.querySelector(".filter-section-toggle").setAttribute("aria-expanded", String(!collapsed));
+}
+filterSectionEls.forEach(el => {
+  applySectionCollapse(el);
+  el.querySelector(".filter-section-toggle").addEventListener("click", () => {
+    const id = el.dataset.section;
+    collapsedSections.has(id) ? collapsedSections.delete(id) : collapsedSections.add(id);
+    applySectionCollapse(el);
+    saveCollapsedSections(collapsedSections);
+  });
+});
+document.getElementById("filters-collapse-all").addEventListener("click", (e) => {
+  const allCollapsed = filterSectionEls.every(el => collapsedSections.has(el.dataset.section));
+  filterSectionEls.forEach(el => {
+    allCollapsed ? collapsedSections.delete(el.dataset.section) : collapsedSections.add(el.dataset.section);
+    applySectionCollapse(el);
+  });
+  saveCollapsedSections(collapsedSections);
+  e.currentTarget.setAttribute("aria-label", allCollapsed ? "Collapse all sections" : "Expand all sections");
+});
 
-function activeFeedFilters() {
-  const items = [];
-  const industry = feedCategoryValue();
-  if (industry) items.push({ label: `industry: ${industry}`, clear: () => { document.getElementById("feed-category").value = ""; } });
-  const fn = feedFunctionValue();
-  if (fn) items.push({ label: `role: ${fn}`, clear: () => { document.getElementById("feed-function").value = ""; } });
-  const where = document.getElementById("feed-arrangement").value;
-  if (where) items.push({ label: `where: ${where}`, clear: () => { document.getElementById("feed-arrangement").value = ""; } });
-  const season = document.getElementById("feed-cycle-season").value;
-  const year = document.getElementById("feed-cycle-year").value;
-  if (season || year) {
-    items.push({
-      label: `cycle: ${[season, year].filter(Boolean).join(" ")}`,
-      clear: () => {
-        document.getElementById("feed-cycle-season").value = "";
-        document.getElementById("feed-cycle-year").value = "";
-      },
-    });
-  }
-  const age = document.getElementById("feed-age").value;
-  if (age) items.push({ label: `posted: ${FEED_AGE_LABELS[age] || age + "d"}`, clear: () => { document.getElementById("feed-age").value = ""; } });
-  return items;
+// How many axes are currently narrowing the feed -- the single count the
+// search bar's own embedded badge and the panel's "Reset all" visibility
+// both read, so the two can never disagree about what counts as active.
+function activeFeedFilterCount() {
+  let n = 0;
+  if (feedCategoryValue()) n++;
+  if (feedFunctionValue()) n++;
+  if (pillValue("feed-arrangement")) n++;
+  if (pillValue("feed-cycle-season") || document.getElementById("feed-cycle-year").value) n++;
+  if (pillValue("feed-age")) n++;
+  return n;
 }
 
 function updateFiltersUi() {
-  const items = activeFeedFilters();
+  const n = activeFeedFilterCount();
   const badge = document.getElementById("filters-badge");
-  badge.classList.toggle("visible", items.length > 0);
-  badge.textContent = String(items.length);
-  const chips = document.getElementById("active-chips");
-  chips.innerHTML = items.map((it, i) =>
-    `<button type="button" class="chip" data-chip="${i}">${escapeHtml(it.label)} <span aria-hidden="true">&times;</span></button>`
-  ).join("");
-  chips.querySelectorAll(".chip").forEach((btn, i) => btn.addEventListener("click", () => {
-    items[i].clear();
-    onFilterChanged();
-  }));
+  badge.classList.toggle("visible", n > 0);
+  badge.textContent = String(n);
+  document.getElementById("filters-reset").hidden = n === 0;
 }
 document.getElementById("source-search").addEventListener("input", debounce(renderSources));
 document.getElementById("source-category").addEventListener("change", renderSources);
@@ -2323,11 +2523,12 @@ if (initialParams.get("preset") !== null &&
   presetSelect.value = initialParams.get("preset");
 }
 if (initialParams.get("q")) document.getElementById("search").value = initialParams.get("q");
-if (initialParams.get("age")) {
-  const ageSel = document.getElementById("feed-age");
-  if ([...ageSel.options].some(o => o.value === initialParams.get("age"))) {
-    ageSel.value = initialParams.get("age");
-  }
+// The only pill group whose options are static HTML rather than
+// server-populated, so it can be wired and restored-from-URL immediately
+// rather than waiting on loadFeedCategories.
+wirePillGroup("feed-age");
+if (initialParams.get("age") && document.querySelector(`#feed-age .pill-btn[data-value="${CSS.escape(initialParams.get("age"))}"]`)) {
+  setPillValue("feed-age", initialParams.get("age"), { silent: true });
 }
 
 // Categories load first so a deep link's ?category is already applied to
