@@ -71,6 +71,13 @@ BACKOFF_HOURS = (6, 24, 72, 168)
 def _claim_batch(limit: int) -> list[dict]:
     """Oldest-posted first, because that is where the dead ones are.
 
+    NULLS LAST, not FIRST: a posting with no date at all is not evidence
+    of age, and sorting it first hands the front of the queue to the
+    least informative rows. Caught live -- the first cycles spent all 36
+    of their slots on undated Workday postings before reaching a single
+    one of the aged Muse listings this sweep exists for. It also has to
+    match the partial index, which already said NULLS LAST.
+
     `id` is a tiebreaker so the ordering is TOTAL -- without it, rows
     sharing a posted_at_ts can be re-claimed while their neighbours are
     skipped, which is exactly how both the feed's paging and the
@@ -85,7 +92,7 @@ def _claim_batch(limit: int) -> list[dict]:
               AND url IS NOT NULL AND url <> ''
               AND (liveness_next_check_at IS NULL OR liveness_next_check_at <= now())
             ORDER BY liveness_next_check_at NULLS FIRST,
-                     posted_at_ts ASC NULLS FIRST,
+                     posted_at_ts ASC NULLS LAST,
                      id
             LIMIT %s
             """,

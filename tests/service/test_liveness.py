@@ -183,3 +183,17 @@ def test_a_posting_with_no_url_is_skipped_rather_than_guessed_at():
     assert liveness.run_liveness_sweep(
         limit=5, pace=0, session=_session(lambda u: FakeResp(404)))["checked"] == 0
     assert _row("nourl")["status"] == "open"
+
+
+def test_undated_postings_do_not_jump_the_queue():
+    # Caught live: with NULLS FIRST the sweep spent its first 36 slots on
+    # undated postings before reaching a single aged one. No date is not
+    # evidence of age, so it must not earn priority.
+    _posting("old", days_old=900)
+    with db.cursor() as cur:
+        cur.execute("UPDATE postings SET posted_at_ts = NULL WHERE id = 'old'")
+    _posting("older", days_old=800)
+    seen = []
+    liveness.run_liveness_sweep(limit=1, pace=0,
+                                session=_session(lambda u: seen.append(u) or FakeResp(200)))
+    assert "older" in seen[0], "a dated posting must be checked before an undated one"
