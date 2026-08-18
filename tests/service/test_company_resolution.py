@@ -41,11 +41,18 @@ def test_empty_input_is_handled():
     assert wd._clean_company_name(None) == ""
 
 
-def test_maybe_fix_company_only_fires_when_the_source_still_equals_its_tenant():
+def test_maybe_fix_company_is_disabled():
+    # Confirmed live 2026-08-18: a single posting's hiringOrganization
+    # is not reliable enough for this to auto-apply unattended (it
+    # replaced "3M" with a Shanghai subsidiary's legal name, among
+    # others) -- see workday_descriptions.py's own comment on the
+    # disabled body. This asserts the OFF state itself, so a future
+    # re-enable has to touch this test deliberately rather than leaving
+    # a stale assertion nobody update.
     source = wd.WorkdayDescriptions()
     row = {"tenant": "ms", "source_company": "ms"}
     payload = {"hiringOrganization": {"name": "711 MS Smith Barney, LLC"}}
-    assert source.maybe_fix_company(row, payload) == "711 MS Smith Barney"
+    assert source.maybe_fix_company(row, payload) is None
 
 
 def test_maybe_fix_company_leaves_an_already_resolved_source_alone():
