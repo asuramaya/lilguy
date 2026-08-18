@@ -26,14 +26,11 @@ should stay closed even if it once had a dedup_key collision.
 
 Precedence: a posting from a company's own direct ATS connector
 (Greenhouse/Lever/Workday/Oracle Recruiting Cloud/jsonld) outranks the
-same posting surfaced by an aggregator (Muse/Adzuna) -- the direct
+same posting surfaced by an aggregator (The Muse) -- the direct
 source is more precise (a company-scoped fetch, not a keyword search
 across everything) and more current (its own re-scrape cadence, not
-whatever the aggregator's crawl happened to catch). USAJobs isn't
-ranked against these at all in practice -- it's the federal government's
-OWN board, a distinct data domain from private-company postings, so a
-real collision with it would be a coincidence, not the pattern this was
-built for. Ties (same precedence tier) are broken by first_seen: the
+whatever the aggregator's crawl happened to catch). Ties (same
+precedence tier) are broken by first_seen: the
 posting THIS project saw first stays canonical, so the "duplicate"
 label doesn't flip-flop for no reason across sweeps.
 """

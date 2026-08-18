@@ -48,9 +48,12 @@ sourcing one (see below), this is purely about not starving smaller
 categories of their fair share of the depth-limited query budget. The
 depth limit itself (`max_pages: 95` — the API returns HTTP 400 past
 roughly page 96-99 of ANY query) is a hard ceiling, not a politeness
-setting. Adzuna (`scraper/connectors/adzuna.py`) is wired up the same way
-as a second aggregator, gated behind a free API key the repo doesn't ship
-(see the commented-out entry in `sources.yaml`).
+setting. The Muse is the only aggregator this project ships. Adzuna and
+USAJobs connectors existed until 2026-08 and were removed: both required
+API keys, which this project's standing rule excludes, and both had zero
+live sources — neither had ever run. Every connector here reads a public,
+keyless endpoint, which is what lets a fork work without signing up for
+anything.
 
 **Tier 1.5 — generic schema.org/JobPosting harvester**
 (`scraper/connectors/jsonld.py`), openroles' actual technique: read a

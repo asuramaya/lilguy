@@ -62,7 +62,7 @@ def test_missing_company_or_title_yields_no_key():
 
 def test_missing_location_still_yields_a_key():
     # location alone being blank shouldn't block dedup -- some sources
-    # (e.g. USAJobs entries with no PositionLocationDisplay) legitimately
+    # (e.g. feeds that publish no location field at all) legitimately
     # have an empty location string.
     assert compute_dedup_key("Acme Corp", "Supply Chain Intern", "") is not None
 

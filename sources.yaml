@@ -89,37 +89,12 @@ sources:
       - Customer Service
       - Real Estate
 
-  # - company: Adzuna (aggregator — broad job search)
-  #   ats: adzuna
-  #   what: "intern OR internship"
-  #   country: us
-  #   # Needs YOUR OWN free key: https://developer.adzuna.com/ — set
-  #   # ADZUNA_APP_ID / ADZUNA_APP_KEY as env vars (repo secrets in GitHub
-  #   # Actions), never committed here. Uncomment once you have them —
-  #   # left commented out because it's untested without credentials, not
-  #   # because it doesn't work. `what` is intentionally broad here for
-  #   # the same reason the Muse entry above dropped its category filter —
-  #   # narrow with your own filters.yaml, not by narrowing the source.
-
-  # - company: USAJobs (US federal government's own job board)
-  #   ats: usajobs
-  #   keyword: intern
-  #   category_label: "Government / Public Sector"
-  #   max_pages: 10
-  #   # A direct-source aggregator in the sense that matters here:
-  #   # postings come straight from federal hiring agencies (DoD, DoT,
-  #   # GSA, USDA, etc. all run real ops/logistics/supply-chain
-  #   # functions), not resold by a third party. Free, no cost, 2-minute
-  #   # email signup at https://developer.usajobs.gov/ — set
-  #   # USAJOBS_API_KEY and USAJOBS_USER_AGENT (the email you registered
-  #   # with — USAJobs requires this as a literal header) as env vars.
-  #   # Left commented out for a STRONGER reason than Adzuna above: this
-  #   # project holds no USAJobs key at all, so scraper/connectors/
-  #   # usajobs.py's field mapping is built from public API
-  #   # documentation, not confirmed against a real live response — see
-  #   # its own docstring. Uncomment only after someone with a real key
-  #   # has verified the field mapping against live data, per this
-  #   # project's verify-before-shipping standard.
+  # Adzuna and USAJobs were removed in 2026-08: both connectors required
+  # API keys, which this project's standing rule excludes, and both had
+  # zero live sources -- they had never once run. Dead code that
+  # silently no-ops on a missing env var is a trap: the next person to
+  # add a source picks one, gets an empty result, and debugs their own
+  # config instead of learning the connector was never viable here.
 
   # ============================ TIER 1.5 =============================
   - company: UPS
@@ -519,8 +494,8 @@ sources:
   # Oracle Recruiting Cloud (oracle_recruiting.py), plus the generic
   # jsonld.py (any vendor with a job sitemap — now confirmed across at
   # least 4 different underlying platforms: Phenom People, Eightfold.ai,
-  # and whatever RTX/UPS's own vendors are) and two aggregators (Muse,
-  # Adzuna). SuccessFactors, iCIMS/Taleo, and Cloudflare-shielded sites
+  # and whatever RTX/UPS's own vendors are) and one aggregator (The Muse).
+  # SuccessFactors, iCIMS/Taleo, and Cloudflare-shielded sites
   # remain fully unsupported (no connector built, in the Cloudflare case
   # by design) — see docs/adding-a-source.md's "Unsupported ATS
   # platforms" section. Any company suspected of running Oracle

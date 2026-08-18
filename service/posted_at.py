@@ -4,7 +4,7 @@ Each connector passes the provider's raw value straight through into
 `postings.posted_at`, which is a TEXT column, and the providers do not
 agree on a format. Live census of the open corpus:
 
-    greenhouse / muse / jsonld / usajobs / oracle / adzuna
+    greenhouse / muse / jsonld / oracle
         ISO-8601, e.g. "2026-07-09T10:58:08-04:00"          ~84%
     lever
         epoch MILLISECONDS as a bare integer, e.g. 1625176335503

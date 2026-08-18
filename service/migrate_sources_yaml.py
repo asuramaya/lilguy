@@ -32,7 +32,6 @@ SOURCES_FILE = ROOT / "sources.yaml"
 # source for very little freshness benefit.
 DEFAULT_INTERVAL_SECONDS = {
     "muse": 3600,
-    "adzuna": 3600,
     "greenhouse": 7200,
     "lever": 7200,
     "workday": 21600,

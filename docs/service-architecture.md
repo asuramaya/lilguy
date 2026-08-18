@@ -534,7 +534,7 @@ a different audience from "a new internship exists".
 ## Posting dates
 
 `postings.posted_at` holds whatever the provider sent, and providers do
-not agree: ISO-8601 from Greenhouse/Muse/JSON-LD/USAJobs/Oracle/Adzuna,
+not agree: ISO-8601 from Greenhouse/Muse/JSON-LD/Oracle,
 bare epoch **milliseconds** from Lever, and English prose from Workday
 ("Posted Today", "Posted 2 Days Ago", "Posted 30+ Days Ago"). Because it
 was `TEXT`, nothing could sort or filter on it, so the feed sorted and

@@ -36,7 +36,7 @@ Three things beyond the static research:
 - `scraper/` — `scrape.py` (fetches everything, writes the raw store),
   `build_feed.py` (applies a filter file to the raw store, writes a
   rendered feed — this is what you run with your own filter), connectors/
-  (`muse`, `adzuna`, `usajobs` — aggregators; `jsonld` — generic schema.org
+  (`muse` — aggregator; `jsonld` — generic schema.org
   harvester, works on any career site regardless of ATS vendor;
   `greenhouse`, `lever`, `workday`, `oracle_recruiting` — vendor-specific),
   `user_filter.py` (the filter-matching logic

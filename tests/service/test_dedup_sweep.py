@@ -63,16 +63,21 @@ def test_direct_source_outranks_aggregator():
 
 
 def test_same_precedence_tier_ties_broken_by_first_seen():
+    # Two postings from the SAME aggregator, so precedence cannot
+    # separate them and only first_seen can. This used to pit muse
+    # against adzuna; adzuna was removed as a connector in 2026-08, and a
+    # test that leans on an ats value the project no longer supports
+    # proves nothing about the code that ships.
     now = datetime.now(timezone.utc)
     earlier = now - timedelta(days=1)
     _insert_posting("muse:1", "Acme Corp", "Supply Chain Intern", "Austin, TX", "muse", "The Muse", earlier)
-    _insert_posting("adzuna:1", "Acme Corp", "Supply Chain Intern", "Austin, TX", "adzuna", "Adzuna", now)
+    _insert_posting("muse:2", "Acme Corp", "Supply Chain Intern", "Austin, TX", "muse", "The Muse", now)
 
     with db.cursor() as cur:
         run_dedup_sweep(cur)
 
     assert _status("muse:1")["status"] == "open"       # seen first
-    assert _status("adzuna:1")["status"] == "duplicate"
+    assert _status("muse:2")["status"] == "duplicate"
 
 
 def test_no_collision_leaves_both_open():
