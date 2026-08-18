@@ -52,6 +52,7 @@ from dedup import compute_company_key, compute_dedup_key, run_dedup_sweep  # noq
 from posted_at import parse_posted_at  # noqa: E402
 from source_sync import run_source_sync_sweep  # noqa: E402
 from cycle import parse_cycle  # noqa: E402
+from empty_boards import run_empty_board_sweep  # noqa: E402
 from work_arrangement import from_location  # noqa: E402
 from liveness import run_liveness_sweep  # noqa: E402
 from stall import check_for_stall  # noqa: E402
@@ -385,6 +386,14 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
                     synced = run_source_sync_sweep(cur)
                 if synced:
                     print(f"  source sync sweep: {synced} posting(s) had company/category re-synced", flush=True)
+                # Inside the `if due:` block, unlike liveness: this reads
+                # scrape_runs, so it only has anything new to say after a
+                # batch has actually written some.
+                with cursor() as cur:
+                    backed_off = run_empty_board_sweep(cur)
+                if backed_off:
+                    print(f"  empty-board sweep: {backed_off} source(s) backed off to a long interval",
+                          flush=True)
 
             # Outside the `if due:` block on purpose. Every other connector
             # ships descriptions inside the list response, so only Workday
