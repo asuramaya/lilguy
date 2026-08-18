@@ -206,3 +206,28 @@ ALTER TABLE postings ADD COLUMN IF NOT EXISTS description TEXT;
 -- company" can't mean two different things in two places.
 ALTER TABLE postings ADD COLUMN IF NOT EXISTS company_key TEXT;
 CREATE INDEX IF NOT EXISTS idx_postings_company_key ON postings (company_key);
+
+-- Retry state for the Workday description backfill.
+--
+-- Fixes a live deadlock: the claim query selected `description IS NULL
+-- ORDER BY first_seen DESC LIMIT 10` with no record of having tried, so
+-- a row that failed stayed NULL and was re-claimed on the very next
+-- cycle -- forever. Ten undying rows sat at the head of the queue and
+-- starved 465 postings behind them; the scheduler logged
+-- "0 filled, 0 none-available, 10 deferred" every cycle indefinitely.
+--
+-- next_attempt_at is what breaks the cycle: a deferred row is pushed
+-- into the future, so the queue advances even when a row never
+-- succeeds. attempts drives the backoff and is worth keeping visible
+-- for diagnosis -- a row with 9 attempts is telling you something a
+-- bare timestamp does not.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS description_attempts SMALLINT NOT NULL DEFAULT 0;
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS description_next_attempt_at TIMESTAMPTZ;
+
+-- Partial index over exactly what the claim query scans: rows still
+-- missing a description. Once the backlog drains this index is nearly
+-- empty, which is the point -- it costs almost nothing when there is
+-- no work to do.
+CREATE INDEX IF NOT EXISTS postings_description_pending_idx
+    ON postings (description_next_attempt_at NULLS FIRST, first_seen DESC)
+    WHERE description IS NULL;
