@@ -33,6 +33,7 @@ import sys
 import time
 from pathlib import Path
 
+import psycopg2.extras
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -101,56 +102,6 @@ def _claim_batch(limit: int) -> list[dict]:
         return cur.fetchall()
 
 
-def _close(posting_id: str, company: str, status_code: int) -> None:
-    with cursor() as cur:
-        cur.execute(
-            "UPDATE postings SET status = 'closed', closed_at = now(), "
-            "liveness_checked_at = now() WHERE id = %s AND status = 'open'",
-            (posting_id,),
-        )
-        if cur.rowcount:
-            cur.execute(
-                "INSERT INTO events (kind, company, detail) VALUES ('expired', %s, %s)",
-                (company, f"HTTP {status_code} on the posting's own URL -- no longer applicable"),
-            )
-
-
-def _alive(posting_id: str) -> None:
-    """Record the check and schedule the next one.
-
-    Interval chosen in SQL from the posting's own age so this stays one
-    statement and cannot race with a concurrent tick.
-    """
-    with cursor() as cur:
-        cur.execute(
-            """
-            UPDATE postings
-               SET liveness_checked_at = now(),
-                   liveness_attempts = 0,
-                   liveness_next_check_at = now() + make_interval(days =>
-                       CASE WHEN posted_at_ts IS NOT NULL
-                             AND posted_at_ts < now() - make_interval(days => %s)
-                            THEN %s ELSE %s END)
-             WHERE id = %s
-            """,
-            (STALE_AFTER_DAYS, RECHECK_DAYS_STALE, RECHECK_DAYS_FRESH, posting_id),
-        )
-
-
-def _defer(posting_id: str) -> None:
-    with cursor() as cur:
-        cur.execute(
-            """
-            UPDATE postings
-               SET liveness_attempts = LEAST(liveness_attempts + 1, 32767),
-                   liveness_next_check_at = now() + make_interval(
-                       hours => (%s::int[])[LEAST(liveness_attempts + 1, %s)])
-             WHERE id = %s
-            """,
-            (list(BACKOFF_HOURS), len(BACKOFF_HOURS), posting_id),
-        )
-
-
 def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
                        session: requests.Session = None) -> dict:
     """Never raises: one unreachable host must not stop the scheduler."""
@@ -160,6 +111,10 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
 
     http = session or requests.Session()
     closed = alive = deferred = 0
+    # Outcomes are collected and written ONCE at the end rather than a
+    # statement (and, before pooling, a whole connection) per posting.
+    # A 20-row sweep was 20 round trips to say the same three things.
+    to_close, to_mark_alive, to_defer = [], [], []
 
     for i, row in enumerate(rows):
         # The try wraps ONLY the request. It originally wrapped the
@@ -176,16 +131,68 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
             status = None
 
         if status in GONE_STATUSES:
-            _close(row["id"], row["company"], status)
+            to_close.append((row["id"], row["company"], status))
             closed += 1
         elif status == 200:
-            _alive(row["id"])
+            to_mark_alive.append(row["id"])
             alive += 1
         else:
-            _defer(row["id"])
+            to_defer.append(row["id"])
             deferred += 1
 
         if pace and i < len(rows) - 1:
             time.sleep(pace)
 
+    _record(to_close, to_mark_alive, to_defer)
     return {"checked": len(rows), "closed": closed, "alive": alive, "deferred": deferred}
+
+
+def _record(to_close: list, to_mark_alive: list, to_defer: list) -> None:
+    """One connection, one transaction, three statements.
+
+    All-or-nothing on purpose: if the process dies mid-sweep the whole
+    batch is simply re-claimed next cycle, which is the same outcome as
+    never having run. Writing per posting could leave a sweep half
+    applied with no record of where it stopped.
+    """
+    if not (to_close or to_mark_alive or to_defer):
+        return
+    with cursor() as cur:
+        if to_close:
+            cur.execute(
+                "UPDATE postings SET status = 'closed', closed_at = now(), "
+                "liveness_checked_at = now() WHERE id = ANY(%s) AND status = 'open'",
+                ([pid for pid, _, _ in to_close],),
+            )
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO events (kind, company, detail) VALUES %s",
+                [(("expired"), company,
+                  f"HTTP {code} on the posting's own URL -- no longer applicable")
+                 for _, company, code in to_close],
+            )
+        if to_mark_alive:
+            cur.execute(
+                """
+                UPDATE postings
+                   SET liveness_checked_at = now(),
+                       liveness_attempts = 0,
+                       liveness_next_check_at = now() + make_interval(days =>
+                           CASE WHEN posted_at_ts IS NOT NULL
+                                 AND posted_at_ts < now() - make_interval(days => %s)
+                                THEN %s ELSE %s END)
+                 WHERE id = ANY(%s)
+                """,
+                (STALE_AFTER_DAYS, RECHECK_DAYS_STALE, RECHECK_DAYS_FRESH, to_mark_alive),
+            )
+        if to_defer:
+            cur.execute(
+                """
+                UPDATE postings
+                   SET liveness_attempts = LEAST(liveness_attempts + 1, 32767),
+                       liveness_next_check_at = now() + make_interval(
+                           hours => (%s::int[])[LEAST(liveness_attempts + 1, %s)])
+                 WHERE id = ANY(%s)
+                """,
+                (list(BACKOFF_HOURS), len(BACKOFF_HOURS), to_defer),
+            )
