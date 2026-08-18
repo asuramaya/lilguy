@@ -419,7 +419,11 @@ def posting(posting_id: str):
         cur.execute(
             "SELECT id, title, location, posted_at_ts FROM postings "
             "WHERE company_key = %s AND company_key IS NOT NULL AND id <> %s AND status = 'open' "
-            "ORDER BY posted_at_ts DESC NULLS LAST LIMIT 25",
+            # `id` makes the ordering TOTAL. Measured: up to 89 open
+            # postings share one (company_key, posted_at_ts) pair, so
+            # without it which 25 of those 89 a reader sees changes
+            # between requests for no reason.
+            "ORDER BY posted_at_ts DESC NULLS LAST, id LIMIT 25",
             (row.get("company_key"), posting_id),
         )
         siblings = [_row_to_filter_dict(r) for r in cur.fetchall()]
@@ -515,7 +519,10 @@ def source(source_id: int):
         cur.execute(
             "SELECT company_key, company, count(*) AS n FROM postings "
             "WHERE source_id = %s AND status='open' AND company_key IS NOT NULL "
-            "GROUP BY company_key, company ORDER BY n DESC LIMIT 200",
+            # company_key breaks count ties, so an aggregator's employer
+            # list is stable rather than arbitrarily including or
+            # dropping employers tied on posting count.
+            "GROUP BY company_key, company ORDER BY n DESC, company_key LIMIT 200",
             (source_id,),
         )
         companies = [_row_to_filter_dict(r) for r in cur.fetchall()]
@@ -740,39 +747,100 @@ def events(limit: int = Query(50, le=500)):
 
 
 @app.get("/duplicates")
-def duplicates(limit: int = Query(500, le=5000)):
+def duplicates(
+    q: Annotated[Optional[str], Query(description="Substring match on company or title")] = None,
+    limit: Annotated[int, Query(le=5000)] = 500,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
     """Audit view over what dedup.py's sweep actually caught -- deliberately
     NOT run through user_filter.py's domain matching like /feed is, since
     this is for sanity-checking the sweep itself (did it collapse the right
     rows together?), not for reading as a feed. Self-joins `duplicate_of`
     back to the canonical posting's own company/title/source so a duplicate
     row reads as "X is a duplicate of Y", not just an opaque id.
+
+    Searched and counted server-side. The tab used to fetch 500 and
+    filter them in the browser while 1,425 existed, labelling the result
+    "of 500" -- so a duplicate at position 900 was, as far as a reader
+    could tell, not there at all. Same bug the feed had, one tab over.
     """
+    where = ["d.status = 'duplicate'"]
+    params: list = []
+    if q and q.strip():
+        where.append("(d.company ILIKE %s OR d.title ILIKE %s)")
+        params += [f"%{q.strip()}%"] * 2
+    clause = " AND ".join(where)
+
     with cursor() as cur:
+        cur.execute(f"SELECT count(*) AS n FROM postings d WHERE {clause}", params)
+        total = cur.fetchone()["n"]
         cur.execute(
-            """
+            f"""
             SELECT d.id, d.company, d.title, d.location, d.ats AS source, d.first_seen,
                    c.id AS canonical_id, c.company AS canonical_company,
                    c.title AS canonical_title, c.ats AS canonical_source
             FROM postings d
             LEFT JOIN postings c ON c.id = d.duplicate_of
-            WHERE d.status = 'duplicate'
-            ORDER BY d.first_seen DESC
-            LIMIT %s
+            WHERE {clause}
+            ORDER BY d.first_seen DESC, d.id
+            LIMIT %s OFFSET %s
             """,
-            (limit,),
+            [*params, limit, offset],
         )
-        return {"duplicates": [_row_to_filter_dict(r) for r in cur.fetchall()]}
+        rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    return {"duplicates": rows, "total": total, "count": len(rows),
+            "limit": limit, "offset": offset}
 
 
 @app.get("/candidates")
-def candidates():
+def candidates(
+    q: Annotated[Optional[str], Query(description="Substring match on company")] = None,
+    review_status: Annotated[Optional[str], Query(description="unchecked, no_match, rejected, promoted")] = None,
+    limit: Annotated[int, Query(le=1000)] = 200,
+    offset: Annotated[int, Query(ge=0)] = 0,
+):
+    """Paged, filtered server-side, and WITHOUT the evidence blob.
+
+    This endpoint used to return every row unbounded: 18,463 candidates
+    and 1,940 kB of `evidence` JSONB, measured at 5,013,141 bytes in
+    6.35 seconds -- the most expensive thing the service served, for a
+    tab that renders 500 rows and reads exactly one field out of
+    evidence. It also grows without bound by design, since Common Crawl
+    reseeds daily.
+
+    So: `reason` is extracted in SQL rather than shipping the blob, and
+    narrowing happens here rather than in the browser -- filtering a
+    page and calling it the corpus is the bug this and the duplicates
+    tab both had.
+    """
+    where = ["TRUE"]
+    params: list = []
+    if review_status:
+        where.append("review_status = %s")
+        params.append(review_status)
+    if q and q.strip():
+        where.append("company ILIKE %s")
+        params.append(f"%{q.strip()}%")
+    clause = " AND ".join(where)
+
     with cursor() as cur:
+        cur.execute(f"SELECT count(*) AS n FROM discovery_candidates WHERE {clause}", params)
+        total = cur.fetchone()["n"]
         cur.execute(
-            "SELECT company, ats, review_status, evidence, checked_at, next_check_at "
-            "FROM discovery_candidates ORDER BY checked_at DESC NULLS FIRST"
+            # `id` is the tiebreaker: checked_at alone is not a total
+            # ordering, and paging a non-total sort repeats and skips
+            # rows. Same lesson as the feed's paging.
+            f"SELECT company, ats, review_status, evidence->>'reason' AS reason, "
+            f"       checked_at, next_check_at "
+            f"FROM discovery_candidates WHERE {clause} "
+            "ORDER BY checked_at DESC NULLS FIRST, id DESC LIMIT %s OFFSET %s",
+            [*params, limit, offset],
         )
-        return {"candidates": cur.fetchall()}
+        rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+    return {"candidates": rows, "total": total, "count": len(rows),
+            "limit": limit, "offset": offset}
 
 
 # Set on every response, including the static page.

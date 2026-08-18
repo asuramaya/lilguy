@@ -29,7 +29,11 @@ NOW = datetime.now(timezone.utc)
 def _clean_db():
     db.init_schema()
     with db.cursor() as cur:
-        cur.execute("TRUNCATE postings, sources, scrape_runs RESTART IDENTITY CASCADE")
+        # discovery_candidates included: without it, rows leak between
+        # tests and a UNIQUE(company) insert in one test fails in the
+        # next for reasons that have nothing to do with the code.
+        cur.execute("TRUNCATE postings, sources, scrape_runs, discovery_candidates "
+                    "RESTART IDENTITY CASCADE")
     yield
 
 
@@ -383,3 +387,92 @@ def test_security_headers_are_declared_for_forkers():
     # The page is one static file with everything inline and no external
     # requests, so nothing is given up by forbidding other origins.
     assert "default-src 'self'" in api.SECURITY_HEADERS["Content-Security-Policy"]
+
+
+# --- bounded, server-narrowed audit endpoints ---------------------------
+
+def test_candidates_are_paged_and_counted_against_the_whole_match():
+    with db.cursor() as cur:
+        for i in range(5):
+            cur.execute(
+                "INSERT INTO discovery_candidates (company, review_status, checked_at) "
+                "VALUES (%s, 'no_match', now() - make_interval(hours => %s))",
+                (f"co{i}", i),
+            )
+    page = api.candidates(limit=2)
+    assert page["total"] == 5, "total is the whole match, not the page"
+    assert page["count"] == 2
+
+
+def test_candidates_paging_never_repeats_or_skips():
+    # checked_at alone is not a total ordering -- these all share one.
+    with db.cursor() as cur:
+        for i in range(6):
+            cur.execute(
+                "INSERT INTO discovery_candidates (company, review_status, checked_at) "
+                "VALUES (%s, 'no_match', now())", (f"tied{i}",))
+    seen = []
+    for offset in (0, 2, 4):
+        seen += [c["company"] for c in api.candidates(limit=2, offset=offset)["candidates"]]
+    assert len(set(seen)) == 6, "paging repeated or skipped rows across tied checked_at"
+
+
+def test_candidates_filter_server_side_not_in_the_browser():
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO discovery_candidates (company, review_status) VALUES ('acme', 'no_match')")
+        cur.execute("INSERT INTO discovery_candidates (company, review_status) VALUES ('globex', 'promoted')")
+    assert [c["company"] for c in api.candidates(q="acm")["candidates"]] == ["acme"]
+    assert [c["company"] for c in api.candidates(review_status="promoted")["candidates"]] == ["globex"]
+
+
+def test_candidates_do_not_ship_the_evidence_blob():
+    # 1,940 kB of JSONB shipped to render one field. `reason` is
+    # extracted in SQL instead.
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO discovery_candidates (company, review_status, evidence) "
+            "VALUES ('acme', 'rejected', %s)",
+            (psycopg2.extras.Json({"reason": "no internships", "http": {"status": 200}}),),
+        )
+    row = api.candidates()["candidates"][0]
+    assert row["reason"] == "no internships"
+    assert "evidence" not in row
+
+
+def test_duplicates_search_covers_everything_not_just_the_page():
+    # The bug: 1,425 duplicates existed, 500 were fetched, the browser
+    # searched those 500, and the count said "of 500".
+    sid = _source("Acme")
+    _posting("canon", "Acme", sid)
+    for i in range(3):
+        _posting(f"dup{i}", "Acme", sid, status="duplicate")
+    _posting("needle", "Globex Industries", sid, status="duplicate")
+
+    out = api.duplicates(limit=2)
+    assert out["total"] == 4, "counted against every duplicate, not the page"
+    assert out["count"] == 2
+
+    found = api.duplicates(q="globex")
+    assert found["total"] == 1
+    assert [d["id"] for d in found["duplicates"]] == ["needle"]
+
+
+def test_posting_siblings_are_stable_when_dates_tie():
+    # Measured live: up to 89 open postings share one
+    # (company_key, posted_at_ts) pair.
+    sid = _source("Acme")
+    with db.cursor() as cur:
+        for i in range(30):
+            cur.execute(
+                """
+                INSERT INTO postings (id, source_id, source_entry, company, company_key, title,
+                                       location, url, ats, category, status, posted_at_ts,
+                                       first_seen, last_seen)
+                VALUES (%s, %s, 'Acme', 'Acme', %s, 'Ops Intern', 'Remote', 'https://x',
+                        'greenhouse', 'Logistics', 'open', now(), now(), now())
+                """,
+                (f"t{i:03d}", sid, compute_company_key("Acme")),
+            )
+    first = [p["id"] for p in api.posting("t000")["same_company"]]
+    second = [p["id"] for p in api.posting("t000")["same_company"]]
+    assert first == second, "which siblings appear must not vary between requests"

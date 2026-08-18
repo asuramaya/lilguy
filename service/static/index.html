@@ -1450,12 +1450,23 @@ function renderSources() {
 let candidateRows = [];
 let candidateSort = { key: "checked_at", dir: -1 };
 
+// Narrowing is a SERVER query now. This tab used to download every
+// candidate ever considered -- 18,463 rows and 5 MB, measured at 6.3s --
+// to render 500 of them, and the set only grows.
+let candidateTotal = 0;
+
 async function loadCandidates() {
   document.getElementById("candidates-count").textContent = "loading…";
   try {
-    const res = await fetch("/candidates");
+    const p = new URLSearchParams({ limit: "500" });
+    const q = document.getElementById("candidate-search").value.trim();
+    if (q) p.set("q", q);
+    const status = document.getElementById("candidate-status").value;
+    if (status) p.set("review_status", status);
+    const res = await fetch(`/candidates?${p}`);
     const data = await res.json();
     candidateRows = data.candidates || [];
+    candidateTotal = data.total ?? candidateRows.length;
     renderCandidates();
   } catch (e) {
     document.getElementById("candidates-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
@@ -1464,23 +1475,22 @@ async function loadCandidates() {
 }
 
 function renderCandidates() {
-  const q = document.getElementById("candidate-search").value.trim().toLowerCase();
-  const statusFilter = document.getElementById("candidate-status").value;
-  let filtered = candidateRows;
-  if (q) filtered = filtered.filter(c => (c.company || "").toLowerCase().includes(q));
-  if (statusFilter) filtered = filtered.filter(c => c.review_status === statusFilter);
-  filtered = sortRows(filtered, candidateSort.key, candidateSort.dir);
+  // Already narrowed by the server; sorting only reorders this page.
+  const shown = sortRows(candidateRows, candidateSort.key, candidateSort.dir);
 
-  const shown = filtered.slice(0, 500);
+  // Counted against the whole MATCH, not against what arrived, so a
+  // truncated page is never mistaken for a complete answer.
   document.getElementById("candidates-count").innerHTML =
-    `<strong>${filtered.length}</strong> of ${candidateRows.length} candidates` +
-    (filtered.length > shown.length
+    `<strong>${candidateTotal}</strong> matching` +
+    (candidateTotal > shown.length
       ? ` <span class="truncated">(showing first ${shown.length})</span>`
       : "");
   applySort("tab-candidates", candidateSort);
 
   document.getElementById("candidates-body").innerHTML = shown.length ? shown.map(c => {
-    const reason = c.evidence?.reason || "";
+    // `reason` is extracted in SQL now -- shipping the whole evidence
+    // blob to read one field was most of that 5 MB.
+    const reason = c.reason || "";
     return `
     <tr>
       <td class="company-cell truncate" data-label="Company" title="${escapeHtml(c.company)}">${escapeHtml(c.company)}</td>
@@ -1489,7 +1499,7 @@ function renderCandidates() {
       <td class="location-cell truncate" data-label="Reason" title="${escapeHtml(reason)}">${escapeHtml(reason || "—")}</td>
       <td class="age-cell mono" data-label="Checked" title="${escapeHtml(exactTime(c.checked_at))}">${escapeHtml(timeAgo(c.checked_at))}</td>
     </tr>`;
-  }).join("") : emptyRow(5, candidateRows.length ? "No candidates match that filter." : "No candidates yet.");
+  }).join("") : emptyRow(5, "No candidates match that filter.");
 }
 
 // --- duplicates tab ---------------------------------------------------------
@@ -1497,12 +1507,18 @@ function renderCandidates() {
 let duplicateRows = [];
 let duplicateSort = { key: "first_seen", dir: -1 };
 
+let duplicateTotal = 0;
+
 async function loadDuplicates() {
   document.getElementById("duplicates-count").textContent = "loading…";
   try {
-    const res = await fetch("/duplicates?limit=500");
+    const p = new URLSearchParams({ limit: "500" });
+    const q = document.getElementById("duplicate-search").value.trim();
+    if (q) p.set("q", q);
+    const res = await fetch(`/duplicates?${p}`);
     const data = await res.json();
     duplicateRows = data.duplicates || [];
+    duplicateTotal = data.total ?? duplicateRows.length;
     renderDuplicates();
   } catch (e) {
     document.getElementById("duplicates-body").innerHTML = emptyRow(4, "Couldn't reach the API — is the service running?");
@@ -1511,12 +1527,16 @@ async function loadDuplicates() {
 }
 
 function renderDuplicates() {
-  const q = document.getElementById("duplicate-search").value.trim().toLowerCase();
-  let filtered = q ? duplicateRows.filter(d => (d.company || "").toLowerCase().includes(q)) : duplicateRows;
-  filtered = sortRows(filtered, duplicateSort.key, duplicateSort.dir);
+  // Searched by the server. This used to fetch 500 of 1,425 and filter
+  // THOSE, reporting "N of 500" -- so a duplicate at position 900 was,
+  // as far as a reader could tell, not there at all.
+  const filtered = sortRows(duplicateRows, duplicateSort.key, duplicateSort.dir);
 
   document.getElementById("duplicates-count").innerHTML =
-    `<strong>${filtered.length}</strong> of ${duplicateRows.length} duplicates`;
+    `<strong>${duplicateTotal}</strong> matching` +
+    (duplicateTotal > filtered.length
+      ? ` <span class="truncated">(showing first ${filtered.length})</span>`
+      : "");
   applySort("tab-duplicates", duplicateSort);
 
   document.getElementById("duplicates-body").innerHTML = filtered.length ? filtered.map(d => `
@@ -1600,9 +1620,9 @@ for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement"]) {
 document.getElementById("feed-age").addEventListener("change", () => { loadFeed(); syncUrl(); });
 document.getElementById("source-search").addEventListener("input", debounce(renderSources));
 document.getElementById("source-category").addEventListener("change", renderSources);
-document.getElementById("candidate-search").addEventListener("input", debounce(renderCandidates));
-document.getElementById("candidate-status").addEventListener("change", renderCandidates);
-document.getElementById("duplicate-search").addEventListener("input", debounce(renderDuplicates));
+document.getElementById("candidate-search").addEventListener("input", debounce(loadCandidates));
+document.getElementById("candidate-status").addEventListener("change", loadCandidates);
+document.getElementById("duplicate-search").addEventListener("input", debounce(loadDuplicates));
 
 fetch("/health").then(r => r.json()).then(d => {
   document.getElementById("health-sub").textContent = d.ok ? "API live" : "API unhealthy";
