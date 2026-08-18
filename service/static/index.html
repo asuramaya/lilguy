@@ -686,6 +686,34 @@
      same fix, same failure, a second control this time. */
   .filters-aside .field select option { background: var(--row); color: var(--ink); }
 
+  /* A hand-rolled dropdown for Industry/Function -- see wireCombobox().
+     A native `list=`-backed <input> was tried first and dropped:
+     Chrome shows a datalist's suggestions only after the reader has
+     already typed a character into an empty field, so clicking one
+     produced no visible reaction at all (confirmed live, read by a
+     reader as "the dropdown doesn't work" rather than "type to
+     search"), and calling showPicker() to force it open turned out to
+     throw "requires a user gesture" even from inside a real click
+     handler in this app's own testing -- not dependable enough to ship
+     as the ONLY way to reach 330 industry values. */
+  .combo-field { position: relative; }
+  .combo-menu {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40;
+    max-height: 260px; overflow-y: auto;
+    background: var(--row); border: 1px solid var(--border-strong); border-radius: 5px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+    padding: 4px;
+  }
+  .combo-option {
+    display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    width: 100%; text-align: left; background: none; border: none; color: var(--ink);
+    font-family: inherit; font-size: 12.5px; padding: 6px 8px; border-radius: 4px; cursor: pointer;
+  }
+  .combo-option .truncate { min-width: 0; flex: 1; }
+  .combo-option:hover, .combo-option.active { background: var(--row-hover); }
+  .combo-option .n { color: var(--ink-tertiary); font-size: 11px; font-family: ui-monospace, monospace; flex-shrink: 0; }
+  .combo-empty { padding: 6px 8px; color: var(--ink-tertiary); font-size: 12px; }
+
   /* Anywhere/Remote/Hybrid/Onsite, Any/Summer/Fall/..., Any time/Past
      week/... -- every small fixed-choice axis in the panel uses the same
      equal-width pill row instead of three different `<select>` looks. */
@@ -980,9 +1008,14 @@
           <div class="filter-section" data-view="postings" data-section="industry">
             <button type="button" class="filter-section-toggle"><span>Industry</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
-              <div class="field">
-                <input id="feed-category" list="category-options" autocomplete="off"
+              <div class="field combo-field">
+                <input id="feed-category" autocomplete="off" role="combobox" aria-expanded="false"
                        placeholder="Any industry" aria-describedby="category-hint">
+                <!-- The dropdown itself is a hand-rolled listbox (see
+                     wireCombobox()), not this element -- kept only as
+                     the option DATA, since a native `list=` combobox's
+                     suggestion popup turned out unreliable across real
+                     browsers (see wireCombobox()'s own comment). -->
                 <datalist id="category-options"></datalist>
               </div>
             </div>
@@ -990,8 +1023,8 @@
           <div class="filter-section" data-view="postings" data-section="function">
             <button type="button" class="filter-section-toggle"><span>Function</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
-              <div class="field">
-                <input id="feed-function" list="function-options" autocomplete="off"
+              <div class="field combo-field">
+                <input id="feed-function" autocomplete="off" role="combobox" aria-expanded="false"
                        placeholder="Any function" aria-describedby="category-hint">
                 <datalist id="function-options"></datalist>
               </div>
@@ -1425,6 +1458,86 @@ function axisValue(axis) {
   if (axis.names.has(raw)) return raw;
   const ci = [...axis.names].find(c => c.toLowerCase() === raw.toLowerCase());
   return ci || "";
+}
+
+// A hand-rolled dropdown, not a native `list=` combobox -- see the
+// .combo-menu CSS comment for why the native version was dropped.
+// Reads its options straight from the axis's own <datalist> (already
+// populated by populateAxisDatalist), so there is exactly one place
+// that holds "what industries/functions exist", not two that could
+// drift.
+const COMBO_MAX_OPTIONS = 60;
+
+function wireCombobox(axis) {
+  const input = document.getElementById(axis.input);
+  const field = input.closest(".field");
+  const menu = document.createElement("div");
+  menu.className = "combo-menu";
+  menu.id = `${axis.input}-menu`;
+  menu.hidden = true;
+  menu.setAttribute("role", "listbox");
+  field.appendChild(menu);
+  input.setAttribute("aria-controls", menu.id);
+
+  function matches(query) {
+    const datalist = document.getElementById(axis.list);
+    const opts = [...datalist.options].map(o => ({
+      value: o.value,
+      label: o.getAttribute("label") || o.value,
+    }));
+    const q = query.trim().toLowerCase();
+    // Ranked, not just filtered: a name that STARTS WITH what was typed
+    // reads as the more relevant match than one that merely contains it
+    // somewhere in the middle, and the datalist's own count-descending
+    // order is only meaningful as a tiebreaker within each of those two
+    // groups, not across them.
+    if (!q) return opts.slice(0, COMBO_MAX_OPTIONS);
+    const starts = opts.filter(o => o.value.toLowerCase().startsWith(q));
+    const contains = opts.filter(o => !o.value.toLowerCase().startsWith(q) && o.value.toLowerCase().includes(q));
+    return [...starts, ...contains].slice(0, COMBO_MAX_OPTIONS);
+  }
+
+  function render() {
+    const opts = matches(input.value);
+    menu.innerHTML = opts.length
+      ? opts.map(o => {
+          const [, label, count] = o.label.match(/^(.*) — (\d+)$/) || [null, o.label, null];
+          return `<button type="button" class="combo-option" role="option" data-value="${escapeHtml(o.value)}">` +
+                 `<span class="truncate">${escapeHtml(label)}</span>` +
+                 (count ? `<span class="n">${escapeHtml(count)}</span>` : "") +
+                 `</button>`;
+        }).join("")
+      : `<div class="combo-empty">No match</div>`;
+    menu.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function close() {
+    menu.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+  }
+
+  input.addEventListener("focus", render);
+  input.addEventListener("click", render);
+  input.addEventListener("input", render);
+  // Keydown, not blur alone: Escape should close the menu without also
+  // leaving the field, which a blur-driven close would do as a side
+  // effect of moving focus.
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  // Genuinely leaving the field (not clicking into the menu itself,
+  // which also blurs the input) is the one thing that should close it.
+  input.addEventListener("blur", () => { if (!menu.matches(":hover")) close(); });
+  // mousedown, not click: fires BEFORE the input's blur, so the value
+  // is captured before the menu closes and disappears out from under
+  // the click.
+  menu.addEventListener("mousedown", (e) => {
+    const opt = e.target.closest(".combo-option");
+    if (!opt) return;
+    e.preventDefault();
+    input.value = opt.dataset.value;
+    close();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
 }
 
 const feedCategoryValue = () => axisValue(AXES.industry);
@@ -2098,17 +2211,7 @@ for (const axis of [AXES.industry, AXES.function]) {
   const el = document.getElementById(axis.input);
   el.addEventListener("change", onFilterChanged);
   el.addEventListener("input", debounce(onFilterChanged));
-  // Chrome does not show a <datalist>'s suggestions until the reader has
-  // already typed a character -- a plain empty text box gives no visual
-  // hint that clicking it does anything at all (confirmed live: read
-  // as "the dropdown doesn't work"). showPicker() opens the SAME
-  // suggestion popup on demand, so a click behaves like an actual
-  // dropdown instead of an inert field. Guarded: showPicker() for a
-  // list-backed <input> only landed in Chrome 121 (Jan 2026) and isn't
-  // in the spec for every browser, so this degrades to the unchanged
-  // type-to-see-suggestions behavior wherever it's missing or throws
-  // (Firefox raises if the element isn't focused yet, for instance).
-  el.addEventListener("click", () => { try { el.showPicker?.(); } catch (e) { /* unsupported here -- no-op */ } });
+  wireCombobox(axis);
 }
 for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement", "feed-age"]) {
   document.getElementById(id).addEventListener("change", onFilterChanged);
