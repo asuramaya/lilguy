@@ -253,19 +253,12 @@ CREATE INDEX IF NOT EXISTS postings_liveness_due_idx
     ON postings (liveness_next_check_at NULLS FIRST, posted_at_ts NULLS LAST)
     WHERE status = 'open';
 
--- 'expired' joins the event kinds: service/liveness.py closes a posting
--- whose own URL returns 404/410, and that is exactly the kind of thing
--- the events feed exists to surface -- a posting vanishing is more
--- interesting to a reader than a source being promoted.
---
--- Needs an explicit ALTER because CREATE TABLE IF NOT EXISTS above is a
--- no-op on an existing table, so the original CHECK would survive
--- untouched and reject every insert. Found the hard way: the constraint
--- violation was swallowed by a broad except and reported as a network
--- deferral.
-ALTER TABLE events DROP CONSTRAINT IF EXISTS events_kind_check;
-ALTER TABLE events ADD CONSTRAINT events_kind_check
-    CHECK (kind IN ('promoted', 'disabled', 'reinstated', 'backup_restore_test', 'expired'));
+-- (The event-kind CHECK is defined once, at the end of this file.
+-- It used to be re-stated here for 'expired'; a second ALTER for
+-- 'stalled' then meant this file dropped and re-added the constraint
+-- twice on every boot, and the FIRST version was validated against rows
+-- the SECOND one permits -- which failed as soon as a 'stalled' row
+-- existed. One definition, stated last.)
 
 -- Job function, the second category axis.
 --
@@ -362,3 +355,21 @@ ALTER TABLE postings ADD COLUMN IF NOT EXISTS work_arrangement TEXT NOT NULL DEF
 
 CREATE INDEX IF NOT EXISTS postings_work_arrangement_idx
     ON postings (work_arrangement) WHERE status = 'open' AND work_arrangement <> '';
+
+-- THE event-kind CHECK. Every kind this project can emit belongs in
+-- this one list, and nowhere else in the file.
+--
+-- Explicit ALTER because CREATE TABLE IF NOT EXISTS is a no-op on an
+-- existing table, so the constraint created with the table would
+-- otherwise survive every deploy untouched and reject each new kind.
+-- That bit us on 'expired', where the violation was swallowed by a broad
+-- except and misreported as a network failure.
+--
+-- Adding a kind: extend the list here, do NOT add a second ALTER. Two
+-- blocks means this file drops and re-adds the constraint twice per
+-- boot, and the earlier, shorter list gets validated against rows the
+-- later one permits.
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_kind_check;
+ALTER TABLE events ADD CONSTRAINT events_kind_check
+    CHECK (kind IN ('promoted', 'disabled', 'reinstated', 'backup_restore_test',
+                    'expired', 'stalled'));

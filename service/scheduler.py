@@ -54,6 +54,7 @@ from source_sync import run_source_sync_sweep  # noqa: E402
 from cycle import parse_cycle  # noqa: E402
 from work_arrangement import from_location  # noqa: E402
 from liveness import run_liveness_sweep  # noqa: E402
+from stall import check_for_stall  # noqa: E402
 from workday_descriptions import fetch_missing_descriptions  # noqa: E402
 
 MAX_WORKERS = 6
@@ -401,6 +402,15 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
             # "not in the source's fresh set" only closes a posting when
             # the SOURCE is honest, and The Muse keeps serving listings
             # its own site has deleted.
+            # Checked every cycle, including cycles where nothing was
+            # due. A stall is precisely the state where nothing happens,
+            # so gating the check on work having happened would blind it
+            # exactly when it matters.
+            with cursor() as cur:
+                stall = check_for_stall(cur)
+            if stall.get("emitted"):
+                print(f"  !! STALLED: no successful scrape since {stall['last_success']}", flush=True)
+
             live = run_liveness_sweep(limit=LIVENESS_BATCH)
             if live["checked"]:
                 print(f"  liveness: {live['checked']} checked, {live['closed']} closed, "

@@ -192,6 +192,14 @@
      went wrong, a job was filled or withdrawn -- which is ordinary. */
   .events-panel .event-kind.k-expired { color: var(--ink-tertiary); }
   .events-panel .event-kind.k-expired::before { background: var(--ink-tertiary); }
+  /* Loud, and deliberately louder than 'disabled'. A disabled source is
+     one board gone; a stall means the WHOLE corpus is ageing and the
+     dates on screen no longer mean what they appear to. */
+  .events-panel .event-kind.k-stalled { color: var(--bad); font-weight: 700; }
+  .events-panel .event-kind.k-stalled::before {
+    background: var(--bad);
+    box-shadow: 0 0 0 3px rgba(200, 90, 66, 0.18);
+  }
   .events-panel .event-kind.k-backup_restore_test { color: var(--ink-secondary); }
   .events-panel .event-kind.k-backup_restore_test::before { background: var(--ink-tertiary); }
   .events-panel .event-detail { color: var(--ink-secondary); }
