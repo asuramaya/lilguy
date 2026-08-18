@@ -103,6 +103,33 @@ def _feed_columns(cur) -> str:
     return _feed_columns_cache
 
 
+def _search_ranks(q: str) -> dict:
+    """Full-text match over the whole open corpus, as {posting id: rank}.
+
+    websearch_to_tsquery rather than to_tsquery: it accepts whatever a
+    person types -- quoted phrases, OR, bare punctuation -- and never
+    raises on malformed input, where to_tsquery would turn a stray
+    apostrophe into a 500.
+
+    This is the one narrowing that runs in SQL rather than Python, and
+    the boundary is deliberate. user_filter.passes() stays the single
+    definition of what a PRESET means and stays in Python, because
+    forking it into SQL would create two implementations that must agree
+    forever. `q` was never preset semantics -- it is a plain query
+    parameter -- and it cannot be done in Python any more regardless,
+    since the feed stopped selecting description text (see
+    FEED_EXCLUDED_COLUMNS).
+    """
+    with cursor() as cur:
+        cur.execute(
+            "SELECT id, ts_rank(search_vector, websearch_to_tsquery('english', %s)) AS rank "
+            "FROM postings "
+            "WHERE status = 'open' AND search_vector @@ websearch_to_tsquery('english', %s)",
+            (q, q),
+        )
+        return {r["id"]: float(r["rank"]) for r in cur.fetchall()}
+
+
 def _row_to_filter_dict(row: dict) -> dict:
     d = dict(row)
     for field in ("first_seen", "last_seen", "posted_at_ts"):
@@ -221,14 +248,31 @@ def feed(
         matched = [r for r in matched if (r.get("category") or "") == category]
     if job_function:
         matched = [r for r in matched if (r.get("job_function") or "") == job_function]
-    if q:
+    ranks = None
+    if q and q.strip():
+        ranks = _search_ranks(q.strip())
         needle = q.strip().lower()
-        if needle:
-            matched = [
-                r for r in matched
-                if needle in (r.get("title") or "").lower()
-                or needle in (r.get("company") or "").lower()
-            ]
+        # UNION of full-text and substring, deliberately.
+        #
+        # Full-text matches WORDS, so it finds "supply chain" inside a
+        # description and ranks a title hit above it -- the whole point.
+        # But it also stops matching partial words: someone typing "eng"
+        # would suddenly get nothing where the old substring match found
+        # "Engineering". Keeping the substring pass as a floor means
+        # search strictly gained ability rather than trading one kind of
+        # miss for another.
+        matched = [
+            r for r in matched
+            if r["id"] in ranks
+            or needle in (r.get("title") or "").lower()
+            or needle in (r.get("company") or "").lower()
+        ]
+        # Relevance for searching, recency for browsing: two different
+        # questions deserve two different orders. Substring-only hits
+        # rank below every full-text hit (rank 0.0) but keep the
+        # date order the outer query already established, since Python's
+        # sort is stable.
+        matched.sort(key=lambda r: ranks.get(r["id"], 0.0), reverse=True)
 
     total = len(matched)
     page = matched[offset:offset + limit]

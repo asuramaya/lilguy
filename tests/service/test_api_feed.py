@@ -200,3 +200,89 @@ def test_retry_bookkeeping_stays_internal():
     row = api.feed(preset="all")["postings"][0]
     assert "description_attempts" not in row
     assert "description_next_attempt_at" not in row
+
+
+# --- full-text search ---------------------------------------------------
+
+def _described(pid, title, company, description, location="Remote"):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_entry, company, title, location, url, ats,
+                                   category, status, description, posted_at_ts, first_seen, last_seen)
+            VALUES (%s, 'x', %s, %s, %s, %s, 'greenhouse', 'Logistics', 'open', %s,
+                    now(), now(), now())
+            """,
+            (pid, company, title, location, f"https://x/{pid}", description),
+        )
+
+
+def test_search_finds_words_that_only_appear_in_the_description():
+    # The gap this closes: descriptions were the corpus's best data and
+    # search could not see a word of them.
+    _described("ops", "Operations Intern", "Acme",
+               "You will own our supply chain planning and logistics network.")
+    _described("other", "Marketing Intern", "Globex", "Social media and brand work.")
+    out = api.feed(preset="all", q="supply chain")
+    assert [p["id"] for p in out["postings"]] == ["ops"]
+
+
+def test_a_title_hit_outranks_a_description_mention():
+    _described("body", "Operations Intern", "Acme",
+               "Supply chain exposure across our logistics network.")
+    _described("titled", "Supply Chain Intern", "Globex", "General duties.")
+    out = api.feed(preset="all", q="supply chain")
+    assert out["postings"][0]["id"] == "titled", "the job CALLED that should come first"
+    assert {p["id"] for p in out["postings"]} == {"titled", "body"}
+
+
+def test_search_finds_skills_that_never_appear_in_a_title():
+    _described("py", "Data Intern", "Acme", "Strong Python and SQL skills required.")
+    _described("cad", "Design Intern", "Globex", "Proficiency with CAD tooling.")
+    assert [p["id"] for p in api.feed(preset="all", q="python")["postings"]] == ["py"]
+    assert [p["id"] for p in api.feed(preset="all", q="CAD")["postings"]] == ["cad"]
+
+
+def test_partial_words_still_match_so_search_did_not_lose_an_ability():
+    # Full-text matches whole words, so "eng" would stop finding
+    # "Engineering". The substring pass is kept as a floor precisely so
+    # this change is strictly additive.
+    _described("eng", "Engineering Intern", "Acme", "Build things.")
+    assert [p["id"] for p in api.feed(preset="all", q="eng")["postings"]] == ["eng"]
+
+
+def test_search_matches_location():
+    _described("chi", "Ops Intern", "Acme", "General duties.", location="Chicago, IL")
+    _described("nyc", "Ops Intern", "Globex", "General duties.", location="New York, NY")
+    assert [p["id"] for p in api.feed(preset="all", q="Chicago")["postings"]] == ["chi"]
+
+
+def test_search_survives_punctuation_that_would_break_a_raw_tsquery():
+    # websearch_to_tsquery accepts whatever a person types; to_tsquery
+    # would turn these into a 500.
+    _described("a", "Ops Intern", "Acme", "General duties.")
+    for hostile in ["'", "&&", "a | b", '"unclosed', ":*", "!"]:
+        out = api.feed(preset="all", q=hostile)
+        assert "error" not in out, f"query {hostile!r} broke the endpoint"
+
+
+def test_browsing_without_a_query_stays_newest_first():
+    # Relevance is for searching; recency is for browsing.
+    _described("old", "Ops Intern", "Acme", "x")
+    _described("new", "Ops Intern", "Globex", "x")
+    with db.cursor() as cur:
+        cur.execute("UPDATE postings SET posted_at_ts = now() - interval '400 days' WHERE id = 'old'")
+    assert [p["id"] for p in api.feed(preset="all")["postings"]] == ["new", "old"]
+
+
+def test_search_vector_is_maintained_by_the_database_not_the_caller():
+    # Written with a plain INSERT that never mentions search_vector: if
+    # this ever needs application code to populate it, a connector added
+    # later will forget.
+    _described("gen", "Ops Intern", "Acme", "Warehouse automation robotics.")
+    assert [p["id"] for p in api.feed(preset="all", q="robotics")["postings"]] == ["gen"]
+
+    with db.cursor() as cur:
+        cur.execute("UPDATE postings SET description = 'Completely different: hydraulics.' WHERE id = 'gen'")
+    assert api.feed(preset="all", q="robotics")["total"] == 0, "stale vector after an update"
+    assert [p["id"] for p in api.feed(preset="all", q="hydraulics")["postings"]] == ["gen"]

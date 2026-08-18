@@ -304,3 +304,31 @@ UPDATE postings
 
 CREATE INDEX IF NOT EXISTS postings_job_function_idx
     ON postings (job_function) WHERE status = 'open';
+
+-- Full-text search vector.
+--
+-- `q` matched only title and company, while 4,308 of 4,830 open postings
+-- carried full description text that search could not see. A reader
+-- looking for "supply chain" found title matches only, missing every
+-- "Operations Intern" whose description is entirely about supply chain
+-- -- and skills ("Python", "SQL", "CAD") almost never appear in an
+-- internship title at all.
+--
+-- GENERATED ALWAYS ... STORED, not a trigger and not application code:
+-- the database maintains this, so a connector added later cannot forget
+-- to update it. That is the whole reason to prefer a generated column
+-- here even though it costs a rewrite of the table to add.
+--
+-- Weights carry relevance: a title hit (A) outranks company (B),
+-- outranks location (C), outranks a description mention (D). A posting
+-- CALLED "Supply Chain Intern" should beat one that merely says the
+-- words somewhere in its body.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS search_vector tsvector
+    GENERATED ALWAYS AS (
+        setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
+        setweight(to_tsvector('english', coalesce(company, '')), 'B') ||
+        setweight(to_tsvector('english', coalesce(location, '')), 'C') ||
+        setweight(to_tsvector('english', coalesce(description, '')), 'D')
+    ) STORED;
+
+CREATE INDEX IF NOT EXISTS postings_search_idx ON postings USING GIN (search_vector);
