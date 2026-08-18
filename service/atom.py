@@ -60,7 +60,14 @@ def _entry(posting: dict) -> str:
 
     approx_note = ""
     if posting.get("posted_at_ts") and posting.get("posted_at_approx"):
-        approx_note = " (date approximate — the source only gave a rounded or bounded age)"
+        # States the DIRECTION, not just "approximate". Every approximate
+        # value in this corpus is a lower bound on age -- Workday stops
+        # counting at "Posted 30+ Days Ago" -- so a posting is at least
+        # this old and may be far older. "Approximate" alone would let a
+        # subscriber read it as a fuzzy midpoint and conclude the posting
+        # is roughly this fresh, which is the opposite of the truth.
+        approx_note = (" (date approximate — the source gave a bound, not a date: this "
+                       "posting is AT LEAST this old and may be considerably older)")
 
     summary_parts = [p for p in (company, location, category) if p]
     summary = " · ".join(summary_parts) + approx_note

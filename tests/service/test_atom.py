@@ -92,3 +92,25 @@ def test_empty_feed_is_still_valid():
     root = _parse(render_atom([], title="T", self_url="https://x", feed_slug="f"))
     assert root.findall("a:entry", NS) == []
     assert root.find("a:updated", NS) is not None
+
+
+def test_an_approximate_date_states_that_it_is_a_lower_bound():
+    # "Approximate" alone reads as a fuzzy midpoint. Every approximate
+    # value in this corpus is a LOWER BOUND on age -- Workday stops
+    # counting at "Posted 30+ Days Ago" -- so a subscriber told merely
+    # "approximate" would conclude the posting is roughly this fresh,
+    # which is the opposite of the truth.
+    xml = render_atom(
+        [_posting(posted_at_approx=True)],
+        title="t", self_url="https://x/feed.atom", feed_slug="feed/x",
+    )
+    assert "AT LEAST" in xml
+    assert "considerably older" in xml
+
+
+def test_an_exact_date_carries_no_bound_language():
+    xml = render_atom(
+        [_posting(posted_at_approx=False)],
+        title="t", self_url="https://x/feed.atom", feed_slug="feed/x",
+    )
+    assert "AT LEAST" not in xml

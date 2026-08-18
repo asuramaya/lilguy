@@ -442,6 +442,10 @@
      worth applying to. */
   .found-cell { color: var(--ink-tertiary); }
   .unknown-date { color: var(--ink-tertiary); font-style: italic; }
+  /* A bounded age is not a measured one. Dotted underline rather than
+     colour alone, so it survives a colourblind reader and a monochrome
+     print; the "+" and the aria-label carry it for a screen reader. */
+  .approx-date { border-bottom: 1px dotted var(--ink-tertiary); }
   .num-cell { text-align: right; }
 
   .empty { color: var(--ink-tertiary); padding: 48px 0; text-align: center; font-size: 13px; }
@@ -909,11 +913,32 @@ function postedCell(p) {
     };
   }
   const rel = timeAgo(p.posted_at_ts);
+  if (!p.posted_at_approx) {
+    return {
+      text: rel,
+      cls: "",
+      label: `Posted ${rel}`,
+      title: `Posted ${exactTime(p.posted_at_ts)}` +
+             (p.posted_at ? `\nProvider value: ${p.posted_at}` : ""),
+    };
+  }
+  // "+", not "~". These are LOWER BOUNDS on age, not fuzzy midpoints:
+  // Workday stops counting at "Posted 30+ Days Ago", so the true age is
+  // at least 30 days and may be far more (a saturated value is the
+  // COMMON case, not an edge one -- 800 of 813 approximate postings are
+  // Workday). "Posted 5 Days Ago" is likewise somewhere in [5, 6) days.
+  // Every approximate value here is "at least this old", so "+" is
+  // always the correct direction, where "~" implied a precision in both
+  // directions that the provider never offered.
   return {
-    text: p.posted_at_approx ? `~${rel}` : rel,
-    cls: "",
-    title: (p.posted_at_approx ? "Approximate — the provider gave a rounded or bounded age.\n" : "") +
-           `Posted ${exactTime(p.posted_at_ts)}` +
+    text: `${rel}+`,
+    cls: "approx-date",
+    // Screen readers do not reliably announce title, and a bare "+" is
+    // not something a reader can be expected to decode.
+    label: `Posted at least ${rel} — the source gives a bound, not a date`,
+    title: "The provider published a bounded age, not a date — this posting is " +
+           "AT LEAST this old and may be considerably older.\n" +
+           `Not later than ${exactTime(p.posted_at_ts)}` +
            (p.posted_at ? `\nProvider value: ${p.posted_at}` : ""),
   };
 }
@@ -1264,7 +1289,7 @@ function renderFeed() {
       <td class="company-cell truncate" data-label="Company" title="${escapeHtml(p.company)}">${entityLink("company", p.company_key, p.company)}</td>
       <td class="location-cell truncate" data-label="Location" title="${escapeHtml(p.location || "")}">${locationHtml(p.location)}</td>
       <td data-label="Category">${categoryCell(p)}</td>
-      <td class="age-cell mono ${posted.cls}" data-label="Posted" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</td>
+      <td class="age-cell mono ${posted.cls}" data-label="Posted" title="${escapeHtml(posted.title)}"${posted.label ? ` aria-label="${escapeHtml(posted.label)}"` : ""}>${escapeHtml(posted.text)}</td>
       <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</td>
     </tr>
   `;
