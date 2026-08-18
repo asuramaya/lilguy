@@ -23,8 +23,16 @@
 --     discovery_candidates, not here, and are never deleted -- the
 --     evidence of why something was rejected is itself useful data.
 
--- Used for the company-name fuzzy-match check in the auto-verification
--- gate (service/verify.py) and for idx_postings_title_trgm below.
+-- NOTHING CURRENTLY USES THIS. The comment here used to say it backed
+-- "the company-name fuzzy-match check in service/verify.py" -- it does
+-- not: verify.py's _name_similarity() uses Python's difflib
+-- SequenceMatcher and never touches the database. The other stated user,
+-- idx_postings_title_trgm, has been dropped (see the end of this file).
+--
+-- Kept anyway, and only because removing it is the riskier move: an
+-- extension costs nothing while it sits there, and dropping one from a
+-- forker's database could fail on a dependency we cannot see from here.
+-- Safe to remove deliberately if anyone confirms it is still unused.
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 CREATE TABLE IF NOT EXISTS sources (
@@ -99,7 +107,10 @@ CREATE INDEX IF NOT EXISTS idx_postings_dedup_key ON postings (dedup_key) WHERE 
 
 CREATE INDEX IF NOT EXISTS idx_postings_status ON postings (status);
 CREATE INDEX IF NOT EXISTS idx_postings_source_entry ON postings (source_entry);
-CREATE INDEX IF NOT EXISTS idx_postings_title_trgm ON postings USING gin (title gin_trgm_ops);
+-- idx_postings_title_trgm was DROPPED 2026-08-18 (see the end of this
+-- file). 5,472 kB, 8 scans total, used by nothing: full-text search
+-- superseded it, and the substring fallback runs in Python over the
+-- cached corpus rather than in SQL.
 
 CREATE TABLE IF NOT EXISTS discovery_candidates (
     id                   BIGSERIAL PRIMARY KEY,
@@ -295,8 +306,7 @@ UPDATE postings
    SET job_function = category, category = ''
  WHERE ats = 'muse' AND job_function = '' AND category <> '';
 
-CREATE INDEX IF NOT EXISTS postings_job_function_idx
-    ON postings (job_function) WHERE status = 'open';
+-- (No index on job_function. See the note with the drops at the end.)
 
 -- Full-text search vector.
 --
@@ -340,8 +350,7 @@ CREATE INDEX IF NOT EXISTS postings_search_idx ON postings USING GIN (search_vec
 ALTER TABLE postings ADD COLUMN IF NOT EXISTS cycle_season TEXT NOT NULL DEFAULT '';
 ALTER TABLE postings ADD COLUMN IF NOT EXISTS cycle_year SMALLINT;
 
-CREATE INDEX IF NOT EXISTS postings_cycle_idx
-    ON postings (cycle_year, cycle_season) WHERE status = 'open';
+-- (No index on the cycle columns. See the note with the drops.)
 
 -- Where the job is actually done: 'remote' | 'hybrid' | 'onsite' | ''.
 --
@@ -353,8 +362,7 @@ CREATE INDEX IF NOT EXISTS postings_cycle_idx
 -- service/work_arrangement.py.
 ALTER TABLE postings ADD COLUMN IF NOT EXISTS work_arrangement TEXT NOT NULL DEFAULT '';
 
-CREATE INDEX IF NOT EXISTS postings_work_arrangement_idx
-    ON postings (work_arrangement) WHERE status = 'open' AND work_arrangement <> '';
+-- (No index on work_arrangement. See the note with the drops.)
 
 -- THE event-kind CHECK. Every kind this project can emit belongs in
 -- this one list, and nowhere else in the file.
@@ -389,3 +397,42 @@ ALTER TABLE events ADD CONSTRAINT events_kind_check
 -- Defaults to 0 so every pre-existing row is older than the current
 -- version and becomes eligible exactly once.
 ALTER TABLE discovery_candidates ADD COLUMN IF NOT EXISTS probe_set_version SMALLINT NOT NULL DEFAULT 0;
+
+-- ---------------------------------------------------------------------
+-- Indexes deliberately REMOVED, with the measurements that justified it
+-- ---------------------------------------------------------------------
+--
+-- Read from pg_stat_user_indexes on a live database with ~8,400
+-- postings. Every one of these was a seq scan in practice, confirmed
+-- with EXPLAIN rather than assumed:
+--
+--   idx_postings_title_trgm         8 scans, 5,472 kB
+--   postings_cycle_idx              3 scans,    80 kB
+--   postings_job_function_idx       0 scans,   112 kB
+--   postings_work_arrangement_idx   0 scans,    16 kB
+--
+-- The trigram index predates full-text search and nothing uses it now:
+-- FTS has its own GIN index, and the substring fallback runs in Python
+-- over the cached corpus. Checked the two ILIKE queries that might have
+-- claimed it (/duplicates search, /candidates search) -- the planner
+-- takes idx_postings_status and filters, or seq-scans a different table.
+--
+-- The other three were added speculatively alongside the columns they
+-- name, for filters that are then applied in PYTHON over the cached
+-- corpus, not in SQL. They index columns no WHERE clause selects on.
+-- Only the /categories facet queries touch these columns at all, and
+-- EXPLAIN shows those HashAggregate over a seq scan regardless.
+--
+-- ALSO MEASURED AND DELIBERATELY NOT ADDED: a partial composite index on
+-- (posted_at_ts DESC NULLS LAST, first_seen DESC, id) WHERE status='open'
+-- for the corpus query, which is the hottest read in the service. Built
+-- it, ANALYZEd, and the planner still chose Seq Scan + quicksort (927 kB,
+-- 6,379 rows). At this selectivity -- 6,379 open of 8,415 total -- a seq
+-- scan is genuinely the better plan. Revisit if the open corpus grows by
+-- an order of magnitude or if `status='open'` becomes selective.
+--
+-- Every drop is IF EXISTS so this is safe on a fresh database.
+DROP INDEX IF EXISTS idx_postings_title_trgm;
+DROP INDEX IF EXISTS postings_cycle_idx;
+DROP INDEX IF EXISTS postings_job_function_idx;
+DROP INDEX IF EXISTS postings_work_arrangement_idx;
