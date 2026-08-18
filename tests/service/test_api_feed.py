@@ -164,3 +164,39 @@ def test_paging_never_repeats_or_skips_when_sort_keys_tie():
 
     assert len(seen) == 25
     assert len(set(seen)) == 25, "offset paging repeated or skipped rows across tied sort keys"
+
+
+def test_feed_does_not_ship_full_descriptions():
+    # 65% of the feed payload was description text the feed never
+    # renders -- 12 MB of a 16 MB read per request, measured live. The
+    # detail endpoint is where the full text belongs.
+    _posting("a", "Supply Chain Intern", "Acme")
+    with db.cursor() as cur:
+        cur.execute("UPDATE postings SET description = %s WHERE id = 'a'", ("x" * 5000,))
+
+    row = api.feed(preset="all")["postings"][0]
+    assert "description" not in row
+    assert "description_snippet" in row, "the SHORT form must survive -- the table renders it"
+    assert api.posting("a")["posting"]["description"] == "x" * 5000, \
+        "the detail page must still get the full text"
+
+
+def test_feed_columns_track_the_schema_instead_of_a_hardcoded_list():
+    # Derived from information_schema so a new column reaches the API
+    # automatically. If someone adds one that should NOT be public, they
+    # add it to FEED_EXCLUDED_COLUMNS -- the point is that the omission
+    # is a decision someone wrote down, not an oversight.
+    _posting("a", "Intern", "Acme")
+    row = api.feed(preset="all")["postings"][0]
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = 'postings'")
+        all_columns = {r["column_name"] for r in cur.fetchall()}
+    assert set(row) == all_columns - api.FEED_EXCLUDED_COLUMNS
+
+
+def test_retry_bookkeeping_stays_internal():
+    _posting("a", "Intern", "Acme")
+    row = api.feed(preset="all")["postings"][0]
+    assert "description_attempts" not in row
+    assert "description_next_attempt_at" not in row

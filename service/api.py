@@ -58,7 +58,49 @@ SOURCE_ROW_CAP = 20000
 # fast. The response says when it truncated rather than trailing off.
 SOURCE_POSTING_LIMIT = 200
 
+# Columns the feed does NOT send. The feed table renders
+# description_snippet, never the full text -- the detail page fetches
+# /posting/{id} separately for that. Selecting it anyway cost 12 MB of
+# the 16 MB read on EVERY feed request and made up 65% of the response
+# body (2,793 of 4,325 bytes per posting, measured live).
+#
+# The retry bookkeeping is internal scheduler state; a reader has no use
+# for it and it would only invite someone to depend on it.
+FEED_EXCLUDED_COLUMNS = frozenset({
+    "description",
+    "description_attempts",
+    "description_next_attempt_at",
+})
+
 app = FastAPI(title="Internship feed", description="Live feed of sourced internship postings.")
+
+
+_feed_columns_cache: Optional[str] = None
+
+
+def _feed_columns(cur) -> str:
+    """The postings columns the feed sends, as a SQL list.
+
+    Derived from the live table rather than hardcoded, so a column added
+    to schema.sql is included automatically instead of silently going
+    missing from the API until someone notices. The deliberate omissions
+    live in FEED_EXCLUDED_COLUMNS, where they are visible and explained;
+    a hardcoded list would make every omission look intentional whether
+    or not it was.
+
+    Cached because the answer cannot change without a restart -- schema
+    changes are applied by the migrate container at boot.
+    """
+    global _feed_columns_cache
+    if _feed_columns_cache is None:
+        cur.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name = 'postings' ORDER BY ordinal_position"
+        )
+        names = [r["column_name"] for r in cur.fetchall()
+                 if r["column_name"] not in FEED_EXCLUDED_COLUMNS]
+        _feed_columns_cache = ", ".join(names)
+    return _feed_columns_cache
 
 
 def _row_to_filter_dict(row: dict) -> dict:
@@ -118,7 +160,7 @@ def feed(
             # of 600. A unique final key makes the order deterministic
             # across separate requests, which is what offset paging
             # assumes and never states.
-            "SELECT * FROM postings WHERE status = 'open' "
+            f"SELECT {_feed_columns(cur)} FROM postings WHERE status = 'open' "
             "ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC, id LIMIT %s",
             (SOURCE_ROW_CAP,),
         )
@@ -252,7 +294,11 @@ def posting(posting_id: str):
 def company(company_key: str):
     with cursor() as cur:
         cur.execute(
-            "SELECT * FROM postings WHERE company_key = %s ORDER BY status, posted_at_ts DESC NULLS LAST",
+            # Same omission as the feed, same reason: this page lists
+            # titles and links, never description text. A company with 20
+            # postings was pulling 20 full descriptions to render none.
+            f"SELECT {_feed_columns(cur)} FROM postings WHERE company_key = %s "
+            "ORDER BY status, posted_at_ts DESC NULLS LAST",
             (company_key,),
         )
         rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
