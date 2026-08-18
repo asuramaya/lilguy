@@ -58,6 +58,7 @@ from liveness import run_liveness_sweep  # noqa: E402
 from stall import check_for_stall  # noqa: E402
 from smartrecruiters_descriptions import fetch_missing_descriptions as fetch_sr_descriptions  # noqa: E402
 from workday_descriptions import fetch_missing_descriptions  # noqa: E402
+import company_resolution  # noqa: E402
 
 MAX_WORKERS = 6
 POLL_INTERVAL_SECONDS = 30
@@ -66,6 +67,12 @@ FAILURE_DISABLE_THRESHOLD = 5
 # Bounded per cycle so the one connector needing a second request per
 # posting can never crowd out actual scraping.
 WORKDAY_DESCRIPTION_BATCH = 10
+# Small: this is a one-time backlog (every source it fixes stops
+# matching its own claim query), not an ongoing drain like descriptions
+# above -- there is no need to hurry it, and a live detail fetch per row
+# is exactly the kind of request the description backfill's own pacing
+# philosophy applies to.
+COMPANY_RESOLUTION_BATCH = 5
 
 # Deliberately small. This makes real requests to real employers' sites
 # purely to ask "is this still there", so it must stay a background
@@ -408,6 +415,14 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
                 if desc["attempted"]:
                     print(f"  {label} descriptions: {desc['filled']} filled, "
                           f"{desc['empty']} none-available, {desc['deferred']} deferred", flush=True)
+
+            # Same "outside if due:" reasoning as descriptions above: a
+            # source sitting on company=tenant has nothing to do with
+            # whether it was due to scrape this cycle.
+            resolved = company_resolution.run(limit=COMPANY_RESOLUTION_BATCH)
+            if resolved["attempted"]:
+                print(f"  company name resolution: {resolved['fixed']} fixed, "
+                      f"{resolved['skipped']} skipped", flush=True)
 
             # Outside `if due:` for the same reason as descriptions: this
             # is not tied to any one source's schedule. It exists because

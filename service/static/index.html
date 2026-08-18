@@ -383,6 +383,7 @@
     gap: 6px;
     max-width: 100%;
     font-size: 11.5px;
+    font-family: inherit;
     color: var(--ink-secondary);
     padding: 3px 8px 3px 6px;
     background: rgba(255, 255, 255, 0.03);
@@ -390,7 +391,9 @@
     border-radius: 3px;
     white-space: nowrap;
     overflow: hidden;
+    cursor: pointer;
   }
+  .swatch-tag:hover { border-color: var(--accent-dim); color: var(--ink); }
   .swatch-tag::before {
     content: "";
     width: 5px;
@@ -510,9 +513,14 @@
   .chip:hover { border-color: var(--accent-dim); color: var(--accent); }
   .chip .n { color: var(--ink-tertiary); font-family: ui-monospace, monospace; font-size: 11.5px; }
 
-  a.entity { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; cursor: pointer; }
-  a.entity:hover { color: var(--accent); border-bottom-color: var(--accent-dim); }
-  .maps-link::after { content: " ↗"; color: var(--ink-tertiary); font-size: 10px; }
+  /* Not `a.entity`: a location cell (see locationHtml()) renders this
+     same look on a <button> now that clicking one filters in place
+     instead of opening an external Maps tab, and a bare-element
+     selector still has to reset the browser's own button chrome
+     (background/border/font/padding) that an <a> never had to begin
+     with. */
+  .entity { color: inherit; text-decoration: none; cursor: pointer; background: none; border: none; border-bottom: 1px solid transparent; font: inherit; padding: 0; }
+  .entity:hover { color: var(--accent); border-bottom-color: var(--accent-dim); }
 
   .mini-list { display: flex; flex-direction: column; gap: 2px; }
   .mini-row {
@@ -835,10 +843,13 @@
             <colgroup>
               <!-- Weighted by what someone scanning a job feed actually
                    reads first: title, then who it's at, then what field,
-                   then where. Location is the most verbose and the least
-                   decisive, so it gets the smallest share of the three
-                   text columns. -->
-              <col style="width:32%"><col style="width:16%"><col style="width:16%"><col style="width:18%"><col style="width:10%"><col style="width:8%">
+                   then where. Company and Location wrap onto a second
+                   line instead of a hard ellipsis cut now (see
+                   .company-cell/.location-cell below) -- "Nexstar Media
+                   Group, Inc." read as truncated garbage at the old 16%,
+                   and no fixed width was ever going to fit every real
+                   company name on one line anyway. -->
+              <col style="width:28%"><col style="width:20%"><col style="width:14%"><col style="width:18%"><col style="width:10%"><col style="width:10%">
             </colgroup>
             <thead>
               <tr>
@@ -996,6 +1007,23 @@
             <div class="filter-section-body">
               <div id="feed-arrangement" class="pill-group" data-value="">
                 <button type="button" class="pill-btn active" data-value="">Anywhere</button>
+              </div>
+            </div>
+          </div>
+          <!-- A real place, not an arrangement -- "Where" above answers
+               remote/hybrid/onsite, this answers "New York" vs "Austin".
+               Free text rather than a combobox: the corpus holds 1,785
+               distinct location strings, too many to enumerate, and the
+               server already does a word-boundary substring match
+               (locations_include, shared with preset filtering) so a
+               partial city name works fine without a fixed vocabulary.
+               Clicking a location in the table (see locationHtml())
+               fills this in directly. -->
+          <div class="filter-section" data-view="postings" data-section="location">
+            <button type="button" class="filter-section-toggle"><span>Location</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field">
+                <input id="feed-location" autocomplete="off" placeholder="e.g. Austin, New York, London">
               </div>
             </div>
           </div>
@@ -1251,18 +1279,26 @@ function emptyRow(colspan, message) {
 // shown, and which axis it is has to be recoverable -- "Healthcare" the
 // function and "Healthcare Services" the industry are different claims,
 // and a reader who cannot tell them apart is back where they started.
+// A button, not a plain span: it already carries the exact filter
+// value a reader would otherwise have to retype into Industry or
+// Function -- rendering it as inert text just to look tidy would waste
+// that. data-filter-axis/-value are read by the single delegated click
+// handler wired near applyCellFilter() below, the same pattern the
+// entity-link routing already uses for postings/companies/sources.
 function categoryCell(p) {
   const industry = p.category || "";
   const fn = p.job_function || "";
   const value = industry || fn;
   if (!value) return "";
   const isFunction = !industry && !!fn;
+  const axis = isFunction ? "function" : "industry";
   const title = isFunction
-    ? `Job function: ${value} (this source does not report the employer's industry)`
-    : `Employer industry: ${value}`;
-  return `<span class="swatch-tag${isFunction ? " is-function" : ""}" ` +
-         `style="--swatch-color:${categoryColor(value)}" title="${escapeHtml(title)}">` +
-         `<span class="swatch-label">${escapeHtml(value)}</span></span>`;
+    ? `Job function: ${value} (this source does not report the employer's industry) -- click to filter by it`
+    : `Employer industry: ${value} -- click to filter by it`;
+  return `<button type="button" class="swatch-tag${isFunction ? " is-function" : ""}" ` +
+         `style="--swatch-color:${categoryColor(value)}" title="${escapeHtml(title)}" ` +
+         `data-filter-axis="${axis}" data-filter-value="${escapeHtml(value)}">` +
+         `<span class="swatch-label">${escapeHtml(value)}</span></button>`;
 }
 
 function categoryColor(category) {
@@ -1516,6 +1552,8 @@ function syncUrl() {
     if (year) p.set("year", year);
     const where = pillValue("feed-arrangement");
     if (where) p.set("where", where);
+    const location = document.getElementById("feed-location").value.trim();
+    if (location) p.set("location", location);
     const age = pillValue("feed-age");
     if (age) p.set("age", age);
   } else if (view === "sources") {
@@ -1565,6 +1603,8 @@ function feedQueryUrl() {
   if (year) p.set("cycle_year", year);
   const where = pillValue("feed-arrangement");
   if (where) p.set("work_arrangement", where);
+  const location = document.getElementById("feed-location").value.trim();
+  if (location) p.set("locations_include", location);
   const age = pillValue("feed-age");
   if (age) p.set("max_age_days", age);
   p.set("limit", String(FEED_PAGE_SIZE));
@@ -1768,8 +1808,8 @@ function renderFeed() {
     return divider + `
     <tr>
       <td class="title-cell truncate" data-label="Title"><a href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
-      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(p.company)}">${entityLink("company", p.company_key, p.company)}</td>
-      <td class="location-cell truncate" data-label="Location" title="${escapeHtml(p.location || "")}">${locationHtml(p.location)}</td>
+      <td class="company-cell" data-label="Company" title="${escapeHtml(p.company)}">${entityLink("company", p.company_key, p.company)}</td>
+      <td class="location-cell" data-label="Location" title="${escapeHtml(p.location || "")}">${locationHtml(p.location)}</td>
       <td data-label="Category">${categoryCell(p)}</td>
       <td class="age-cell mono ${posted.cls}" data-label="Posted" title="${escapeHtml(posted.title)}"${posted.label ? ` aria-label="${escapeHtml(posted.label)}"` : ""}>${escapeHtml(posted.text)}</td>
       <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</td>
@@ -2058,10 +2098,22 @@ for (const axis of [AXES.industry, AXES.function]) {
   const el = document.getElementById(axis.input);
   el.addEventListener("change", onFilterChanged);
   el.addEventListener("input", debounce(onFilterChanged));
+  // Chrome does not show a <datalist>'s suggestions until the reader has
+  // already typed a character -- a plain empty text box gives no visual
+  // hint that clicking it does anything at all (confirmed live: read
+  // as "the dropdown doesn't work"). showPicker() opens the SAME
+  // suggestion popup on demand, so a click behaves like an actual
+  // dropdown instead of an inert field. Guarded: showPicker() for a
+  // list-backed <input> only landed in Chrome 121 (Jan 2026) and isn't
+  // in the spec for every browser, so this degrades to the unchanged
+  // type-to-see-suggestions behavior wherever it's missing or throws
+  // (Firefox raises if the element isn't focused yet, for instance).
+  el.addEventListener("click", () => { try { el.showPicker?.(); } catch (e) { /* unsupported here -- no-op */ } });
 }
 for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement", "feed-age"]) {
   document.getElementById(id).addEventListener("change", onFilterChanged);
 }
+document.getElementById("feed-location").addEventListener("input", debounce(onFilterChanged));
 
 // --- filters aside -------------------------------------------------------
 //
@@ -2119,6 +2171,7 @@ document.getElementById("filters-reset").addEventListener("click", () => {
     document.getElementById("feed-category").value = "";
     document.getElementById("feed-function").value = "";
     setPillValue("feed-arrangement", "", { silent: true });
+    document.getElementById("feed-location").value = "";
     setPillValue("feed-cycle-season", "", { silent: true });
     document.getElementById("feed-cycle-year").value = "";
     setPillValue("feed-age", "", { silent: true });
@@ -2187,6 +2240,7 @@ function activeFeedFilterCount() {
   if (feedCategoryValue()) n++;
   if (feedFunctionValue()) n++;
   if (pillValue("feed-arrangement")) n++;
+  if (document.getElementById("feed-location").value.trim()) n++;
   if (pillValue("feed-cycle-season") || document.getElementById("feed-cycle-year").value) n++;
   if (pillValue("feed-age")) n++;
   return n;
@@ -2343,12 +2397,21 @@ function mapsUrl(location) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(", "))}`;
 }
 
+// A button that narrows the feed to this place, not a link that leaves
+// it. Opening Maps answered "where is this," which a reader can already
+// tell from the text -- "what ELSE is open here" is the more useful
+// question and used to take a copy-paste round trip through the
+// Location filter to ask. Reuses mapsUrl()'s exact "is this actually a
+// resolvable place" guard (kept intact, unchanged, since
+// tests/frontend/test_maps_url.js exercises it directly) rather than
+// duplicating that logic -- the URL itself just isn't used for the
+// href anymore.
 function locationHtml(location) {
   const text = escapeHtml(location || "—");
-  const url = mapsUrl(location);
-  return url
-    ? `<a class="entity maps-link" href="${url}" target="_blank" rel="noopener" title="Open in Google Maps">${text}</a>`
-    : text;
+  if (!mapsUrl(location)) return text;
+  const place = placeParts(location).join(", ");
+  return `<button type="button" class="entity" title="Show all open postings in ${escapeHtml(place)}" ` +
+         `data-filter-axis="location" data-filter-value="${escapeHtml(place)}">${text}</button>`;
 }
 
 function entityHref(kind, value) {
@@ -2367,6 +2430,35 @@ document.addEventListener("click", (ev) => {
   if (!link || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button !== 0) return;
   ev.preventDefault();
   navigateTo(link.dataset.route, link.dataset.value);
+});
+
+// The category tag and location on a row already carry the exact value
+// a reader would otherwise retype into a filter field -- clicking one
+// applies it directly instead of making the search a copy-paste
+// exercise. Delegated for the same reason the entity-route handler
+// above is: rows are re-rendered wholesale on every reload, so a
+// listener bound to each button would leak on every one of those.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-filter-axis]");
+  if (!btn) return;
+  const { filterAxis, filterValue } = btn.dataset;
+  // This button can appear on a posting's own detail page (its Location
+  // line uses the same locationHtml()) as well as in the feed table --
+  // from detail, land back on the feed itself rather than applying the
+  // filter behind a page that's still showing.
+  if (activeDetailRoute()) leaveDetail();
+  if (filterAxis === "location") {
+    document.getElementById("feed-location").value = filterValue;
+  } else {
+    const el = document.getElementById(filterAxis === "function" ? "feed-function" : "feed-category");
+    // Industry and function are mutually exclusive per posting, so
+    // setting one and leaving a stale value in the other would usually
+    // just produce zero results -- clear it rather than leave that trap.
+    document.getElementById(filterAxis === "function" ? "feed-category" : "feed-function").value = "";
+    el.value = filterValue;
+  }
+  onFilterChanged();
+  document.getElementById("tab-feed").scrollIntoView({ block: "start", behavior: "smooth" });
 });
 
 function navigateTo(kind, value, { replace = false } = {}) {
@@ -2659,6 +2751,7 @@ if (initialParams.get("preset") !== null &&
   presetSelect.value = initialParams.get("preset");
 }
 if (initialParams.get("q")) document.getElementById("search").value = initialParams.get("q");
+if (initialParams.get("location")) document.getElementById("feed-location").value = initialParams.get("location");
 // The only two controls whose options/wiring are static HTML rather
 // than server-populated -- the age pill group and the view lens -- so
 // both can be wired and restored-from-URL immediately rather than

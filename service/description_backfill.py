@@ -68,6 +68,23 @@ class DescriptionSource:
         such so the row stops being asked about."""
         raise NotImplementedError
 
+    def maybe_fix_company(self, row: dict, payload: dict) -> str | None:
+        """Optional: a corrected company NAME for this row's SOURCE, if
+        the detail payload reveals one worth using -- None (the default)
+        for platforms with nothing extra to offer here, which is most of
+        them, since their list endpoint already carries a real company
+        name. Applied to `sources.company`, not this one posting: a
+        source-level fix is enough for every posting under it, because
+        run_source_sync_sweep already re-propagates sources.company onto
+        every one of its postings every cycle (see source_sync.py) --
+        fixing one row here and leaving the other few hundred stale
+        would just be waiting on that same sweep to finish the job
+        anyway. A subclass decides FOR ITSELF when a fix is warranted
+        (e.g. only when the source's current name still looks
+        unresolved); the shared engine just applies whatever it returns.
+        """
+        return None
+
 
 def _claim_batch(source: DescriptionSource, limit: int) -> list[dict]:
     fields = "".join(
@@ -76,7 +93,7 @@ def _claim_batch(source: DescriptionSource, limit: int) -> list[dict]:
     with cursor() as cur:
         cur.execute(
             f"""
-            SELECT p.id{fields}
+            SELECT p.id, s.id AS source_id, s.company AS source_company{fields}
             FROM postings p
             JOIN sources s ON p.source_id = s.id
             WHERE p.ats = %s
@@ -95,6 +112,11 @@ def _claim_batch(source: DescriptionSource, limit: int) -> list[dict]:
 def _store(posting_id: str, text: str) -> None:
     with cursor() as cur:
         cur.execute("UPDATE postings SET description = %s WHERE id = %s", (text, posting_id))
+
+
+def _update_source_company(source_id: int, company: str) -> None:
+    with cursor() as cur:
+        cur.execute("UPDATE sources SET company = %s WHERE id = %s", (company, source_id))
 
 
 def _defer(posting_id: str) -> None:
@@ -149,7 +171,8 @@ def run(source: DescriptionSource, limit: int = 10, pace: float = PACE_SECONDS,
             deferred += 1
         else:
             try:
-                text = source.extract_text(payload.json())
+                data = payload.json()
+                text = source.extract_text(data)
             except Exception:  # noqa: BLE001 - a malformed body is retryable
                 _defer(row["id"])
                 deferred += 1
@@ -159,6 +182,16 @@ def run(source: DescriptionSource, limit: int = 10, pace: float = PACE_SECONDS,
                     filled += 1
                 else:
                     empty += 1
+                # A bonus side-effect of a detail fetch that was already
+                # happening for the description -- never worth failing
+                # the whole row over, so a broken hook is swallowed
+                # exactly like a malformed description body would be.
+                try:
+                    fixed_company = source.maybe_fix_company(row, data)
+                except Exception:  # noqa: BLE001 - never fatal to the row
+                    fixed_company = None
+                if fixed_company and row.get("source_id"):
+                    _update_source_company(row["source_id"], fixed_company)
 
         if pace and i < len(rows) - 1:
             time.sleep(pace)
