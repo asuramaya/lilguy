@@ -231,3 +231,38 @@ ALTER TABLE postings ADD COLUMN IF NOT EXISTS description_next_attempt_at TIMEST
 CREATE INDEX IF NOT EXISTS postings_description_pending_idx
     ON postings (description_next_attempt_at NULLS FIRST, first_seen DESC)
     WHERE description IS NULL;
+
+-- Liveness verification state.
+--
+-- The operator's definition of "open" is "I can still apply and get it",
+-- which is a claim about the world that only a request can settle. Our
+-- close logic ("not in the source's fresh set") is correct but depends
+-- on the source telling the truth, and at least one does not: The Muse's
+-- API keeps returning postings its own site has already deleted. Sampled
+-- 6 Muse postings older than mid-2025 -- all six 404. Sampled 6 from the
+-- last 30 days -- all six 200.
+--
+-- Age is therefore a good way to ORDER this queue and a bad way to
+-- decide the answer, so these columns exist to record what a real
+-- request found rather than what age implied.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS liveness_checked_at TIMESTAMPTZ;
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS liveness_attempts SMALLINT NOT NULL DEFAULT 0;
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS liveness_next_check_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS postings_liveness_due_idx
+    ON postings (liveness_next_check_at NULLS FIRST, posted_at_ts NULLS LAST)
+    WHERE status = 'open';
+
+-- 'expired' joins the event kinds: service/liveness.py closes a posting
+-- whose own URL returns 404/410, and that is exactly the kind of thing
+-- the events feed exists to surface -- a posting vanishing is more
+-- interesting to a reader than a source being promoted.
+--
+-- Needs an explicit ALTER because CREATE TABLE IF NOT EXISTS above is a
+-- no-op on an existing table, so the original CHECK would survive
+-- untouched and reject every insert. Found the hard way: the constraint
+-- violation was swallowed by a broad except and reported as a network
+-- deferral.
+ALTER TABLE events DROP CONSTRAINT IF EXISTS events_kind_check;
+ALTER TABLE events ADD CONSTRAINT events_kind_check
+    CHECK (kind IN ('promoted', 'disabled', 'reinstated', 'backup_restore_test', 'expired'));

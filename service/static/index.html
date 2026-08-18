@@ -188,6 +188,10 @@
   .events-panel .event-kind.k-promoted::before, .events-panel .event-kind.k-reinstated::before { background: var(--ok); }
   .events-panel .event-kind.k-disabled { color: var(--bad); }
   .events-panel .event-kind.k-disabled::before { background: var(--bad); }
+  /* A posting whose own URL now 404s. Neutral rather than red: nothing
+     went wrong, a job was filled or withdrawn -- which is ordinary. */
+  .events-panel .event-kind.k-expired { color: var(--ink-tertiary); }
+  .events-panel .event-kind.k-expired::before { background: var(--ink-tertiary); }
   .events-panel .event-kind.k-backup_restore_test { color: var(--ink-secondary); }
   .events-panel .event-kind.k-backup_restore_test::before { background: var(--ink-tertiary); }
   .events-panel .event-detail { color: var(--ink-secondary); }

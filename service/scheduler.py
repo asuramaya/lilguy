@@ -51,6 +51,7 @@ from db import cursor  # noqa: E402
 from dedup import compute_company_key, compute_dedup_key, run_dedup_sweep  # noqa: E402
 from posted_at import parse_posted_at  # noqa: E402
 from source_sync import run_source_sync_sweep  # noqa: E402
+from liveness import run_liveness_sweep  # noqa: E402
 from workday_descriptions import fetch_missing_descriptions  # noqa: E402
 
 MAX_WORKERS = 6
@@ -60,6 +61,13 @@ FAILURE_DISABLE_THRESHOLD = 5
 # Bounded per cycle so the one connector needing a second request per
 # posting can never crowd out actual scraping.
 WORKDAY_DESCRIPTION_BATCH = 10
+
+# Deliberately small. This makes real requests to real employers' sites
+# purely to ask "is this still there", so it must stay a background
+# trickle rather than a crawl. At 20 per cycle the ~4.8k open corpus is
+# covered in well under a day, which is far faster than postings
+# actually die.
+LIVENESS_BATCH = 20
 
 
 def _now():
@@ -367,6 +375,16 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
             if desc["attempted"]:
                 print(f"  workday descriptions: {desc['filled']} filled, "
                       f"{desc['empty']} none-available, {desc['deferred']} deferred", flush=True)
+
+            # Outside `if due:` for the same reason as descriptions: this
+            # is not tied to any one source's schedule. It exists because
+            # "not in the source's fresh set" only closes a posting when
+            # the SOURCE is honest, and The Muse keeps serving listings
+            # its own site has deleted.
+            live = run_liveness_sweep(limit=LIVENESS_BATCH)
+            if live["checked"]:
+                print(f"  liveness: {live['checked']} checked, {live['closed']} closed, "
+                      f"{live['alive']} still live, {live['deferred']} deferred", flush=True)
             time.sleep(poll_interval)
 
 
