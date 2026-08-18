@@ -802,6 +802,7 @@ def duplicates(
 def candidates(
     q: Annotated[Optional[str], Query(description="Substring match on company")] = None,
     review_status: Annotated[Optional[str], Query(description="unchecked, no_match, rejected, promoted")] = None,
+    ats: Annotated[Optional[str], Query(description="Exact match on the guessed ATS platform")] = None,
     limit: Annotated[int, Query(le=1000)] = 200,
     offset: Annotated[int, Query(ge=0)] = 0,
 ):
@@ -824,6 +825,9 @@ def candidates(
     if review_status:
         where.append("review_status = %s")
         params.append(review_status)
+    if ats:
+        where.append("ats = %s")
+        params.append(ats)
     if q and q.strip():
         where.append("company ILIKE %s")
         params.append(f"%{q.strip()}%")
@@ -843,9 +847,16 @@ def candidates(
             [*params, limit, offset],
         )
         rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
+        # The FULL set of ATS guesses, not just what's on this page --
+        # same reasoning as /categories being its own call rather than
+        # derived from a (possibly filtered, possibly empty) /feed page.
+        cur.execute(
+            "SELECT DISTINCT ats FROM discovery_candidates WHERE ats IS NOT NULL AND ats <> '' ORDER BY ats"
+        )
+        ats_options = [r["ats"] for r in cur.fetchall()]
 
     return {"candidates": rows, "total": total, "count": len(rows),
-            "limit": limit, "offset": offset}
+            "limit": limit, "offset": offset, "ats_options": ats_options}
 
 
 # Set on every response, including the static page.
