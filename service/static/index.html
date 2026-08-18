@@ -571,9 +571,99 @@
   }
   .banner b { color: var(--ink); font-weight: 600; }
 
-  .feed-more { display: flex; justify-content: center; padding: 22px 0 4px; }
-  .feed-more .meta { color: var(--ink-tertiary); font-size: 11.5px; }
-  .all-loaded { color: var(--ink-tertiary); font-size: 12px; }
+
+  /* --- search bar + filters popover ------------------------------- */
+
+  .search-bar { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 8px; flex-wrap: wrap; }
+  .search-field input { font-size: 14px; }
+  .search-field .field-icon { font-size: 14px; }
+
+  .filters-menu { position: relative; flex-shrink: 0; }
+
+  .filters-toggle {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--row); border: 1px solid var(--border); color: var(--ink);
+    border-radius: 4px; padding: 7px 12px; font-size: 13px; font-family: inherit;
+    cursor: pointer; height: 100%;
+  }
+  .filters-toggle:hover { border-color: var(--border-strong); }
+  .filters-toggle[aria-expanded="true"] { border-color: var(--accent-dim); color: var(--accent); }
+
+  /* display:none by default, an explicit .visible class to turn it back
+     on -- NOT the [hidden] attribute. [hidden] and a class selector tie
+     on specificity, and this rule is declared after [hidden] in the
+     cascade, so [hidden] would silently lose and the badge would show
+     "0" forever. Same failure shape as .events-badge above; same fix. */
+  .filters-badge {
+    display: none; align-items: center; justify-content: center;
+    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+    background: var(--accent); color: #14120d; font-size: 10.5px; font-weight: 700;
+  }
+  .filters-badge.visible { display: inline-flex; }
+
+  /* Anchored to .filters-menu, not the button itself, so the popover's
+     position doesn't jump if the button's own width changes (e.g. the
+     badge appearing/disappearing). */
+  .filters-panel {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+    width: min(560px, calc(100vw - 2 * var(--gutter)));
+    background: var(--row); border: 1px solid var(--border-strong);
+    border-radius: 6px; padding: 14px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .filters-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .filters-grid .field { flex: 1 1 160px; }
+
+  .filters-panel .field-hint { display: block; margin-top: 8px; max-width: none; }
+
+  .filters-actions {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);
+  }
+
+  .btn-link {
+    background: none; border: none; color: var(--ink-tertiary); font-size: 12px;
+    font-family: inherit; cursor: pointer; padding: 4px 0; text-decoration: underline;
+  }
+  .btn-link:hover { color: var(--ink); }
+
+  /* Selected filters surfaced as removable chips outside the popover, so
+     what's narrowing the list is visible without opening it -- the
+     popover hides state, chips don't. */
+  .chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chips-row:empty { display: none; margin-bottom: 0; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--row); border: 1px solid var(--border-strong); color: var(--ink-secondary);
+    border-radius: 999px; padding: 4px 6px 4px 10px; font-size: 12px; font-family: inherit;
+    cursor: pointer;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--accent-dim); }
+  .chip span { color: var(--ink-tertiary); font-size: 13px; line-height: 1; }
+  .chip:hover span { color: var(--bad); }
+
+  /* --- pagination ---------------------------------------------------- */
+
+  .pager {
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    padding: 14px 0; flex-wrap: wrap;
+  }
+  .pager:empty { padding: 0; }
+  .pager-status { color: var(--ink-secondary); font-size: 12.5px; }
+  .pager-range { color: var(--ink-tertiary); }
+  .pager-btn {
+    background: var(--row); border: 1px solid var(--border); color: var(--ink);
+    border-radius: 4px; padding: 6px 12px; font-size: 12.5px; font-family: inherit;
+    cursor: pointer;
+  }
+  .pager-btn:hover:not(:disabled) { border-color: var(--border-strong); }
+  .pager-btn:disabled { color: var(--ink-tertiary); cursor: default; opacity: 0.5; }
+  .pager-size {
+    background: none; border: none; color: var(--ink-tertiary); font-size: 12px;
+    font-family: inherit;
+  }
+  #feed-pager-top:not(:empty) { border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 
   footer {
     border-top: 1px solid var(--border);
@@ -643,67 +733,93 @@
 <main class="wrap">
 
   <section id="tab-feed" role="tabpanel" aria-labelledby="tabbtn-feed" tabindex="0">
-    <div class="toolbar">
+    <!-- One search bar carries the whole query: preset stays beside it
+         because it's a different KIND of choice (which corpus, not a
+         narrowing of it), and everything else -- industry, function,
+         where, cycle, posted age -- lives behind the Filters popover so
+         the bar reads as one control instead of six competing ones.
+         Selected filters still surface as removable chips below, so
+         narrowing the view is never invisible just because the popover
+         is closed. -->
+    <div class="search-bar">
+      <div class="field search-field grow">
+        <label class="field-icon" for="search">⌕</label>
+        <input type="search" id="search" placeholder="Search title or company&hellip;">
+      </div>
       <div class="field">
         <label class="field-icon" for="preset">preset</label>
         <select id="preset"></select>
       </div>
-      <!-- Comboboxes, not <select>s: the industry taxonomy alone is ~330
-           labels, and an alphabetical dropdown that long is a scroll,
-           not a control. <input list> gives native typeahead with no
-           build step, and each datalist is ordered by open-posting count
-           so the values that actually return something come first.
+      <div class="filters-menu">
+        <button type="button" id="filters-toggle" class="filters-toggle"
+                aria-haspopup="true" aria-expanded="false" aria-controls="filters-panel">
+          <span aria-hidden="true">&#9776;</span> Filters
+          <span id="filters-badge" class="filters-badge" hidden>0</span>
+        </button>
+        <!-- Comboboxes, not <select>s, for industry/function: the industry
+             taxonomy alone is ~330 labels, and an alphabetical dropdown
+             that long is a scroll, not a control. <input list> gives
+             native typeahead with no build step, and each datalist is
+             ordered by open-posting count so the values that actually
+             return something come first.
 
-           TWO controls because there are two axes. Industry is what the
-           EMPLOYER does and only direct boards know it; function is what
-           the JOB is and only aggregators indexing by function know it.
-           They shared one column until 2026-08-17 and the vocabularies
-           were disjoint. -->
-      <div class="field">
-        <label class="field-icon" for="feed-category">industry</label>
-        <input id="feed-category" list="category-options" autocomplete="off"
-               placeholder="Any industry" aria-describedby="category-hint">
-        <datalist id="category-options"></datalist>
-      </div>
-      <div class="field">
-        <label class="field-icon" for="feed-function">role</label>
-        <input id="feed-function" list="function-options" autocomplete="off"
-               placeholder="Any function" aria-describedby="category-hint">
-        <datalist id="function-options"></datalist>
-      </div>
-      <!-- aria-live so a screen-reader user hears that their typed text
-           matched nothing, rather than silently getting the whole feed
-           back with no explanation of why. -->
-      <span id="category-hint" class="field-hint" role="status" aria-live="polite"></span>
-      <!-- The cycle a posting advertises. Internships are seasonal, and
-           in August 2026 the live question is "what is open for Summer
-           2027" -- which was unaskable until titles were parsed for it.
-           Coverage is only ~40%, which the hint states rather than
-           hides. -->
-      <div class="field">
-        <label class="field-icon" for="feed-arrangement">where</label>
-        <select id="feed-arrangement"><option value="">Anywhere</option></select>
-      </div>
-      <div class="field">
-        <label class="field-icon" for="feed-cycle-season">cycle</label>
-        <select id="feed-cycle-season"><option value="">Any season</option></select>
-        <select id="feed-cycle-year"><option value="">Any year</option></select>
-      </div>
-      <div class="field">
-        <label class="field-icon" for="feed-age">posted</label>
-        <select id="feed-age">
-          <option value="">Any time</option>
-          <option value="7">Past week</option>
-          <option value="30">Past month</option>
-          <option value="90">Past 3 months</option>
-          <option value="365">Past year</option>
-        </select>
-      </div>
-      <div class="field grow">
-        <label class="field-icon" for="search">/</label>
-        <input type="search" id="search" placeholder="Filter by title or company&hellip;">
+             TWO controls because there are two axes. Industry is what the
+             EMPLOYER does and only direct boards know it; function is what
+             the JOB is and only aggregators indexing by function know it.
+             They shared one column until 2026-08-17 and the vocabularies
+             were disjoint. -->
+        <div id="filters-panel" class="filters-panel" hidden>
+          <div class="filters-grid">
+            <div class="field">
+              <label class="field-icon" for="feed-category">industry</label>
+              <input id="feed-category" list="category-options" autocomplete="off"
+                     placeholder="Any industry" aria-describedby="category-hint">
+              <datalist id="category-options"></datalist>
+            </div>
+            <div class="field">
+              <label class="field-icon" for="feed-function">role</label>
+              <input id="feed-function" list="function-options" autocomplete="off"
+                     placeholder="Any function" aria-describedby="category-hint">
+              <datalist id="function-options"></datalist>
+            </div>
+            <!-- The cycle a posting advertises. Internships are seasonal,
+                 and in August 2026 the live question is "what is open for
+                 Summer 2027" -- which was unaskable until titles were
+                 parsed for it. Coverage is only ~40%, which the hint
+                 states rather than hides. -->
+            <div class="field">
+              <label class="field-icon" for="feed-arrangement">where</label>
+              <select id="feed-arrangement"><option value="">Anywhere</option></select>
+            </div>
+            <div class="field">
+              <label class="field-icon" for="feed-cycle-season">cycle</label>
+              <select id="feed-cycle-season"><option value="">Any season</option></select>
+              <select id="feed-cycle-year"><option value="">Any year</option></select>
+            </div>
+            <div class="field">
+              <label class="field-icon" for="feed-age">posted</label>
+              <select id="feed-age">
+                <option value="">Any time</option>
+                <option value="7">Past week</option>
+                <option value="30">Past month</option>
+                <option value="90">Past 3 months</option>
+                <option value="365">Past year</option>
+              </select>
+            </div>
+          </div>
+          <!-- aria-live so a screen-reader user hears that their typed
+               text matched nothing, rather than silently getting the
+               whole feed back with no explanation of why. -->
+          <span id="category-hint" class="field-hint" role="status" aria-live="polite"></span>
+          <div class="filters-actions">
+            <button type="button" id="filters-clear" class="btn-link">Clear filters</button>
+            <button type="button" id="filters-done" class="btn">Done</button>
+          </div>
+        </div>
       </div>
     </div>
+    <div id="active-chips" class="chips-row" aria-live="polite"></div>
+    <div id="feed-pager-top" class="pager"></div>
     <div class="result-line" aria-live="polite">
       <span id="feed-count"></span>
       <span id="feed-sort-line"></span>
@@ -728,7 +844,7 @@
       </thead>
       <tbody id="feed-body"></tbody>
     </table>
-    <div id="feed-more" class="feed-more"></div>
+    <div id="feed-pager" class="pager"></div>
   </section>
 
   <section id="tab-sources" role="tabpanel" aria-labelledby="tabbtn-sources" tabindex="0" hidden>
@@ -1286,26 +1402,75 @@ async function loadFeedCategories() {
   return false;
 }
 
-async function loadFeed({ append = false } = {}) {
-  if (!append) feedOffset = 0;
-  document.getElementById("feed-count").textContent = append ? "loading more…" : "loading…";
+// One page of results, replacing the last one -- there is no
+// accumulating "load more" state to reason about. A change to any
+// filter resets to page 1 (resetPage: true); a pager click sets
+// feedOffset itself and leaves it alone.
+//
+// A stale response racing a fresher one used to be a real bug here: type
+// "eng", then "engineering" fast enough and the network could resolve
+// them out of order, letting the SHORTER query's response land last and
+// silently overwrite the more specific one on screen. AbortController
+// makes that impossible instead of merely unlikely -- the in-flight
+// request for anything but the latest query is cancelled the moment a
+// new one starts.
+let feedAbortController = null;
+
+// Real paging, not "load more": Prev/Next over fixed-size pages rather
+// than an ever-growing accumulated list. Rendered both above and below
+// the table -- above so a reader who pages forward doesn't have to
+// scroll back up to page again, below because that's where you land
+// after reading the last row on screen.
+function renderPager() {
+  const page = Math.floor(feedOffset / FEED_PAGE_SIZE) + 1;
+  const pages = Math.max(1, Math.ceil(feedTotal / FEED_PAGE_SIZE));
+  const start = feedTotal ? feedOffset + 1 : 0;
+  const end = Math.min(feedOffset + feedPostings.length, feedTotal);
+  const html = feedTotal ? `
+    <button type="button" class="pager-btn" data-pager="prev" ${page <= 1 ? "disabled" : ""}>&larr; Prev</button>
+    <span class="pager-status mono">Page ${page} of ${pages}
+      <span class="pager-range">(${start.toLocaleString()}&ndash;${end.toLocaleString()} of ${feedTotal.toLocaleString()})</span>
+    </span>
+    <button type="button" class="pager-btn" data-pager="next" ${page >= pages ? "disabled" : ""}>Next &rarr;</button>
+  ` : "";
+  for (const id of ["feed-pager-top", "feed-pager"]) {
+    const wrap = document.getElementById(id);
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('[data-pager="prev"]').forEach(btn => btn.addEventListener("click", () => {
+      feedOffset = Math.max(0, feedOffset - FEED_PAGE_SIZE);
+      loadFeed();
+      document.getElementById("tab-feed").scrollIntoView({ block: "start", behavior: "smooth" });
+    }));
+    wrap.querySelectorAll('[data-pager="next"]').forEach(btn => btn.addEventListener("click", () => {
+      if (feedOffset + FEED_PAGE_SIZE < feedTotal) feedOffset += FEED_PAGE_SIZE;
+      loadFeed();
+      document.getElementById("tab-feed").scrollIntoView({ block: "start", behavior: "smooth" });
+    }));
+  }
+}
+
+async function loadFeed({ resetPage = false } = {}) {
+  if (resetPage) feedOffset = 0;
+  document.getElementById("feed-count").textContent = "loading…";
+  if (feedAbortController) feedAbortController.abort();
+  const controller = new AbortController();
+  feedAbortController = controller;
   try {
-    const res = await fetch(feedQueryUrl());
+    const res = await fetch(feedQueryUrl(), { signal: controller.signal });
     const data = await res.json();
+    if (controller.signal.aborted) return;
     if (data.error) {
       document.getElementById("feed-body").innerHTML = emptyRow(6, data.error);
       document.getElementById("feed-count").textContent = "";
       return;
     }
-    const batch = data.postings || [];
-    // append=true only ever comes from the load-more button, so a filter
-    // change can never silently accumulate rows from the previous query.
-    feedPostings = append ? feedPostings.concat(batch) : batch;
+    feedPostings = data.postings || [];
     feedTotal = data.total ?? feedPostings.length;
     feedUnstatedCycle = data.unstated_cycle ?? 0;
     renderFeed();
     syncUrl();
   } catch (e) {
+    if (e.name === "AbortError") return;
     document.getElementById("feed-body").innerHTML = emptyRow(6, "Couldn't reach the API — is the service running?");
     document.getElementById("feed-count").textContent = "";
   }
@@ -1331,32 +1496,16 @@ function renderFeed() {
        ...sortRows(feedPostings.filter(p => !statesCycle(p)), feedSort.key, feedSort.dir)]
     : sortRows(feedPostings, feedSort.key, feedSort.dir);
 
-  // Says plainly when the server capped the result set, rather than
-  // presenting a truncated list as if it were the whole match.
-  const more = feedTotal > feedPostings.length;
   // When a cycle filter is on, the count is split: postings that SAID
   // they are this cycle, and postings that said nothing. Reporting one
   // combined number would claim a confidence the data does not support.
   const confirmed = feedTotal - feedUnstatedCycle;
   document.getElementById("feed-count").innerHTML = feedUnstatedCycle
     ? `<strong>${confirmed}</strong> matching this cycle` +
-      ` <span class="truncated">+ ${feedUnstatedCycle} that state no cycle</span>` +
-      (more ? ` <span class="truncated">(showing ${feedPostings.length})</span>` : "")
-    : `<strong>${feedTotal}</strong> matching` +
-      (more ? ` <span class="truncated">(showing ${feedPostings.length})</span>` : "");
+      ` <span class="truncated">+ ${feedUnstatedCycle} that state no cycle</span>`
+    : `<strong>${feedTotal}</strong> matching`;
 
-  // Rendered after the table so "there is more" is discoverable at the
-  // point you run out of rows, not only in a counter above the fold.
-  const moreWrap = document.getElementById("feed-more");
-  moreWrap.innerHTML = more
-    ? `<button class="btn" id="feed-more-btn">Load ${Math.min(FEED_PAGE_SIZE, feedTotal - feedPostings.length)} more
-         <span class="meta">(${feedTotal - feedPostings.length} remaining)</span></button>`
-    : (feedPostings.length ? `<div class="all-loaded">All ${feedTotal} shown.</div>` : "");
-  const btn = document.getElementById("feed-more-btn");
-  if (btn) btn.addEventListener("click", () => {
-    feedOffset = feedPostings.length;
-    loadFeed({ append: true });
-  });
+  renderPager();
   document.getElementById("feed-sort-line").textContent =
     `sorted by ${({posted_at_ts: "date posted"})[feedSort.key] || feedSort.key.replace(/_/g, " ")}, ${feedSort.dir === 1 ? "oldest first" : "newest first"}`;
 
@@ -1600,24 +1749,113 @@ wireSortable("tab-sources", sourceSort, renderSources, ["last_scraped_at"]);
 wireSortable("tab-candidates", candidateSort, renderCandidates, ["checked_at"]);
 wireSortable("tab-duplicates", duplicateSort, renderDuplicates, ["first_seen"]);
 
-presetSelect.addEventListener("change", () => { loadFeed(); syncUrl(); });
+// Every narrowing control resets to page 1 -- a filter change looking at
+// a stale offset would land you on a page that no longer means what it
+// did a moment ago.
+presetSelect.addEventListener("change", () => { loadFeed({ resetPage: true }); syncUrl(); });
 // Debounced because each keystroke is now a round trip, not a local
 // filter -- 140ms turns a burst of typing into one request.
-document.getElementById("search").addEventListener("input", debounce(() => { loadFeed(); syncUrl(); }));
+document.getElementById("search").addEventListener("input", debounce(() => { loadFeed({ resetPage: true }); syncUrl(); }));
 // "input" as well as "change": a combobox fires change only on commit,
 // so typing a full category name and stopping would leave the feed
 // stale until the field lost focus. Debounced for the same reason the
 // search box is -- one render per burst of keystrokes, not one per key.
-const onCategoryChanged = () => { syncCategoryHint(); loadFeed(); syncUrl(); };
+const onFilterChanged = () => { syncCategoryHint(); updateFiltersUi(); loadFeed({ resetPage: true }); syncUrl(); };
 for (const axis of [AXES.industry, AXES.function]) {
   const el = document.getElementById(axis.input);
-  el.addEventListener("change", onCategoryChanged);
-  el.addEventListener("input", debounce(onCategoryChanged));
+  el.addEventListener("change", onFilterChanged);
+  el.addEventListener("input", debounce(onFilterChanged));
 }
-for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement"]) {
-  document.getElementById(id).addEventListener("change", () => { loadFeed(); syncUrl(); });
+for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement", "feed-age"]) {
+  document.getElementById(id).addEventListener("change", onFilterChanged);
 }
-document.getElementById("feed-age").addEventListener("change", () => { loadFeed(); syncUrl(); });
+
+// --- filters popover -----------------------------------------------------
+//
+// Six controls used to sit in the toolbar all the time, competing with
+// the search box for attention and eating most of the width on anything
+// narrower than a wide desktop. Now there is one search bar and a
+// "Filters" button; the popover holds the rest, and active choices still
+// surface as chips below the bar so narrowing the view is never hidden
+// just because the popover itself is closed.
+const filtersToggle = document.getElementById("filters-toggle");
+const filtersPanel = document.getElementById("filters-panel");
+
+function openFilters() {
+  filtersPanel.hidden = false;
+  filtersToggle.setAttribute("aria-expanded", "true");
+  document.addEventListener("click", onOutsideFiltersClick, { capture: true });
+  document.addEventListener("keydown", onFiltersKeydown);
+}
+function closeFilters() {
+  filtersPanel.hidden = true;
+  filtersToggle.setAttribute("aria-expanded", "false");
+  document.removeEventListener("click", onOutsideFiltersClick, { capture: true });
+  document.removeEventListener("keydown", onFiltersKeydown);
+}
+function onOutsideFiltersClick(e) {
+  if (!filtersPanel.contains(e.target) && e.target !== filtersToggle && !filtersToggle.contains(e.target)) {
+    closeFilters();
+  }
+}
+function onFiltersKeydown(e) {
+  if (e.key === "Escape") { closeFilters(); filtersToggle.focus(); }
+}
+filtersToggle.addEventListener("click", () => {
+  if (filtersPanel.hidden) openFilters(); else closeFilters();
+});
+document.getElementById("filters-done").addEventListener("click", closeFilters);
+document.getElementById("filters-clear").addEventListener("click", () => {
+  for (const id of ["feed-category", "feed-function", "feed-arrangement", "feed-cycle-season", "feed-cycle-year", "feed-age"]) {
+    document.getElementById(id).value = "";
+  }
+  onFilterChanged();
+});
+
+// The single definition of "what filters are active", shared by the
+// Filters button's badge count and the removable chip row -- one list,
+// two renderings, rather than two places that could disagree about what
+// counts as a filter.
+const FEED_AGE_LABELS = { "7": "past week", "30": "past month", "90": "past 3 months", "365": "past year" };
+
+function activeFeedFilters() {
+  const items = [];
+  const industry = feedCategoryValue();
+  if (industry) items.push({ label: `industry: ${industry}`, clear: () => { document.getElementById("feed-category").value = ""; } });
+  const fn = feedFunctionValue();
+  if (fn) items.push({ label: `role: ${fn}`, clear: () => { document.getElementById("feed-function").value = ""; } });
+  const where = document.getElementById("feed-arrangement").value;
+  if (where) items.push({ label: `where: ${where}`, clear: () => { document.getElementById("feed-arrangement").value = ""; } });
+  const season = document.getElementById("feed-cycle-season").value;
+  const year = document.getElementById("feed-cycle-year").value;
+  if (season || year) {
+    items.push({
+      label: `cycle: ${[season, year].filter(Boolean).join(" ")}`,
+      clear: () => {
+        document.getElementById("feed-cycle-season").value = "";
+        document.getElementById("feed-cycle-year").value = "";
+      },
+    });
+  }
+  const age = document.getElementById("feed-age").value;
+  if (age) items.push({ label: `posted: ${FEED_AGE_LABELS[age] || age + "d"}`, clear: () => { document.getElementById("feed-age").value = ""; } });
+  return items;
+}
+
+function updateFiltersUi() {
+  const items = activeFeedFilters();
+  const badge = document.getElementById("filters-badge");
+  badge.classList.toggle("visible", items.length > 0);
+  badge.textContent = String(items.length);
+  const chips = document.getElementById("active-chips");
+  chips.innerHTML = items.map((it, i) =>
+    `<button type="button" class="chip" data-chip="${i}">${escapeHtml(it.label)} <span aria-hidden="true">&times;</span></button>`
+  ).join("");
+  chips.querySelectorAll(".chip").forEach((btn, i) => btn.addEventListener("click", () => {
+    items[i].clear();
+    onFilterChanged();
+  }));
+}
 document.getElementById("source-search").addEventListener("input", debounce(renderSources));
 document.getElementById("source-category").addEventListener("change", renderSources);
 document.getElementById("candidate-search").addEventListener("input", debounce(loadCandidates));
@@ -2097,6 +2335,7 @@ if (initialParams.get("age")) {
 // again a moment later.
 async function bootFeed() {
   await loadFeedCategories();
+  updateFiltersUi();
   await loadFeed();
 }
 
