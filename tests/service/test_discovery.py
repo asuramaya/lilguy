@@ -207,12 +207,30 @@ def test_preresolved_candidate_skips_probing_and_goes_straight_to_trial_fetch(mo
     assert row["added_by"] == "discovery"
 
 
-def test_commoncrawl_seeding_inserts_plain_names_and_preresolved_workday_rows(monkeypatch):
+def _stub_commoncrawl(monkeypatch, **overrides):
+    """Stubs EVERY Common Crawl fetcher, then applies the overrides.
+
+    Patching only the fetchers a test cares about leaves the others
+    making real network calls: adding the Ashby and SmartRecruiters
+    fetchers turned this suite from 27s into 232s and seeded it with
+    thousands of real tokens before anyone noticed. Defaulting all of
+    them to empty means a fetcher added later fails loudly as a missing
+    attribute rather than quietly reaching the internet.
+    """
     monkeypatch.setattr(discovery, "_last_commoncrawl_seed_at", None)  # force the gate open
-    monkeypatch.setattr(discovery, "fetch_commoncrawl_greenhouse_tokens", lambda: ["acme", "beta"])
-    monkeypatch.setattr(
-        discovery, "fetch_commoncrawl_workday_tenants",
-        lambda: [{"tenant": "gamma", "wd_host": "wd1", "site": "Search"}],
+    for name in ("fetch_commoncrawl_greenhouse_tokens", "fetch_commoncrawl_ashby_tokens",
+                 "fetch_commoncrawl_smartrecruiters_tokens"):
+        monkeypatch.setattr(discovery, name, overrides.pop(name, lambda: []))
+    monkeypatch.setattr(discovery, "fetch_commoncrawl_workday_tenants",
+                        overrides.pop("fetch_commoncrawl_workday_tenants", lambda: []))
+    assert not overrides, f"unknown fetcher(s): {sorted(overrides)}"
+
+
+def test_commoncrawl_seeding_inserts_plain_names_and_preresolved_workday_rows(monkeypatch):
+    _stub_commoncrawl(
+        monkeypatch,
+        fetch_commoncrawl_greenhouse_tokens=lambda: ["acme", "beta"],
+        fetch_commoncrawl_workday_tenants=lambda: [{"tenant": "gamma", "wd_host": "wd1", "site": "Search"}],
     )
 
     discovery._seed_commoncrawl_candidates_if_due()
@@ -245,12 +263,12 @@ def test_commoncrawl_seeding_skips_candidates_that_case_insensitively_collide_wi
     # sources' UNIQUE (company, ats) constraint is case-sensitive, so
     # without this guard "3m"/workday would promote into a second,
     # redundant source scraping the exact same board as the existing "3M".
-    monkeypatch.setattr(discovery, "_last_commoncrawl_seed_at", None)
-    monkeypatch.setattr(discovery, "fetch_commoncrawl_greenhouse_tokens", lambda: ["flexport", "newco"])
-    monkeypatch.setattr(
-        discovery, "fetch_commoncrawl_workday_tenants",
-        lambda: [{"tenant": "3m", "wd_host": "wd1", "site": "Search"},
-                 {"tenant": "newtenant", "wd_host": "wd1", "site": "Careers"}],
+    _stub_commoncrawl(
+        monkeypatch,
+        fetch_commoncrawl_greenhouse_tokens=lambda: ["flexport", "newco"],
+        fetch_commoncrawl_workday_tenants=lambda: [
+            {"tenant": "3m", "wd_host": "wd1", "site": "Search"},
+            {"tenant": "newtenant", "wd_host": "wd1", "site": "Careers"}],
     )
     with db.cursor() as cur:
         cur.execute(
@@ -325,3 +343,49 @@ def test_unknown_or_missing_code_falls_back_to_the_conservative_interval():
     # this table doesn't know about; neither should re-probe aggressively.
     assert discovery._recheck_days("something_new") == discovery.REJECTED_RECHECK_DAYS
     assert discovery._recheck_days("") == discovery.REJECTED_RECHECK_DAYS
+
+
+def test_ashby_and_smartrecruiters_seed_as_plain_candidate_names(monkeypatch):
+    # Neither needs a pre-resolved config the way Workday's
+    # tenant/host/site triple does: _probe_ashby slugifies and
+    # _probe_smartrecruiters tries the company's own capitalisation, so
+    # a bare token is enough.
+    _stub_commoncrawl(
+        monkeypatch,
+        fetch_commoncrawl_ashby_tokens=lambda: ["ramp", "linear"],
+        fetch_commoncrawl_smartrecruiters_tokens=lambda: ["Visa", "Bosch"],
+    )
+    discovery._seed_commoncrawl_candidates_if_due()
+
+    with db.cursor() as cur:
+        cur.execute("SELECT company, ats FROM discovery_candidates")
+        rows = cur.fetchall()
+    assert {r["company"] for r in rows} == {"ramp", "linear", "Visa", "Bosch"}
+    assert all(r["ats"] is None for r in rows), "plain names, not pre-resolved configs"
+
+
+def test_smartrecruiters_candidate_case_is_preserved(monkeypatch):
+    # Its company identifier is CASE-SENSITIVE, and a lowercased one
+    # returns an empty list rather than a 404 -- a miss indistinguishable
+    # from a company with no openings. Folding case here would silently
+    # discard almost every real board.
+    _stub_commoncrawl(monkeypatch, fetch_commoncrawl_smartrecruiters_tokens=lambda: ["Visa"])
+    discovery._seed_commoncrawl_candidates_if_due()
+    with db.cursor() as cur:
+        cur.execute("SELECT company FROM discovery_candidates")
+        assert [r["company"] for r in cur.fetchall()] == ["Visa"]
+
+
+def test_a_failing_commoncrawl_fetcher_does_not_stop_the_others(monkeypatch):
+    def boom():
+        raise RuntimeError("Common Crawl is down")
+
+    _stub_commoncrawl(
+        monkeypatch,
+        fetch_commoncrawl_ashby_tokens=boom,
+        fetch_commoncrawl_smartrecruiters_tokens=lambda: ["Visa"],
+    )
+    discovery._seed_commoncrawl_candidates_if_due()
+    with db.cursor() as cur:
+        cur.execute("SELECT company FROM discovery_candidates")
+        assert [r["company"] for r in cur.fetchall()] == ["Visa"]

@@ -63,7 +63,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from connectors import CONNECTORS  # noqa: E402
 
 from candidate_sources import (  # noqa: E402
+    fetch_commoncrawl_ashby_tokens,
     fetch_commoncrawl_greenhouse_tokens,
+    fetch_commoncrawl_smartrecruiters_tokens,
     fetch_commoncrawl_workday_tenants,
     fetch_sec_edgar_company_names,
     fetch_wikipedia_category_companies,
@@ -226,6 +228,37 @@ def _seed_commoncrawl_candidates_if_due() -> None:
             )
         print(f"[discovery] seeded {len(tokens)} Greenhouse candidate(s) from Common Crawl", flush=True)
 
+    # Ashby and SmartRecruiters seed exactly like Greenhouse: a plain
+    # candidate name, because their probes slugify (Ashby) or try the
+    # company's own capitalisation (SmartRecruiters) before querying. No
+    # pre-resolved config is needed the way Workday's tenant/host/site
+    # triple requires one.
+    #
+    # SmartRecruiters tokens keep their CASE. Its identifier is
+    # case-sensitive and a lowercased one returns an empty list rather
+    # than a 404, which looks identical to a company with no openings --
+    # so the usual .lower() would silently discard almost every real
+    # board.
+    for label, fetcher, ats, fold_case in (
+        ("Ashby", fetch_commoncrawl_ashby_tokens, "ashby", True),
+        ("SmartRecruiters", fetch_commoncrawl_smartrecruiters_tokens, "smartrecruiters", False),
+    ):
+        try:
+            found = fetcher()
+        except Exception as exc:  # noqa: BLE001 - seeding must not crash the whole loop
+            print(f"[discovery] Common Crawl {label} fetch failed ({exc})", flush=True)
+            continue
+        found = [t for t in found
+                 if ((t.lower() if fold_case else t.lower()), ats) not in existing]
+        if not found:
+            continue
+        with cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur, "INSERT INTO discovery_candidates (company) VALUES %s ON CONFLICT (company) DO NOTHING",
+                [(t,) for t in found],
+            )
+        print(f"[discovery] seeded {len(found)} {label} candidate(s) from Common Crawl", flush=True)
+
     try:
         workday_triples = fetch_commoncrawl_workday_tenants()
     except Exception as exc:  # noqa: BLE001
@@ -263,6 +296,8 @@ WORKDAY_SITE_GUESSES = ["External", "Careers", "Search"]
 
 GREENHOUSE_API = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
 LEVER_API = "https://api.lever.co/v0/postings/{token}?mode=json"
+ASHBY_API = "https://api.ashbyhq.com/posting-api/job-board/{token}"
+SMARTRECRUITERS_API = "https://api.smartrecruiters.com/v1/companies/{token}/postings"
 JOB_URL_HINTS = re.compile(r"/(job|jobs|position|req|career)s?[/_-]", re.IGNORECASE)
 
 
@@ -335,6 +370,48 @@ def _probe_lever(company: str):
                                                  "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
     except Exception:  # noqa: BLE001
         pass
+    return None
+
+
+def _probe_ashby(company: str):
+    token = _slugify(company)
+    try:
+        r = requests.get(ASHBY_API.format(token=token), timeout=TIMEOUT, headers=UA)
+        if r.status_code != 200:
+            return None
+        jobs = (r.json() or {}).get("jobs")
+        if jobs:
+            return {"ats": "ashby", "config": {"company": company, "ats": "ashby", "token": token,
+                                                "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _probe_smartrecruiters(company: str):
+    """Tried with the company's own capitalisation as well as the slug.
+
+    SmartRecruiters' company identifier is CASE-SENSITIVE and usually
+    the brand as written ("Visa", "Bosch"), not a lowercase slug -- and a
+    wrong case returns an empty list rather than a 404, so a
+    slug-only probe would silently miss almost every real board.
+    """
+    seen = set()
+    for token in (company.replace(" ", ""), company.title().replace(" ", ""), _slugify(company)):
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        try:
+            r = requests.get(SMARTRECRUITERS_API.format(token=token),
+                             params={"limit": 1}, timeout=TIMEOUT, headers=UA)
+            if r.status_code != 200:
+                continue
+            if (r.json() or {}).get("content"):
+                return {"ats": "smartrecruiters",
+                        "config": {"company": company, "ats": "smartrecruiters", "token": token,
+                                    "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
+        except Exception:  # noqa: BLE001
+            continue
     return None
 
 
@@ -437,12 +514,12 @@ def _probe_jsonld(company: str, domain: str):
     return None
 
 
-PROBES = [_probe_greenhouse, _probe_lever, _probe_workday]
+PROBES = [_probe_greenhouse, _probe_lever, _probe_ashby, _probe_smartrecruiters, _probe_workday]
 
 
 def probe_candidate(company: str) -> dict | None:
     """Try each ATS probe in order, cheapest first. jsonld needs a domain
-    guess and is the least reliable of the four, so it goes last -- and
+    guess and is the least reliable of them all, so it goes last -- and
     tries each domain guess in turn (root + careers subdomain) rather
     than giving up after the first miss."""
     for probe in PROBES:

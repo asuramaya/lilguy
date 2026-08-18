@@ -55,6 +55,35 @@ live sources — neither had ever run. Every connector here reads a public,
 keyless endpoint, which is what lets a fork work without signing up for
 anything.
 
+**Ashby** (`scraper/connectors/ashby.py`) and **SmartRecruiters**
+(`scraper/connectors/smartrecruiters.py`) are the newest direct-board
+connectors, both keyless. Ashby covers the funded-startup segment the
+other connectors miss; SmartRecruiters skews large-enterprise and
+European, so the two barely overlap.
+
+Two things worth knowing before adding sources on either:
+
+Ashby's LIST response already carries `descriptionPlain` and
+`descriptionHtml`, so descriptions arrive free — confirmed live at
+136/136 postings on one board. That is not a small detail. Workday's
+list response carries none, which forces a per-posting fetch, which is
+where the description-backfill deadlock came from.
+
+SmartRecruiters is the opposite: its list carries no description at all,
+so this connector leaves the field unset (stored NULL, "not fetched
+yet") rather than putting an N+1 fetch on the scrape path. It also
+reports a per-posting `function` label, which is the first source of
+job-function values on a direct board. Its `industry` label is
+deliberately NOT used — that is SmartRecruiters' own vocabulary, and
+writing it into `category` would reintroduce a third taxonomy into the
+column two of them were just disentangled from.
+
+Its company identifier is **case-sensitive** ("Visa", not "visa"), and a
+wrong case returns an empty list rather than a 404 — so a typo looks
+exactly like a company with no openings. The Common Crawl fetcher for it
+preserves case for this reason, unlike every other fetcher in that
+module.
+
 **Tier 1.5 — generic schema.org/JobPosting harvester**
 (`scraper/connectors/jsonld.py`), openroles' actual technique: read a
 company's job sitemap for individual posting URLs, fetch each, and pull

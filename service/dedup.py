@@ -36,7 +36,14 @@ label doesn't flip-flop for no reason across sweeps.
 """
 import re
 
-DIRECT_SOURCE_ATS = {"greenhouse", "lever", "workday", "oracle_recruiting", "jsonld"}
+# Connectors where one SOURCE is one COMPANY, so the source's own
+# company/category can be trusted onto its postings (see
+# service/source_sync.py) and a posting from here outranks the same job
+# seen through an aggregator. Adding a connector without adding it here
+# means its postings never get their source's fields re-synced -- the
+# bug that once left 5,253 postings carrying a stale company name.
+DIRECT_SOURCE_ATS = {"greenhouse", "lever", "workday", "oracle_recruiting", "jsonld",
+                     "ashby", "smartrecruiters"}
 
 _LEGAL_SUFFIX_RE = re.compile(
     r"\b(inc|incorporated|corp|corporation|llc|ltd|limited|co|company|group|holdings|plc)\b\.?",

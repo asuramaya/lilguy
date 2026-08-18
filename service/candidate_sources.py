@@ -304,6 +304,52 @@ def fetch_commoncrawl_greenhouse_tokens(index: str = None) -> list[str]:
     return sorted(tokens)
 
 
+def fetch_commoncrawl_ashby_tokens(index: str = None) -> list[str]:
+    """Real, currently-live Ashby board slugs (jobs.ashbyhq.com/{slug}).
+
+    Same shape and same reasoning as the Greenhouse fetcher above: each
+    token is a company that verifiably has a board, not a guess, and
+    _probe_ashby() slugifies before querying, which is a no-op on an
+    already-slug-shaped token -- so these feed in as plain candidate
+    names with no special handling.
+
+    The trailing path segments that are not board slugs are dropped
+    explicitly: an application URL is /{slug}/{job-uuid}/application, so
+    taking the FIRST segment is what identifies the board.
+    """
+    index = index or _latest_commoncrawl_index()
+    tokens: set[str] = set()
+    marker = "jobs.ashbyhq.com/"
+    for url in _fetch_commoncrawl_cdx_urls("jobs.ashbyhq.com/*", index):
+        if marker not in url:
+            continue
+        token = url.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0].lower()
+        if token and token not in ("robots.txt", "favicon.ico"):
+            tokens.add(token)
+    return sorted(tokens)
+
+
+def fetch_commoncrawl_smartrecruiters_tokens(index: str = None) -> list[str]:
+    """Real, currently-live SmartRecruiters company identifiers
+    (jobs.smartrecruiters.com/{Identifier}).
+
+    Case is PRESERVED here, unlike every other fetcher in this module,
+    because SmartRecruiters' identifier is case-sensitive and lowercasing
+    it produces a token that returns an empty list rather than a 404 --
+    a miss that looks exactly like a company with no openings.
+    """
+    index = index or _latest_commoncrawl_index()
+    tokens: set[str] = set()
+    marker = "jobs.smartrecruiters.com/"
+    for url in _fetch_commoncrawl_cdx_urls("jobs.smartrecruiters.com/*", index):
+        if marker not in url:
+            continue
+        token = url.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0]
+        if token and token not in ("robots.txt", "favicon.ico"):
+            tokens.add(token)
+    return sorted(tokens)
+
+
 def fetch_commoncrawl_workday_tenants(index: str = None) -> list[dict]:
     """Real (tenant, wd_host, site) triples straight from Common Crawl --
     a fully-formed Workday config, not a guess to feed into discovery.py's
