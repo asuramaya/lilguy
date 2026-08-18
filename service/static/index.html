@@ -205,33 +205,7 @@
   .events-panel .event-detail { color: var(--ink-secondary); }
   .events-panel .event-time { color: var(--ink-tertiary); font-size: 11px; margin-top: 2px; }
 
-  [role="tablist"] {
-    display: flex;
-    gap: 24px;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  [role="tablist"]::-webkit-scrollbar { display: none; }
-
-  [role="tab"] {
-    padding: 10px 2px 12px;
-    font-size: 13px;
-    font-weight: 500;
-    font-family: inherit;
-    color: var(--ink-tertiary);
-    background: none;
-    border: none;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  [role="tab"][aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
-  [role="tab"][aria-selected="false"]:hover { color: var(--ink-secondary); }
-
   main { padding: 20px 0 60px; }
-  [role="tabpanel"]:focus { outline: none; }
 
   .toolbar {
     display: flex;
@@ -816,18 +790,21 @@
         <span id="health-sub">checking API&hellip;</span>
       </div>
     </div>
-    <div role="tablist" aria-label="Views">
-      <button role="tab" id="tabbtn-feed" data-tab="feed" aria-controls="tab-feed" aria-selected="true" tabindex="0">Feed</button>
-      <button role="tab" id="tabbtn-sources" data-tab="sources" aria-controls="tab-sources" aria-selected="false" tabindex="-1">Sources</button>
-      <button role="tab" id="tabbtn-candidates" data-tab="candidates" aria-controls="tab-candidates" aria-selected="false" tabindex="-1">Discovery</button>
-      <button role="tab" id="tabbtn-duplicates" data-tab="duplicates" aria-controls="tab-duplicates" aria-selected="false" tabindex="-1">Duplicates</button>
-    </div>
   </div>
 </header>
 
 <main class="wrap">
 
-  <section id="tab-feed" role="tabpanel" aria-labelledby="tabbtn-feed" tabindex="0">
+  <!-- Postings, Sources, Discovery and Duplicates used to be four
+       separate tabs -- four toolbars, four mental models, for data that
+       a single search bar and filter panel can narrow just as well. The
+       "View" lens at the top of the panel (below) picks which one is
+       showing; everything else in the panel and the search bar above
+       the table is shared. Kept the id "tab-feed" rather than renaming
+       it -- nothing about the id is tab-specific, and renaming it would
+       have meant touching every wireSortable/applySort/scrollIntoView
+       call below for no behavioral change. -->
+  <section id="tab-feed">
     <div class="feed-layout">
       <!-- A docked panel, not a popover: on desktop this is a real flex
            SIBLING of .feed-main below, so opening it reflows the table
@@ -847,7 +824,23 @@
           </div>
         </div>
         <div class="filters-aside-body">
-          <div class="filter-section" data-section="preset">
+          <!-- The one section every view keeps: which of the four data
+               sets is showing. Always exactly one value, no "off" state
+               -- a lens, not an optional filter, so it wires through
+               wireLensGroup() rather than the toggle-to-clear
+               wirePillGroup() the optional axes below use. -->
+          <div class="filter-section" data-view="all" data-section="view">
+            <button type="button" class="filter-section-toggle"><span>View</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div id="feed-view" class="pill-group" data-value="postings">
+                <button type="button" class="pill-btn active" data-value="postings">Postings</button>
+                <button type="button" class="pill-btn" data-value="sources">Sources</button>
+                <button type="button" class="pill-btn" data-value="discovery">Discovery</button>
+                <button type="button" class="pill-btn" data-value="duplicates">Duplicates</button>
+              </div>
+            </div>
+          </div>
+          <div class="filter-section" data-view="postings" data-section="preset">
             <button type="button" class="filter-section-toggle"><span>Preset</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
               <div class="field"><select id="preset"></select></div>
@@ -865,7 +858,7 @@
                is what the JOB is and only aggregators indexing by
                function know it. They shared one column until 2026-08-17
                and the vocabularies were disjoint. -->
-          <div class="filter-section" data-section="industry">
+          <div class="filter-section" data-view="postings" data-section="industry">
             <button type="button" class="filter-section-toggle"><span>Industry</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
               <div class="field">
@@ -875,7 +868,7 @@
               </div>
             </div>
           </div>
-          <div class="filter-section" data-section="function">
+          <div class="filter-section" data-view="postings" data-section="function">
             <button type="button" class="filter-section-toggle"><span>Function</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
               <div class="field">
@@ -890,7 +883,7 @@
               <span id="category-hint" class="field-hint" role="status" aria-live="polite"></span>
             </div>
           </div>
-          <div class="filter-section" data-section="where">
+          <div class="filter-section" data-view="postings" data-section="where">
             <button type="button" class="filter-section-toggle"><span>Where</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
               <div id="feed-arrangement" class="pill-group" data-value="">
@@ -903,7 +896,7 @@
                Summer 2027" -- which was unaskable until titles were
                parsed for it. Coverage is only ~40%, which the hint
                states rather than hides. -->
-          <div class="filter-section" data-section="cycle">
+          <div class="filter-section" data-view="postings" data-section="cycle">
             <button type="button" class="filter-section-toggle"><span>Cycle</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
               <div id="feed-cycle-season" class="pill-group" data-value="">
@@ -912,7 +905,7 @@
               <div class="field"><select id="feed-cycle-year"><option value="">Any year</option></select></div>
             </div>
           </div>
-          <div class="filter-section" data-section="age">
+          <div class="filter-section" data-view="postings" data-section="age">
             <button type="button" class="filter-section-toggle"><span>Posted</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
               <div id="feed-age" class="pill-group" data-value="">
@@ -924,6 +917,26 @@
               </div>
             </div>
           </div>
+          <div class="filter-section" data-view="sources" data-section="source-category" hidden>
+            <button type="button" class="filter-section-toggle"><span>Category</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field"><select id="source-category"><option value="">All</option></select></div>
+            </div>
+          </div>
+          <div class="filter-section" data-view="discovery" data-section="candidate-status" hidden>
+            <button type="button" class="filter-section-toggle"><span>Status</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field">
+                <select id="candidate-status">
+                  <option value="">All</option>
+                  <option value="promoted">Promoted</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="no_match">No match</option>
+                  <option value="unchecked">Unchecked</option>
+                </select>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="filters-aside-footer">
           <button type="button" id="filters-done" class="btn">Done</button>
@@ -931,12 +944,15 @@
       </aside>
 
       <div class="feed-main">
-        <!-- The search bar IS the toolbar now: the filter toggle lives
-             embedded in its own trailing edge (with the active-count
-             badge) instead of sitting as a separate button beside it,
-             and preset moved into the panel above as just another
-             section -- one control at the top of the page, not several
-             competing for width. -->
+        <!-- The search bar IS the toolbar now, for all four views: the
+             filter toggle lives embedded in its own trailing edge (with
+             the active-count badge) instead of sitting as a separate
+             button beside it, and preset moved into the panel above as
+             just another section -- one control at the top of the page,
+             not four toolbars behind four tabs. What the box actually
+             searches (title+company vs. company alone) and its
+             placeholder both switch with the View lens; see
+             updateSearchPlaceholder(). -->
         <div class="search-embedded">
           <span class="search-embedded-icon" aria-hidden="true">&#9906;</span>
           <input type="search" id="search" placeholder="Search title or company&hellip;">
@@ -945,136 +961,107 @@
             &#9776;<span id="filters-badge" class="filters-badge">0</span>
           </button>
         </div>
-        <div id="feed-pager-top" class="pager"></div>
-        <div class="result-line" aria-live="polite">
-          <span id="feed-count"></span>
-          <span id="feed-sort-line"></span>
+
+        <div id="tab-feed-postings" data-view="postings">
+          <div id="feed-pager-top" class="pager"></div>
+          <div class="result-line" aria-live="polite">
+            <span id="feed-count"></span>
+            <span id="feed-sort-line"></span>
+          </div>
+          <table>
+            <colgroup>
+              <!-- Weighted by what someone scanning a job feed actually
+                   reads first: title, then who it's at, then what field,
+                   then where. Location is the most verbose and the least
+                   decisive, so it gets the smallest share of the three
+                   text columns. -->
+              <col style="width:32%"><col style="width:16%"><col style="width:16%"><col style="width:18%"><col style="width:10%"><col style="width:8%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col"><button class="sort-btn" data-sort="title">Title</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="location">Location</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
+                <th scope="col" class="num"><button class="sort-btn" data-sort="posted_at_ts" title="When the employer posted the job">Posted</button></th>
+                <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting — not the same as Posted">Found</button></th>
+              </tr>
+            </thead>
+            <tbody id="feed-body"></tbody>
+          </table>
+          <div id="feed-pager" class="pager"></div>
         </div>
-        <table>
-          <colgroup>
-            <!-- Weighted by what someone scanning a job feed actually
-                 reads first: title, then who it's at, then what field,
-                 then where. Location is the most verbose and the least
-                 decisive, so it gets the smallest share of the three
-                 text columns. -->
-            <col style="width:32%"><col style="width:16%"><col style="width:16%"><col style="width:18%"><col style="width:10%"><col style="width:8%">
-          </colgroup>
-          <thead>
-            <tr>
-              <th scope="col"><button class="sort-btn" data-sort="title">Title</button></th>
-              <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
-              <th scope="col"><button class="sort-btn" data-sort="location">Location</button></th>
-              <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
-              <th scope="col" class="num"><button class="sort-btn" data-sort="posted_at_ts" title="When the employer posted the job">Posted</button></th>
-              <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting — not the same as Posted">Found</button></th>
-            </tr>
-          </thead>
-          <tbody id="feed-body"></tbody>
-        </table>
-        <div id="feed-pager" class="pager"></div>
+
+        <div id="tab-sources" data-view="sources" hidden>
+          <div class="result-line" aria-live="polite"><span id="sources-count"></span></div>
+          <table>
+            <colgroup>
+              <col style="width:26%"><col style="width:11%"><col style="width:21%"><col style="width:12%"><col style="width:11%"><col style="width:9%"><col style="width:10%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="ats">ATS</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="status">Status</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="added_by">Added by</button></th>
+                <th scope="col" class="num"><button class="sort-btn" data-sort="consecutive_failures">Failures</button></th>
+                <th scope="col" class="num"><button class="sort-btn" data-sort="last_scraped_at">Scraped</button></th>
+              </tr>
+            </thead>
+            <tbody id="sources-body"></tbody>
+          </table>
+        </div>
+
+        <div id="tab-candidates" data-view="discovery" hidden>
+          <p class="legend">
+            <b>promoted</b> — a real board was found and its trial fetch verified.
+            <b>rejected</b> — a board <em>was</em> found, but the trial fetch failed verification (zero postings,
+            no internship-shaped titles, all-identical titles, or a company name that didn't match); see Reason.
+            <b>no match</b> — no board found on any connector.
+            <b>unchecked</b> — not probed yet.
+          </p>
+          <div class="result-line" aria-live="polite"><span id="candidates-count"></span></div>
+          <table>
+            <colgroup>
+              <col style="width:22%"><col style="width:11%"><col style="width:11%"><col style="width:46%"><col style="width:10%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="ats">ATS guess</button></th>
+                <th scope="col"><button class="sort-btn" data-sort="review_status">Status</button></th>
+                <th scope="col">Reason</th>
+                <th scope="col" class="num"><button class="sort-btn" data-sort="checked_at">Checked</button></th>
+              </tr>
+            </thead>
+            <tbody id="candidates-body"></tbody>
+          </table>
+        </div>
+
+        <div id="tab-duplicates" data-view="duplicates" hidden>
+          <div class="result-line" aria-live="polite">
+            <span id="duplicates-count"></span>
+            <span>what the dedup sweep collapsed &mdash; an audit view, not a feed</span>
+          </div>
+          <table>
+            <colgroup>
+              <col style="width:34%"><col style="width:12%"><col style="width:34%"><col style="width:10%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Duplicate</th>
+                <th scope="col"><button class="sort-btn" data-sort="source">Source</button></th>
+                <th scope="col">Canonical (kept open)</th>
+                <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting">Found</button></th>
+              </tr>
+            </thead>
+            <tbody id="duplicates-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
     <div id="filters-backdrop" class="filters-backdrop"></div>
-  </section>
-
-  <section id="tab-sources" role="tabpanel" aria-labelledby="tabbtn-sources" tabindex="0" hidden>
-    <div class="toolbar">
-      <div class="field">
-        <label class="field-icon" for="source-category">category</label>
-        <select id="source-category"><option value="">All</option></select>
-      </div>
-      <div class="field grow">
-        <label class="field-icon" for="source-search">/</label>
-        <input type="search" id="source-search" placeholder="Filter by company&hellip;">
-      </div>
-    </div>
-    <div class="result-line" aria-live="polite"><span id="sources-count"></span></div>
-    <table>
-      <colgroup>
-        <col style="width:26%"><col style="width:11%"><col style="width:21%"><col style="width:12%"><col style="width:11%"><col style="width:9%"><col style="width:10%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="ats">ATS</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="status">Status</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="added_by">Added by</button></th>
-          <th scope="col" class="num"><button class="sort-btn" data-sort="consecutive_failures">Failures</button></th>
-          <th scope="col" class="num"><button class="sort-btn" data-sort="last_scraped_at">Scraped</button></th>
-        </tr>
-      </thead>
-      <tbody id="sources-body"></tbody>
-    </table>
-  </section>
-
-  <section id="tab-candidates" role="tabpanel" aria-labelledby="tabbtn-candidates" tabindex="0" hidden>
-    <div class="toolbar">
-      <div class="field">
-        <label class="field-icon" for="candidate-status">status</label>
-        <select id="candidate-status">
-          <option value="">All</option>
-          <option value="promoted">Promoted</option>
-          <option value="rejected">Rejected</option>
-          <option value="no_match">No match</option>
-          <option value="unchecked">Unchecked</option>
-        </select>
-      </div>
-      <div class="field grow">
-        <label class="field-icon" for="candidate-search">/</label>
-        <input type="search" id="candidate-search" placeholder="Filter by company&hellip;">
-      </div>
-    </div>
-    <p class="legend">
-      <b>promoted</b> — a real board was found and its trial fetch verified.
-      <b>rejected</b> — a board <em>was</em> found, but the trial fetch failed verification (zero postings,
-      no internship-shaped titles, all-identical titles, or a company name that didn't match); see Reason.
-      <b>no match</b> — no board found on any connector.
-      <b>unchecked</b> — not probed yet.
-    </p>
-    <div class="result-line" aria-live="polite"><span id="candidates-count"></span></div>
-    <table>
-      <colgroup>
-        <col style="width:22%"><col style="width:11%"><col style="width:11%"><col style="width:46%"><col style="width:10%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col"><button class="sort-btn" data-sort="company">Company</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="ats">ATS guess</button></th>
-          <th scope="col"><button class="sort-btn" data-sort="review_status">Status</button></th>
-          <th scope="col">Reason</th>
-          <th scope="col" class="num"><button class="sort-btn" data-sort="checked_at">Checked</button></th>
-        </tr>
-      </thead>
-      <tbody id="candidates-body"></tbody>
-    </table>
-  </section>
-
-  <section id="tab-duplicates" role="tabpanel" aria-labelledby="tabbtn-duplicates" tabindex="0" hidden>
-    <div class="toolbar">
-      <div class="field grow">
-        <label class="field-icon" for="duplicate-search">/</label>
-        <input type="search" id="duplicate-search" placeholder="Filter by company&hellip;">
-      </div>
-    </div>
-    <div class="result-line" aria-live="polite">
-      <span id="duplicates-count"></span>
-      <span>what the dedup sweep collapsed &mdash; an audit view, not a feed</span>
-    </div>
-    <table>
-      <colgroup>
-        <col style="width:34%"><col style="width:12%"><col style="width:34%"><col style="width:10%">
-      </colgroup>
-      <thead>
-        <tr>
-          <th scope="col">Duplicate</th>
-          <th scope="col"><button class="sort-btn" data-sort="source">Source</button></th>
-          <th scope="col">Canonical (kept open)</th>
-          <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting">Found</button></th>
-        </tr>
-      </thead>
-      <tbody id="duplicates-body"></tbody>
-    </table>
   </section>
 
   <section id="tab-detail" class="detail" hidden></section>
@@ -1331,6 +1318,18 @@ function wirePillGroup(id) {
   });
 }
 
+// A lens, not an optional filter: always exactly one value, and
+// re-clicking the active pill is a no-op rather than clearing it. The
+// View control (Postings/Sources/Discovery/Duplicates) is the only pill
+// group this applies to -- every other pill group narrows a result set
+// that still makes sense with nothing selected, but "no view" isn't a
+// real state.
+function wireLensGroup(id) {
+  document.getElementById(id).querySelectorAll(".pill-btn").forEach(btn => {
+    btn.addEventListener("click", () => setPillValue(id, btn.dataset.value));
+  });
+}
+
 function populatePillGroup(id, rows, anyLabel, format) {
   const el = document.getElementById(id);
   const current = el.dataset.value || "";
@@ -1462,27 +1461,39 @@ function syncUrl() {
   // they just opened.
   if (activeDetailRoute()) return;
   const p = new URLSearchParams();
-  const tab = document.querySelector('[role="tab"][aria-selected="true"]').dataset.tab;
-  if (tab !== "feed") p.set("tab", tab);
-  // The default is omitted so a plain "/" stays clean, but ANY other
-  // choice is written -- including the empty-string fork filter, which
-  // would otherwise be indistinguishable from "nothing chosen" and snap
-  // back to the default on reload.
-  if (presetSelect.value !== DEFAULT_PRESET) p.set("preset", presetSelect.value);
-  const cat = feedCategoryValue();
-  if (cat) p.set("category", cat);
-  const fn = feedFunctionValue();
-  if (fn) p.set("function", fn);
-  const season = pillValue("feed-cycle-season");
-  if (season) p.set("season", season);
-  const year = document.getElementById("feed-cycle-year").value;
-  if (year) p.set("year", year);
-  const where = pillValue("feed-arrangement");
-  if (where) p.set("where", where);
+  const view = pillValue("feed-view");
+  if (view !== "postings") p.set("view", view);
   const q = document.getElementById("search").value.trim();
   if (q) p.set("q", q);
-  const age = pillValue("feed-age");
-  if (age) p.set("age", age);
+  // Every filter param below belongs to ONE view -- writing it
+  // regardless of which view is active would let a Postings filter you
+  // set earlier and never cleared leak into a Sources deep link that
+  // has nothing to do with it.
+  if (view === "postings") {
+    // The default is omitted so a plain "/" stays clean, but ANY other
+    // choice is written -- including the empty-string fork filter, which
+    // would otherwise be indistinguishable from "nothing chosen" and snap
+    // back to the default on reload.
+    if (presetSelect.value !== DEFAULT_PRESET) p.set("preset", presetSelect.value);
+    const cat = feedCategoryValue();
+    if (cat) p.set("category", cat);
+    const fn = feedFunctionValue();
+    if (fn) p.set("function", fn);
+    const season = pillValue("feed-cycle-season");
+    if (season) p.set("season", season);
+    const year = document.getElementById("feed-cycle-year").value;
+    if (year) p.set("year", year);
+    const where = pillValue("feed-arrangement");
+    if (where) p.set("where", where);
+    const age = pillValue("feed-age");
+    if (age) p.set("age", age);
+  } else if (view === "sources") {
+    const category = document.getElementById("source-category").value;
+    if (category) p.set("source_category", category);
+  } else if (view === "discovery") {
+    const status = document.getElementById("candidate-status").value;
+    if (status) p.set("candidate_status", status);
+  }
   const qs = p.toString();
   history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
 }
@@ -1742,6 +1753,15 @@ async function loadSources() {
     const data = await res.json();
     sourceRows = data.sources || [];
     populateCategoryOptions(document.getElementById("source-category"), sourceRows);
+    // A deep link's ?source_category has nothing to select against until
+    // this fetch resolves -- applied once, here, rather than at boot.
+    if (pendingSourceCategory && sourceRows.some(s => s.category === pendingSourceCategory)) {
+      document.getElementById("source-category").value = pendingSourceCategory;
+      // Reflects the restored value in the badge -- bootFeed()'s own
+      // updateFiltersUi() call already ran by the time this fetch
+      // resolves, and nothing else would refresh it otherwise.
+      updateFiltersUi();
+    }
     renderSources();
   } catch (e) {
     document.getElementById("sources-body").innerHTML = emptyRow(7, "Couldn't reach the API — is the service running?");
@@ -1749,8 +1769,11 @@ async function loadSources() {
   }
 }
 
+// The search box is shared across all four views now -- see
+// updateSearchPlaceholder() -- so what used to be #source-search is
+// just #search read while the Sources view is active.
 function renderSources() {
-  const q = document.getElementById("source-search").value.trim().toLowerCase();
+  const q = document.getElementById("search").value.trim().toLowerCase();
   const category = document.getElementById("source-category").value;
   let filtered = sourceRows;
   if (category) filtered = filtered.filter(s => s.category === category);
@@ -1788,7 +1811,7 @@ async function loadCandidates() {
   document.getElementById("candidates-count").textContent = "loading…";
   try {
     const p = new URLSearchParams({ limit: "500" });
-    const q = document.getElementById("candidate-search").value.trim();
+    const q = document.getElementById("search").value.trim();
     if (q) p.set("q", q);
     const status = document.getElementById("candidate-status").value;
     if (status) p.set("review_status", status);
@@ -1842,7 +1865,7 @@ async function loadDuplicates() {
   document.getElementById("duplicates-count").textContent = "loading…";
   try {
     const p = new URLSearchParams({ limit: "500" });
-    const q = document.getElementById("duplicate-search").value.trim();
+    const q = document.getElementById("search").value.trim();
     if (q) p.set("q", q);
     const res = await fetch(`/duplicates?${p}`);
     const data = await res.json();
@@ -1885,44 +1908,56 @@ function renderDuplicates() {
   `).join("") : emptyRow(4, duplicateRows.length ? "No duplicates match that filter." : "No duplicates caught yet — either genuinely none, or the dedup sweep hasn't run since these sources were added.");
 }
 
-// --- tabs / wiring --------------------------------------------------------
+// --- view lens -------------------------------------------------------------
+//
+// Postings, Sources, Discovery and Duplicates used to be four tabs, each
+// with its own toolbar and its own idea of what "search" meant. They're
+// one page now: the View pill decides which result panel and which
+// filter sections show, and the search bar above is genuinely shared --
+// typing while on Sources searches company names there, switching to
+// Discovery re-runs the same text as a company search against
+// candidates. Only Postings gets true pagination and the industry/
+// function/where/cycle/age axes; the other three keep whatever
+// narrowing they already had (a status select, a category select, or
+// nothing beyond search).
+const VIEW_SEARCH_PLACEHOLDER = {
+  postings: "Search title or company…",
+  sources: "Search by company…",
+  discovery: "Search by company…",
+  duplicates: "Search by company…",
+};
 
-const tabs = { feed: bootFeed, sources: loadSources, candidates: loadCandidates, duplicates: loadDuplicates };
-const tabButtons = [...document.querySelectorAll('[role="tab"]')];
-let loaded = {};
+// Each view loads its data once, on first visit, exactly like the old
+// per-tab `loaded` guard -- switching the lens back and forth doesn't
+// re-fetch, only a filter change inside that view does.
+let viewLoaded = { postings: true };
 
-function selectTab(name, { focus = false } = {}) {
-  tabButtons.forEach(b => {
-    const on = b.dataset.tab === name;
-    b.setAttribute("aria-selected", String(on));
-    b.tabIndex = on ? 0 : -1;
-    if (on && focus) b.focus();
-    document.getElementById(`tab-${b.dataset.tab}`).hidden = !on;
-  });
-  if (!loaded[name]) {
-    loaded[name] = true;
-    tabs[name]();
-  }
-  syncUrl();
+function updateSearchPlaceholder(view) {
+  document.getElementById("search").placeholder = VIEW_SEARCH_PLACEHOLDER[view] || VIEW_SEARCH_PLACEHOLDER.postings;
 }
 
-tabButtons.forEach(btn => btn.addEventListener("click", () => selectTab(btn.dataset.tab)));
+function ensureViewLoaded(view) {
+  if (viewLoaded[view]) return;
+  viewLoaded[view] = true;
+  if (view === "sources") loadSources();
+  else if (view === "discovery") loadCandidates();
+  else if (view === "duplicates") loadDuplicates();
+}
 
-// Arrow-key navigation between tabs, per the WAI-ARIA tabs pattern --
-// without it a keyboard user has to tab through every control on the
-// current panel to reach the next tab.
-document.querySelector('[role="tablist"]').addEventListener("keydown", (e) => {
-  const i = tabButtons.findIndex(b => b.getAttribute("aria-selected") === "true");
-  let next = null;
-  if (e.key === "ArrowRight") next = (i + 1) % tabButtons.length;
-  else if (e.key === "ArrowLeft") next = (i - 1 + tabButtons.length) % tabButtons.length;
-  else if (e.key === "Home") next = 0;
-  else if (e.key === "End") next = tabButtons.length - 1;
-  if (next !== null) {
-    e.preventDefault();
-    selectTab(tabButtons[next].dataset.tab, { focus: true });
-  }
-});
+function onViewChanged() {
+  const view = pillValue("feed-view");
+  document.querySelectorAll("#filters-aside .filter-section[data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== "all" && el.dataset.view !== view;
+  });
+  document.querySelectorAll(".feed-main > [data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== view;
+  });
+  updateSearchPlaceholder(view);
+  ensureViewLoaded(view);
+  updateFiltersUi();
+  syncUrl();
+}
+document.getElementById("feed-view").addEventListener("change", onViewChanged);
 
 wireSortable("tab-feed", feedSort, renderFeed, ["posted_at_ts"]);
 wireSortable("tab-sources", sourceSort, renderSources, ["last_scraped_at"]);
@@ -1934,8 +1969,18 @@ wireSortable("tab-duplicates", duplicateSort, renderDuplicates, ["first_seen"]);
 // did a moment ago.
 presetSelect.addEventListener("change", () => { loadFeed({ resetPage: true }); syncUrl(); });
 // Debounced because each keystroke is now a round trip, not a local
-// filter -- 140ms turns a burst of typing into one request.
-document.getElementById("search").addEventListener("input", debounce(() => { loadFeed({ resetPage: true }); syncUrl(); }));
+// filter -- 140ms turns a burst of typing into one request. Dispatches
+// by VIEW rather than always meaning postings: the box is shared, so
+// what a keystroke should do depends on which of the four result panels
+// is currently showing.
+document.getElementById("search").addEventListener("input", debounce(() => {
+  const view = pillValue("feed-view");
+  if (view === "sources") renderSources();
+  else if (view === "discovery") loadCandidates();
+  else if (view === "duplicates") loadDuplicates();
+  else loadFeed({ resetPage: true });
+  syncUrl();
+}));
 // "input" as well as "change": a combobox fires change only on commit,
 // so typing a full category name and stopping would leave the feed
 // stale until the field lost focus. Debounced for the same reason the
@@ -1988,14 +2033,29 @@ document.getElementById("filters-done").addEventListener("click", closeFilters);
 // a persistent panel there should not close it.
 filtersBackdrop.addEventListener("click", closeFilters);
 
+// Clears only the ACTIVE view's own filters -- resetting while looking
+// at Sources shouldn't silently discard an Industry filter left set on
+// Postings that you'll come back to.
 document.getElementById("filters-reset").addEventListener("click", () => {
-  document.getElementById("feed-category").value = "";
-  document.getElementById("feed-function").value = "";
-  setPillValue("feed-arrangement", "", { silent: true });
-  setPillValue("feed-cycle-season", "", { silent: true });
-  document.getElementById("feed-cycle-year").value = "";
-  setPillValue("feed-age", "", { silent: true });
-  onFilterChanged();
+  const view = pillValue("feed-view");
+  if (view === "sources") {
+    document.getElementById("source-category").value = "";
+    renderSources();
+  } else if (view === "discovery") {
+    document.getElementById("candidate-status").value = "";
+    loadCandidates();
+  } else if (view === "postings") {
+    document.getElementById("feed-category").value = "";
+    document.getElementById("feed-function").value = "";
+    setPillValue("feed-arrangement", "", { silent: true });
+    setPillValue("feed-cycle-season", "", { silent: true });
+    document.getElementById("feed-cycle-year").value = "";
+    setPillValue("feed-age", "", { silent: true });
+    syncCategoryHint();
+    loadFeed({ resetPage: true });
+  }
+  updateFiltersUi();
+  syncUrl();
 });
 
 // Each section announces its own collapsed/expanded state into
@@ -2036,10 +2096,16 @@ document.getElementById("filters-collapse-all").addEventListener("click", (e) =>
   e.currentTarget.setAttribute("aria-label", allCollapsed ? "Collapse all sections" : "Expand all sections");
 });
 
-// How many axes are currently narrowing the feed -- the single count the
-// search bar's own embedded badge and the panel's "Reset all" visibility
-// both read, so the two can never disagree about what counts as active.
+// How many axes are narrowing the CURRENT view -- scoped per view so
+// switching to Sources doesn't show a stale badge count for filters that
+// only apply to Postings. The single count the search bar's own
+// embedded badge and the panel's "Reset all" visibility both read, so
+// the two can never disagree about what counts as active.
 function activeFeedFilterCount() {
+  const view = pillValue("feed-view");
+  if (view === "sources") return document.getElementById("source-category").value ? 1 : 0;
+  if (view === "discovery") return document.getElementById("candidate-status").value ? 1 : 0;
+  if (view === "duplicates") return 0;
   let n = 0;
   if (feedCategoryValue()) n++;
   if (feedFunctionValue()) n++;
@@ -2056,11 +2122,8 @@ function updateFiltersUi() {
   badge.textContent = String(n);
   document.getElementById("filters-reset").hidden = n === 0;
 }
-document.getElementById("source-search").addEventListener("input", debounce(renderSources));
-document.getElementById("source-category").addEventListener("change", renderSources);
-document.getElementById("candidate-search").addEventListener("input", debounce(loadCandidates));
-document.getElementById("candidate-status").addEventListener("change", loadCandidates);
-document.getElementById("duplicate-search").addEventListener("input", debounce(loadDuplicates));
+document.getElementById("source-category").addEventListener("change", () => { renderSources(); updateFiltersUi(); syncUrl(); });
+document.getElementById("candidate-status").addEventListener("change", () => { loadCandidates(); updateFiltersUi(); syncUrl(); });
 
 fetch("/health").then(r => r.json()).then(d => {
   document.getElementById("health-sub").textContent = d.ok ? "API live" : "API unhealthy";
@@ -2489,17 +2552,9 @@ function activeDetailRoute() {
 
 function route() {
   const detail = activeDetailRoute();
-  const tabsWrap = document.querySelector('[role="tablist"]');
   document.getElementById("tab-detail").hidden = !detail;
-  tabsWrap.style.display = detail ? "none" : "";
-  for (const name of Object.keys(tabs)) {
-    if (detail) document.getElementById(`tab-${name}`).hidden = true;
-  }
-  if (!detail) {
-    const current = document.querySelector('[role="tab"][aria-selected="true"]');
-    selectTab(current ? current.dataset.tab : "feed");
-    return;
-  }
+  document.getElementById("tab-feed").hidden = !!detail;
+  if (!detail) return;
   ({ posting: renderPostingPage, company: renderCompanyPage,
      source: renderSourcePage, ats: renderAtsPage })[detail.kind](detail.value);
 }
@@ -2523,13 +2578,38 @@ if (initialParams.get("preset") !== null &&
   presetSelect.value = initialParams.get("preset");
 }
 if (initialParams.get("q")) document.getElementById("search").value = initialParams.get("q");
-// The only pill group whose options are static HTML rather than
-// server-populated, so it can be wired and restored-from-URL immediately
-// rather than waiting on loadFeedCategories.
+// The only two controls whose options/wiring are static HTML rather
+// than server-populated -- the age pill group and the view lens -- so
+// both can be wired and restored-from-URL immediately rather than
+// waiting on loadFeedCategories.
 wirePillGroup("feed-age");
 if (initialParams.get("age") && document.querySelector(`#feed-age .pill-btn[data-value="${CSS.escape(initialParams.get("age"))}"]`)) {
   setPillValue("feed-age", initialParams.get("age"), { silent: true });
 }
+wireLensGroup("feed-view");
+const initialView = initialParams.get("view");
+if (initialView && document.querySelector(`#feed-view .pill-btn[data-value="${CSS.escape(initialView)}"]`)) {
+  setPillValue("feed-view", initialView, { silent: true });
+}
+// candidate-status's options are static HTML, so restoring it now works
+// immediately. source-category's options come from the fetch inside
+// loadSources() itself -- there's nothing to select yet -- so that one
+// is applied inside loadSources(), after populateCategoryOptions runs.
+if (initialParams.get("candidate_status")) document.getElementById("candidate-status").value = initialParams.get("candidate_status");
+const pendingSourceCategory = initialParams.get("source_category") || "";
+// Applies the restored (or default) view's section/panel visibility
+// and placeholder before anything fetches, so the first paint already
+// matches the URL instead of flashing Postings first.
+(function syncInitialView() {
+  const view = pillValue("feed-view");
+  document.querySelectorAll("#filters-aside .filter-section[data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== "all" && el.dataset.view !== view;
+  });
+  document.querySelectorAll(".feed-main > [data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== view;
+  });
+  updateSearchPlaceholder(view);
+})();
 
 // Categories load first so a deep link's ?category is already applied to
 // the very first feed request, rather than being fetched, then filtered
@@ -2540,19 +2620,14 @@ async function bootFeed() {
   await loadFeed();
 }
 
-const initialTab = initialParams.get("tab");
 if (activeDetailRoute()) {
   // Deep link straight to an entity page. The feed still loads behind it
   // so leaving the page is instant rather than a second round trip.
-  loaded.feed = true;
   bootFeed();
   route();
-} else if (initialTab && tabs[initialTab]) {
-  selectTab(initialTab);
-  if (initialTab !== "feed") { loaded.feed = true; bootFeed(); }
 } else {
-  loaded.feed = true;
   bootFeed();
+  ensureViewLoaded(pillValue("feed-view"));
 }
 </script>
 
