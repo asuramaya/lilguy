@@ -416,13 +416,34 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
                     print(f"  {label} descriptions: {desc['filled']} filled, "
                           f"{desc['empty']} none-available, {desc['deferred']} deferred", flush=True)
 
-            # Same "outside if due:" reasoning as descriptions above: a
-            # source sitting on company=tenant has nothing to do with
-            # whether it was due to scrape this cycle.
-            resolved = company_resolution.run(limit=COMPANY_RESOLUTION_BATCH)
-            if resolved["attempted"]:
-                print(f"  company name resolution: {resolved['fixed']} fixed, "
-                      f"{resolved['skipped']} skipped", flush=True)
+            # DISABLED 2026-08-18, same day it shipped: a single job
+            # posting's hiringOrganization.name is not a reliable company
+            # name for a multinational with many regional/subsidiary
+            # postings. Confirmed live and reverted: this sweep replaced
+            # good, clean names with subsidiary noise --
+            # "3M" -> "CHN 3M Specialty Materials (Shanghai)",
+            # "ConocoPhillips" -> "COP AU Op Pty",
+            # "Blackstone" -> "70032 Blackstone Europe LLP",
+            # "Convatec" -> "1029 Dominican Republic" (doesn't even name
+            # the company) -- while it did also produce real
+            # improvements ("ms" -> "711 MS Smith Barney, LLC"). The
+            # win/loss mix was not something an unattended sweep should
+            # have been trusted with, and dozens more well-known
+            # companies (sanofi, intel, nvidia, medtronic, target, ...)
+            # were still queued behind it when this was caught. Left
+            # here, disabled, rather than deleted: the fix-forward half
+            # (WorkdayDescriptions.maybe_fix_company) has the exact same
+            # flaw and needs the same rethink before either runs again --
+            # likely a majority vote across several of a source's
+            # postings, or a cross-check against a real company-name
+            # source (SEC EDGAR's ticker list, already pulled into
+            # discovery.py for an unrelated purpose) instead of trusting
+            # any one posting.
+            #
+            # resolved = company_resolution.run(limit=COMPANY_RESOLUTION_BATCH)
+            # if resolved["attempted"]:
+            #     print(f"  company name resolution: {resolved['fixed']} fixed, "
+            #           f"{resolved['skipped']} skipped", flush=True)
 
             # Outside `if due:` for the same reason as descriptions: this
             # is not tied to any one source's schedule. It exists because

@@ -92,22 +92,27 @@ class WorkdayDescriptions(DescriptionSource):
         return to_display_text((payload.get("jobPostingInfo") or {}).get("jobDescription") or "")
 
     def maybe_fix_company(self, row: dict, payload: dict) -> str | None:
-        # Only when the source's OWN company still equals its tenant --
-        # a strong, specific signal that it was never resolved past the
-        # discovery-time placeholder. A source with any real name already
-        # set (the overwhelming majority -- most Workday sources come
-        # from sources.yaml with a real company from day one) is left
-        # alone even if this happens to differ, since a hand-entered or
-        # already-corrected name outranks a guess from one job's detail
-        # page.
-        tenant = (row.get("tenant") or "").strip()
-        current = (row.get("source_company") or "").strip()
-        if not tenant or current.lower() != tenant.lower():
-            return None
-        name = _clean_company_name((payload.get("hiringOrganization") or {}).get("name") or "")
-        if not name or name.lower() == tenant.lower():
-            return None
-        return name
+        # DISABLED 2026-08-18, same day it shipped -- see
+        # company_resolution.py's own disabling comment for the full
+        # story (this hook has the identical flaw: a single posting's
+        # hiringOrganization.name is not reliable for a multinational
+        # with regional/subsidiary postings, confirmed live to have
+        # replaced clean names like "3M" and "ConocoPhillips" with
+        # subsidiary noise). Left implemented rather than deleted so the
+        # exact-match fix below (a real, separate correction -- ABB's
+        # own tenant is "abb", and case-INsensitive matching wrongly
+        # flagged ABB, Accenture, Expedia, Unilever etc. as "unresolved"
+        # too) isn't lost when this gets a reliable source of truth and
+        # is re-enabled.
+        return None
+        # tenant = (row.get("tenant") or "").strip()
+        # current = (row.get("source_company") or "").strip()
+        # if not tenant or current != tenant:
+        #     return None
+        # name = _clean_company_name((payload.get("hiringOrganization") or {}).get("name") or "")
+        # if not name or name.lower() == tenant.lower():
+        #     return None
+        # return name
 
 
 def fetch_missing_descriptions(limit: int = 10, pace: float = None, session=None) -> dict:
