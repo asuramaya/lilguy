@@ -55,6 +55,7 @@ from cycle import parse_cycle  # noqa: E402
 from work_arrangement import from_location  # noqa: E402
 from liveness import run_liveness_sweep  # noqa: E402
 from stall import check_for_stall  # noqa: E402
+from smartrecruiters_descriptions import fetch_missing_descriptions as fetch_sr_descriptions  # noqa: E402
 from workday_descriptions import fetch_missing_descriptions  # noqa: E402
 
 MAX_WORKERS = 6
@@ -392,10 +393,12 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
             # stall the drain whenever the scrape queue happened to be
             # empty. Small bounded batch, paced, and it only ever touches
             # rows that have never been attempted.
-            desc = fetch_missing_descriptions(limit=WORKDAY_DESCRIPTION_BATCH)
-            if desc["attempted"]:
-                print(f"  workday descriptions: {desc['filled']} filled, "
-                      f"{desc['empty']} none-available, {desc['deferred']} deferred", flush=True)
+            for label, fetch in (("workday", fetch_missing_descriptions),
+                                  ("smartrecruiters", fetch_sr_descriptions)):
+                desc = fetch(limit=WORKDAY_DESCRIPTION_BATCH)
+                if desc["attempted"]:
+                    print(f"  {label} descriptions: {desc['filled']} filled, "
+                          f"{desc['empty']} none-available, {desc['deferred']} deferred", flush=True)
 
             # Outside `if due:` for the same reason as descriptions: this
             # is not tied to any one source's schedule. It exists because

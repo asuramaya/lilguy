@@ -73,10 +73,21 @@ def _session(handler):
     return SimpleNamespace(get=lambda url, **kw: handler(url))
 
 
-def test_external_path_is_recovered_from_the_posting_id():
+def test_the_detail_url_is_rebuilt_from_the_posting_id_and_source_config():
     # Ids are f"workday:{tenant}:{site}:{external_path}" and the path
-    # contains slashes but never colons.
-    assert wd._external_path(PID) == PATH
+    # contains slashes, so the split must be bounded rather than greedy.
+    # Asserted through build_url rather than a private helper: the URL is
+    # the behaviour that matters, and it survives the internals moving
+    # into description_backfill.py.
+    row = {"id": PID, "tenant": "acme", "wd_host": "wd5", "site": "careers"}
+    assert wd.WorkdayDescriptions().build_url(row) == (
+        f"https://acme.wd5.myworkdayjobs.com/wday/cxs/acme/careers{PATH}")
+
+
+def test_a_row_whose_source_config_is_incomplete_is_retired_not_retried():
+    # No tenant means no URL can ever be built, so retrying is pointless.
+    row = {"id": PID, "tenant": None, "wd_host": "wd5", "site": "careers"}
+    assert wd.WorkdayDescriptions().build_url(row) is None
 
 
 def test_a_successful_fetch_stores_readable_text():
