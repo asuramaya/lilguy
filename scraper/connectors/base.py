@@ -24,6 +24,12 @@ class Posting:
     # is ever inferred from the other; a blank means "not known from this
     # source", which is information a guess would destroy.
     job_function: str = ""
+    # Where the job is actually done: "remote" | "hybrid" | "onsite" | "".
+    # Set from the platform's own structured field where one exists;
+    # otherwise derived from an explicit location string by
+    # service/work_arrangement.py at upsert time. Never inferred from
+    # description text -- see that module for why.
+    work_arrangement: str = ""
     posted_at: Optional[str] = None  # ISO date string if the ATS provides one
     # Short, whitespace-collapsed text used for keyword MATCHING (see
     # user_filter.passes). Not for display.
@@ -57,6 +63,7 @@ class Posting:
             "source": self.source,
             "category": self.category,
             "job_function": self.job_function,
+            "work_arrangement": self.work_arrangement,
             "posted_at": self.posted_at,
             "description_snippet": self.description_snippet,
             "description": self.description,

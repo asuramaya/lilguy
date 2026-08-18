@@ -408,3 +408,49 @@ def test_categories_lists_cycle_years_in_timeline_order():
     out = api.categories()
     assert [y["value"] for y in out["cycle_years"]] == [2026, 2027]
     assert out["coverage"]["with_cycle"] == 3
+
+
+# --- work arrangement ---------------------------------------------------
+
+def _arranged(pid, arrangement, location="Remote"):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_entry, company, title, location, url, ats,
+                                   category, status, work_arrangement,
+                                   posted_at_ts, first_seen, last_seen)
+            VALUES (%s, 'x', 'Acme', 'Ops Intern', %s, %s, 'greenhouse', 'Logistics', 'open',
+                    %s, now(), now(), now())
+            """,
+            (pid, location, f"https://x/{pid}", arrangement),
+        )
+
+
+def test_work_arrangement_filters_exactly():
+    _arranged("r", "remote")
+    _arranged("h", "hybrid")
+    _arranged("o", "onsite")
+    assert [p["id"] for p in api.feed(preset="all", work_arrangement="remote")["postings"]] == ["r"]
+    assert [p["id"] for p in api.feed(preset="all", work_arrangement="hybrid")["postings"]] == ["h"]
+
+
+def test_postings_with_no_stated_arrangement_are_never_claimed_as_onsite():
+    # A blank means "no source said", not "onsite". Defaulting the
+    # unknown to a value would be exactly the invention the industry /
+    # function split refused.
+    _arranged("blank", "", location="Austin, TX")
+    assert api.feed(preset="all", work_arrangement="onsite")["total"] == 0
+    assert api.feed(preset="all")["total"] == 1
+
+
+def test_arrangement_filter_is_case_insensitive():
+    _arranged("r", "remote")
+    assert api.feed(preset="all", work_arrangement="Remote")["total"] == 1
+
+
+def test_categories_reports_arrangement_coverage():
+    _arranged("r", "remote")
+    _arranged("blank", "", location="Austin, TX")
+    out = api.categories()
+    assert [a["value"] for a in out["work_arrangements"]] == ["remote"]
+    assert out["coverage"]["with_arrangement"] == 1

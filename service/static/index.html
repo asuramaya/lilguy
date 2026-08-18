@@ -673,6 +673,10 @@
            Coverage is only ~40%, which the hint states rather than
            hides. -->
       <div class="field">
+        <label class="field-icon" for="feed-arrangement">where</label>
+        <select id="feed-arrangement"><option value="">Anywhere</option></select>
+      </div>
+      <div class="field">
         <label class="field-icon" for="feed-cycle-season">cycle</label>
         <select id="feed-cycle-season"><option value="">Any season</option></select>
         <select id="feed-cycle-year"><option value="">Any year</option></select>
@@ -1176,6 +1180,8 @@ function syncUrl() {
   if (season) p.set("season", season);
   const year = document.getElementById("feed-cycle-year").value;
   if (year) p.set("year", year);
+  const where = document.getElementById("feed-arrangement").value;
+  if (where) p.set("where", where);
   const q = document.getElementById("search").value.trim();
   if (q) p.set("q", q);
   const age = document.getElementById("feed-age").value;
@@ -1212,6 +1218,8 @@ function feedQueryUrl() {
   if (season) p.set("cycle_season", season);
   const year = document.getElementById("feed-cycle-year").value;
   if (year) p.set("cycle_year", year);
+  const where = document.getElementById("feed-arrangement").value;
+  if (where) p.set("work_arrangement", where);
   const age = document.getElementById("feed-age").value;
   if (age) p.set("max_age_days", age);
   p.set("limit", String(FEED_PAGE_SIZE));
@@ -1241,10 +1249,13 @@ async function loadFeedCategories() {
     populateCycleSelect("feed-cycle-season", data.cycle_seasons || [], "Any season",
                         v => v.charAt(0).toUpperCase() + v.slice(1));
     populateCycleSelect("feed-cycle-year", data.cycle_years || [], "Any year", String);
+    populateCycleSelect("feed-arrangement", data.work_arrangements || [], "Anywhere",
+                        v => v.charAt(0).toUpperCase() + v.slice(1));
     feedCoverage = data.coverage || null;
     feedCategoriesLoaded = true;
     let restored = false;
-    for (const [param, id] of [["season", "feed-cycle-season"], ["year", "feed-cycle-year"]]) {
+    for (const [param, id] of [["season", "feed-cycle-season"], ["year", "feed-cycle-year"],
+                               ["where", "feed-arrangement"]]) {
       const wanted = initialParams.get(param);
       const el = document.getElementById(id);
       if (wanted && [...el.options].some(o => o.value === wanted)) {
@@ -1575,7 +1586,7 @@ for (const axis of [AXES.industry, AXES.function]) {
   el.addEventListener("change", onCategoryChanged);
   el.addEventListener("input", debounce(onCategoryChanged));
 }
-for (const id of ["feed-cycle-season", "feed-cycle-year"]) {
+for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement"]) {
   document.getElementById(id).addEventListener("change", () => { loadFeed(); syncUrl(); });
 }
 document.getElementById("feed-age").addEventListener("change", () => { loadFeed(); syncUrl(); });

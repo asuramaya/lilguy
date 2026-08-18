@@ -344,7 +344,8 @@ def test_categories_reports_coverage_because_neither_axis_spans_the_corpus():
     # Exact dict on purpose: a new coverage key must be a deliberate act,
     # because every one of them is a claim the UI makes to a reader about
     # what a filter can and cannot see.
-    assert cov == {"total": 3, "with_industry": 2, "with_function": 1, "with_cycle": 0}
+    assert cov == {"total": 3, "with_industry": 2, "with_function": 1,
+                   "with_cycle": 0, "with_arrangement": 0}
 
 
 def test_the_two_axes_filter_independently():

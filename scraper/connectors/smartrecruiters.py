@@ -1,6 +1,12 @@
 import requests
 
+import sys
+from pathlib import Path
+
 from .base import Connector, Posting
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "service"))
+from work_arrangement import HYBRID, REMOTE  # noqa: E402
 
 API = "https://api.smartrecruiters.com/v1/companies/{token}/postings"
 PUBLIC_URL = "https://jobs.smartrecruiters.com/{token}/{job_id}"
@@ -81,6 +87,7 @@ class SmartRecruitersConnector(Connector):
                         source="smartrecruiters",
                         category=entry.get("category", ""),
                         job_function=((job.get("function") or {}).get("label") or ""),
+                        work_arrangement=_arrangement(job.get("location")),
                         posted_at=job.get("releasedDate"),
                     )
                 )
@@ -90,6 +97,18 @@ class SmartRecruitersConnector(Connector):
                 break
 
         return postings
+
+
+def _arrangement(location) -> str:
+    """hybrid wins over remote: the API sets BOTH flags on a hybrid role,
+    and reading remote first would flatten hybrid into remote."""
+    if not isinstance(location, dict):
+        return ""
+    if location.get("hybrid"):
+        return HYBRID
+    if location.get("remote"):
+        return REMOTE
+    return ""
 
 
 def _location(location) -> str:

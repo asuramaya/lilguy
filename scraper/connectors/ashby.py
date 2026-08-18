@@ -1,7 +1,13 @@
 import requests
 
+import sys
+from pathlib import Path
+
 from .base import Connector, Posting
 from .util import to_display_text
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent / "service"))
+from work_arrangement import HYBRID, REMOTE, normalise  # noqa: E402
 
 API = "https://api.ashbyhq.com/posting-api/job-board/{token}"
 
@@ -53,6 +59,13 @@ class AshbyConnector(Connector):
                 continue
 
             plain = job.get("descriptionPlain") or ""
+            # workplaceType is the richer field ("Hybrid", "Onsite",
+            # "Remote"); isRemote is a boolean that cannot express
+            # hybrid. Prefer the former and fall back to the latter,
+            # rather than letting a hybrid role read as remote.
+            arrangement = normalise(job.get("workplaceType"))
+            if not arrangement and job.get("isRemote"):
+                arrangement = REMOTE
             postings.append(
                 Posting(
                     id=f"ashby:{token}:{job_id}",
@@ -62,6 +75,7 @@ class AshbyConnector(Connector):
                     url=job.get("jobUrl") or job.get("applyUrl", ""),
                     source="ashby",
                     category=entry.get("category", ""),
+                    work_arrangement=arrangement,
                     posted_at=job.get("publishedAt"),
                     description_snippet=plain[:600],
                     description=to_display_text(job.get("descriptionHtml") or plain),

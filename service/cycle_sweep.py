@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from cycle import parse_cycle  # noqa: E402
 from db import cursor  # noqa: E402
+from work_arrangement import from_location  # noqa: E402
 
 BATCH = 5000
 
@@ -31,8 +32,8 @@ def run_cycle_sweep(cur, batch: int = BATCH) -> int:
     steady state costs a read and no writes.
     """
     cur.execute(
-        "SELECT id, title, cycle_season, cycle_year FROM postings "
-        "ORDER BY id LIMIT %s",
+        "SELECT id, title, location, ats, cycle_season, cycle_year, work_arrangement "
+        "FROM postings ORDER BY id LIMIT %s",
         (batch,),
     )
     rows = cur.fetchall()
@@ -40,13 +41,21 @@ def run_cycle_sweep(cur, batch: int = BATCH) -> int:
     changed = []
     for row in rows:
         season, year = parse_cycle(row["title"])
-        if season != (row["cycle_season"] or "") or year != row["cycle_year"]:
-            changed.append((season, year, row["id"]))
+        # Location-derived only. A connector's OWN structured value is
+        # set at upsert time and must not be second-guessed here -- this
+        # sweep cannot see it, so it only ever fills a blank rather than
+        # overwriting what the employer said.
+        arrangement = row["work_arrangement"] or from_location(row["location"])
+        if (season != (row["cycle_season"] or "")
+                or year != row["cycle_year"]
+                or arrangement != (row["work_arrangement"] or "")):
+            changed.append((season, year, arrangement, row["id"]))
 
-    for season, year, posting_id in changed:
+    for season, year, arrangement, posting_id in changed:
         cur.execute(
-            "UPDATE postings SET cycle_season = %s, cycle_year = %s WHERE id = %s",
-            (season, year, posting_id),
+            "UPDATE postings SET cycle_season = %s, cycle_year = %s, work_arrangement = %s "
+            "WHERE id = %s",
+            (season, year, arrangement, posting_id),
         )
     return len(changed)
 

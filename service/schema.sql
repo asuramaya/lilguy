@@ -349,3 +349,16 @@ ALTER TABLE postings ADD COLUMN IF NOT EXISTS cycle_year SMALLINT;
 
 CREATE INDEX IF NOT EXISTS postings_cycle_idx
     ON postings (cycle_year, cycle_season) WHERE status = 'open';
+
+-- Where the job is actually done: 'remote' | 'hybrid' | 'onsite' | ''.
+--
+-- Ashby and SmartRecruiters report this structurally and we were
+-- flattening it into a text location and losing it. Everything else
+-- gets it only from a location string that explicitly says so --
+-- reading a stated value in a different place, not inferring one.
+-- Description text is deliberately not consulted; see
+-- service/work_arrangement.py.
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS work_arrangement TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS postings_work_arrangement_idx
+    ON postings (work_arrangement) WHERE status = 'open' AND work_arrangement <> '';

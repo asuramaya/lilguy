@@ -233,6 +233,8 @@ def feed(
     q: Annotated[Optional[str], Query(description="Free-text match against title and company")] = None,
     category: Annotated[Optional[str], Query(description="Exact match on the employer's industry")] = None,
     job_function: Annotated[Optional[str], Query(description="Exact match on the job's function")] = None,
+    work_arrangement: Annotated[Optional[str], Query(
+        description="remote, hybrid or onsite. Only set where a source stated it.")] = None,
     cycle_season: Annotated[Optional[str], Query(
         description="Hiring cycle season: summer, fall, winter or spring")] = None,
     cycle_year: Annotated[Optional[int], Query(description="Hiring cycle year, e.g. 2027")] = None,
@@ -294,6 +296,9 @@ def feed(
         matched = [r for r in matched if (r.get("category") or "") == category]
     if job_function:
         matched = [r for r in matched if (r.get("job_function") or "") == job_function]
+    if work_arrangement:
+        wanted = work_arrangement.strip().lower()
+        matched = [r for r in matched if (r.get("work_arrangement") or "") == wanted]
     # Cycle filtering, with the unstated ones kept but SEPARATED.
     #
     # Only ~40% of titles state a cycle. Excluding the rest would hide
@@ -625,7 +630,8 @@ def categories():
             "SELECT count(*) AS total, "
             "count(*) FILTER (WHERE category IS NOT NULL AND category <> '') AS with_industry, "
             "count(*) FILTER (WHERE job_function IS NOT NULL AND job_function <> '') AS with_function, "
-            "count(*) FILTER (WHERE cycle_year IS NOT NULL OR cycle_season <> '') AS with_cycle "
+            "count(*) FILTER (WHERE cycle_year IS NOT NULL OR cycle_season <> '') AS with_cycle, "
+            "count(*) FILTER (WHERE work_arrangement <> '') AS with_arrangement "
             "FROM postings WHERE status = 'open'"
         )
         coverage = _row_to_filter_dict(cur.fetchone())
@@ -648,10 +654,13 @@ def categories():
         )
         seasons = [_row_to_filter_dict(r) for r in cur.fetchall()]
 
+        arrangements = _axis_counts(cur, "work_arrangement")
+
     return {
         "categories": industries,   # kept: the industry axis under its original name
         "industries": industries,
         "job_functions": functions,
+        "work_arrangements": arrangements,
         "cycle_years": years,
         "cycle_seasons": seasons,
         "coverage": coverage,
