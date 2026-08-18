@@ -139,10 +139,11 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
         cur.execute(
             """
             INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
-                                   ats, category, posted_at, posted_at_ts, posted_at_approx,
+                                   ats, category, job_function, posted_at, posted_at_ts,
+                                   posted_at_approx,
                                    description_snippet, description, status,
                                    dedup_key, company_key, first_seen, last_seen)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s)
             ON CONFLICT (id) DO UPDATE SET
                 title = EXCLUDED.title,
                 location = EXCLUDED.location,
@@ -173,6 +174,10 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 -- one that gets missed again) -- this fix is the fast
                 -- path, not the only path.
                 category = EXCLUDED.category,
+                -- Empty string, not NULL, for "this source does not
+                -- report that axis" -- matching how `category` has
+                -- always spelled it in this table.
+                job_function = EXCLUDED.job_function,
                 company = EXCLUDED.company,
                 posted_at = EXCLUDED.posted_at,
                 -- Exact dates just take the new value (successive
@@ -206,7 +211,8 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
             """,
             (
                 p.id, source_id, source_entry, p.company, p.title, p.location, p.url,
-                p.source, p.category, p.posted_at, posted_ts, posted_approx,
+                p.source, p.category, p.job_function,
+                p.posted_at, posted_ts, posted_approx,
                 p.description_snippet,
                 # NULLIF so "the connector had no description" stores as
                 # NULL (= not fetched yet, eligible) rather than '' (=

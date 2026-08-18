@@ -272,13 +272,25 @@
   /* The category combobox needs room for the longest real labels
      ("Healthcare Marketing Communications"), but must not eat the whole
      toolbar on a narrow screen. */
-  .toolbar .field:has(#feed-category) { min-width: 210px; }
+  .toolbar .field:has(#feed-category), .toolbar .field:has(#feed-function) { min-width: 190px; }
 
+  /* Neutral by default -- it usually reports COVERAGE, which is
+     information rather than a problem. Only an unmatched typo is a
+     warning, and that is what .is-warning is for. */
   .field-hint {
-    color: var(--bad);
+    color: var(--ink-tertiary);
     font-size: 11.5px;
     align-self: center;
+    max-width: 34ch;
+    line-height: 1.35;
   }
+  .field-hint.is-warning { color: var(--bad); }
+
+  /* A function tag is visually distinct from an industry tag so the two
+     vocabularies stay tellable apart at a glance. Not colour alone --
+     the border style carries it too, and the title attribute says which
+     axis it is in words. */
+  .swatch-tag.is-function { border-style: dashed; opacity: 0.88; }
   .field-hint:empty { display: none; }
 
   .toolbar .field-icon {
@@ -614,16 +626,28 @@
         <label class="field-icon" for="preset">preset</label>
         <select id="preset"></select>
       </div>
-      <!-- A combobox, not a <select>: the taxonomy is ~310 labels, and an
-           alphabetical dropdown that long is a scroll, not a control.
-           <input list> gives native typeahead with no build step, and the
-           datalist is ordered by open-posting count so the categories
-           that actually return something come first. -->
+      <!-- Comboboxes, not <select>s: the industry taxonomy alone is ~330
+           labels, and an alphabetical dropdown that long is a scroll,
+           not a control. <input list> gives native typeahead with no
+           build step, and each datalist is ordered by open-posting count
+           so the values that actually return something come first.
+
+           TWO controls because there are two axes. Industry is what the
+           EMPLOYER does and only direct boards know it; function is what
+           the JOB is and only aggregators indexing by function know it.
+           They shared one column until 2026-08-17 and the vocabularies
+           were disjoint. -->
       <div class="field">
-        <label class="field-icon" for="feed-category">category</label>
+        <label class="field-icon" for="feed-category">industry</label>
         <input id="feed-category" list="category-options" autocomplete="off"
-               placeholder="All categories" aria-describedby="category-hint">
+               placeholder="Any industry" aria-describedby="category-hint">
         <datalist id="category-options"></datalist>
+      </div>
+      <div class="field">
+        <label class="field-icon" for="feed-function">role</label>
+        <input id="feed-function" list="function-options" autocomplete="off"
+               placeholder="Any function" aria-describedby="category-hint">
+        <datalist id="function-options"></datalist>
       </div>
       <!-- aria-live so a screen-reader user hears that their typed text
            matched nothing, rather than silently getting the whole feed
@@ -913,6 +937,26 @@ function emptyRow(colspan, message) {
 // Hue-only (fixed S/L tuned for the dark canvas) keeps every generated
 // colour at roughly equal perceived brightness, rather than risking a
 // hash landing on near-black or near-white.
+// One column, two axes. A posting carries an industry OR a function,
+// never both, so showing only `category` would have left 58% of rows
+// blank the moment the two were split apart. Whichever is known is
+// shown, and which axis it is has to be recoverable -- "Healthcare" the
+// function and "Healthcare Services" the industry are different claims,
+// and a reader who cannot tell them apart is back where they started.
+function categoryCell(p) {
+  const industry = p.category || "";
+  const fn = p.job_function || "";
+  const value = industry || fn;
+  if (!value) return "";
+  const isFunction = !industry && !!fn;
+  const title = isFunction
+    ? `Job function: ${value} (this source does not report the employer's industry)`
+    : `Employer industry: ${value}`;
+  return `<span class="swatch-tag${isFunction ? " is-function" : ""}" ` +
+         `style="--swatch-color:${categoryColor(value)}" title="${escapeHtml(title)}">` +
+         `<span class="swatch-label">${escapeHtml(value)}</span></span>`;
+}
+
 function categoryColor(category) {
   let hash = 0;
   for (let i = 0; i < category.length; i++) hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
@@ -932,33 +976,67 @@ function populateCategoryOptions(selectEl, rows) {
 // the count shown as the option's label -- browsers render that beside
 // the value, which turns "which of these 310 is worth picking" from a
 // guess into a visible number.
-let feedCategoryNames = new Set();
-function populateCategoryDatalist(listEl, rows) {
-  feedCategoryNames = new Set(rows.map(r => r.category));
-  listEl.innerHTML = rows.map(r =>
-    `<option value="${escapeHtml(r.category)}" label="${escapeHtml(r.category)} — ${r.open_postings}"></option>`
+// One implementation, two axes. `_axis` rows arrive as {value,
+// open_postings} from /categories.
+const AXES = {
+  industry: { input: "feed-category", list: "category-options", names: new Set(), label: "industry" },
+  function: { input: "feed-function", list: "function-options", names: new Set(), label: "function" },
+};
+let feedCoverage = null;
+
+function populateAxisDatalist(axis, rows) {
+  axis.names = new Set(rows.map(r => r.value));
+  document.getElementById(axis.list).innerHTML = rows.map(r =>
+    `<option value="${escapeHtml(r.value)}" label="${escapeHtml(r.value)} — ${r.open_postings}"></option>`
   ).join("");
 }
 
-// A typed value only filters when it names a real category. Anything
-// else is treated as "All" rather than silently returning zero rows,
-// which is what an exact-match filter over free text would otherwise do
-// on every partially-typed word.
-function feedCategoryValue() {
-  const raw = document.getElementById("feed-category").value.trim();
+// A typed value only filters when it names a real value on that axis.
+// Anything else is treated as "any" rather than silently returning zero
+// rows, which is what an exact-match filter over free text would
+// otherwise do on every partially-typed word.
+function axisValue(axis) {
+  const raw = document.getElementById(axis.input).value.trim();
   if (!raw) return "";
-  if (feedCategoryNames.has(raw)) return raw;
-  const ci = [...feedCategoryNames].find(c => c.toLowerCase() === raw.toLowerCase());
+  if (axis.names.has(raw)) return raw;
+  const ci = [...axis.names].find(c => c.toLowerCase() === raw.toLowerCase());
   return ci || "";
 }
 
+const feedCategoryValue = () => axisValue(AXES.industry);
+const feedFunctionValue = () => axisValue(AXES.function);
+
+// Two distinct things to say, and both matter.
+//
+// A typo needs naming, or the reader silently gets the whole feed back.
+// And COVERAGE needs naming, because neither axis spans the corpus:
+// only direct boards report an industry, only aggregators report a
+// function. Filtering by industry therefore excludes every aggregator
+// posting -- not a bug, but invisible unless said out loud, and an
+// invisible filter hiding most of the corpus is precisely the failure
+// this split was made to fix.
 function syncCategoryHint() {
-  const raw = document.getElementById("feed-category").value.trim();
   const hint = document.getElementById("category-hint");
   if (!hint) return;
-  hint.textContent = raw && !feedCategoryValue()
-    ? `no category named “${raw}” — showing all`
-    : "";
+  const messages = [];
+  for (const axis of [AXES.industry, AXES.function]) {
+    const raw = document.getElementById(axis.input).value.trim();
+    if (raw && !axisValue(axis)) messages.push(`no ${axis.label} named “${raw}” — ignoring it`);
+  }
+  if (!messages.length && feedCoverage) {
+    const industry = feedCategoryValue(), fn = feedFunctionValue();
+    if (industry && fn) {
+      messages.push("industry and function rarely coexist on one posting — expect few results");
+    } else if (industry) {
+      messages.push(`industry is known for ${feedCoverage.with_industry.toLocaleString()} of ` +
+                    `${feedCoverage.total.toLocaleString()} open postings`);
+    } else if (fn) {
+      messages.push(`function is known for ${feedCoverage.with_function.toLocaleString()} of ` +
+                    `${feedCoverage.total.toLocaleString()} open postings`);
+    }
+  }
+  hint.textContent = messages.join(" · ");
+  hint.classList.toggle("is-warning", messages.some(m => m.startsWith("no ")));
 }
 
 function sortRows(rows, key, dir) {
@@ -1035,6 +1113,8 @@ function syncUrl() {
   if (presetSelect.value !== DEFAULT_PRESET) p.set("preset", presetSelect.value);
   const cat = feedCategoryValue();
   if (cat) p.set("category", cat);
+  const fn = feedFunctionValue();
+  if (fn) p.set("function", fn);
   const q = document.getElementById("search").value.trim();
   if (q) p.set("q", q);
   const age = document.getElementById("feed-age").value;
@@ -1064,6 +1144,8 @@ function feedQueryUrl() {
   if (q) p.set("q", q);
   const category = feedCategoryValue();
   if (category) p.set("category", category);
+  const jobFunction = feedFunctionValue();
+  if (jobFunction) p.set("job_function", jobFunction);
   const age = document.getElementById("feed-age").value;
   if (age) p.set("max_age_days", age);
   p.set("limit", String(FEED_PAGE_SIZE));
@@ -1088,14 +1170,21 @@ async function loadFeedCategories() {
     // dormant board above one with four hundred live roles.
     const res = await fetch("/categories");
     const data = await res.json();
-    populateCategoryDatalist(document.getElementById("category-options"), data.categories || []);
+    populateAxisDatalist(AXES.industry, data.industries || []);
+    populateAxisDatalist(AXES.function, data.job_functions || []);
+    feedCoverage = data.coverage || null;
     feedCategoriesLoaded = true;
-    const wanted = initialParams.get("category");
-    if (wanted) {
-      if (feedCategoryNames.has(wanted)) document.getElementById("feed-category").value = wanted;
-      initialParams.delete("category");
-      return true;
+    let restored = false;
+    for (const [param, axis] of [["category", AXES.industry], ["function", AXES.function]]) {
+      const wanted = initialParams.get(param);
+      if (wanted && axis.names.has(wanted)) {
+        document.getElementById(axis.input).value = wanted;
+        restored = true;
+      }
+      initialParams.delete(param);
     }
+    syncCategoryHint();
+    if (restored) return true;
   } catch (e) { /* the filter just stays as "All" */ }
   return false;
 }
@@ -1174,7 +1263,7 @@ function renderFeed() {
       <td class="title-cell truncate" data-label="Title"><a href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
       <td class="company-cell truncate" data-label="Company" title="${escapeHtml(p.company)}">${entityLink("company", p.company_key, p.company)}</td>
       <td class="location-cell truncate" data-label="Location" title="${escapeHtml(p.location || "")}">${locationHtml(p.location)}</td>
-      <td data-label="Category">${p.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(p.category)}"><span class="swatch-label">${escapeHtml(p.category)}</span></span>` : ""}</td>
+      <td data-label="Category">${categoryCell(p)}</td>
       <td class="age-cell mono ${posted.cls}" data-label="Posted" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</td>
       <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</td>
     </tr>
@@ -1370,8 +1459,11 @@ document.getElementById("search").addEventListener("input", debounce(() => { loa
 // stale until the field lost focus. Debounced for the same reason the
 // search box is -- one render per burst of keystrokes, not one per key.
 const onCategoryChanged = () => { syncCategoryHint(); loadFeed(); syncUrl(); };
-document.getElementById("feed-category").addEventListener("change", onCategoryChanged);
-document.getElementById("feed-category").addEventListener("input", debounce(onCategoryChanged));
+for (const axis of [AXES.industry, AXES.function]) {
+  const el = document.getElementById(axis.input);
+  el.addEventListener("change", onCategoryChanged);
+  el.addEventListener("input", debounce(onCategoryChanged));
+}
 document.getElementById("feed-age").addEventListener("change", () => { loadFeed(); syncUrl(); });
 document.getElementById("source-search").addEventListener("input", debounce(renderSources));
 document.getElementById("source-category").addEventListener("change", renderSources);
@@ -1586,7 +1678,8 @@ async function renderPostingPage(id) {
     <div class="kv">
       <div><span class="k">Posted</span><span class="v" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</span></div>
       <div><span class="k">Found</span><span class="v" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</span></div>
-      <div><span class="k">Category</span><span class="v">${escapeHtml(p.category || "—")}</span></div>
+      <div><span class="k">Industry</span><span class="v">${escapeHtml(p.category || "not reported by this source")}</span></div>
+      <div><span class="k">Job function</span><span class="v">${escapeHtml(p.job_function || "not reported by this source")}</span></div>
       <div><span class="k">Platform</span><span class="v">${entityLink("ats", p.ats, p.ats)}</span></div>
       <div><span class="k">Via source</span><span class="v">${escapeHtml(p.source_entry || "—")}</span></div>
       <div><span class="k">Status</span><span class="v">${escapeHtml(p.status)}</span></div>

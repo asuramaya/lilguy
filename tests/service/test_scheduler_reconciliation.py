@@ -29,12 +29,19 @@ pytestmark = pytest.mark.skipif(
 
 import db  # noqa: E402
 import scheduler  # noqa: E402
+from connectors.base import Posting  # noqa: E402
 
 
+# The REAL dataclass, not a SimpleNamespace stand-in. These fakes used to
+# hand-roll every field, which meant adding one to Posting (job_function,
+# 2026-08-17) broke nine tests with "NoneType is not subscriptable" --
+# run_one() swallows a connector error by design, so the AttributeError
+# surfaced as a row that silently failed to insert. Constructing the real
+# type means new fields arrive with their defaults and a fake can never
+# drift from what the code actually consumes.
 def fake_posting(id_, company, title, source="greenhouse", category="Test"):
-    return SimpleNamespace(id=id_, company=company, title=title, location="Remote", url=f"https://x/{id_}",
-                            source=source, category=category, posted_at=None, description_snippet="",
-                            description="")
+    return Posting(id=id_, company=company, title=title, location="Remote",
+                   url=f"https://x/{id_}", source=source, category=category)
 
 
 @pytest.fixture(autouse=True)
@@ -223,9 +230,9 @@ def test_recategorized_source_updates_existing_open_postings(monkeypatch):
 
 
 def _fake_posting_with_date(id_, posted_at):
-    return SimpleNamespace(id=id_, company="Acme", title="Supply Chain Intern", location="Remote",
-                            url=f"https://x/{id_}", source="greenhouse", category="Test",
-                            posted_at=posted_at, description_snippet="", description="")
+    return Posting(id=id_, company="Acme", title="Supply Chain Intern", location="Remote",
+                   url=f"https://x/{id_}", source="greenhouse", category="Test",
+                   posted_at=posted_at)
 
 
 def test_exact_posted_at_is_parsed_into_a_real_timestamp(monkeypatch):

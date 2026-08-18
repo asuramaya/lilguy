@@ -267,8 +267,11 @@ def test_categories_rank_by_open_posting_count_not_alphabetically():
     for i in range(3):
         _categorized(f"log{i}", "Logistics", sid)
     _categorized("aero", "Aerospace & Defense", sid)
-    out = api.categories()["categories"]
-    assert [c["category"] for c in out] == ["Logistics", "Aerospace & Defense"]
+    # Rows are {value, open_postings}: the key is `value` rather than
+    # `category` because one function now serves both axes, and naming it
+    # after one of them would be a lie on the other.
+    out = api.categories()["industries"]
+    assert [c["value"] for c in out] == ["Logistics", "Aerospace & Defense"]
     assert out[0]["open_postings"] == 3
 
 
@@ -278,14 +281,14 @@ def test_categories_omit_ones_with_nothing_open():
     sid = _source("Acme")
     _categorized("open", "Logistics", sid)
     _categorized("gone", "Semiconductors", sid, status="closed")
-    assert [c["category"] for c in api.categories()["categories"]] == ["Logistics"]
+    assert [c["value"] for c in api.categories()["industries"]] == ["Logistics"]
 
 
 def test_categories_ties_break_alphabetically_so_the_order_is_stable():
     sid = _source("Acme")
     _categorized("b", "Semiconductors", sid)
     _categorized("a", "Logistics", sid)
-    assert [c["category"] for c in api.categories()["categories"]] == ["Logistics", "Semiconductors"]
+    assert [c["value"] for c in api.categories()["industries"]] == ["Logistics", "Semiconductors"]
 
 
 # --- ats ---------------------------------------------------------------
@@ -303,3 +306,66 @@ def test_ats_summarizes_the_platform():
 
 def test_unknown_ats_errors():
     assert "error" in api.ats("nosuchats")
+
+
+# --- the two category axes ---------------------------------------------
+
+def _axis_posting(pid, source_id, category="", job_function="", ats="greenhouse"):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_id, source_entry, company, company_key, title, location,
+                                   url, ats, category, job_function, status, first_seen, last_seen)
+            VALUES (%s, %s, 'x', 'Acme', 'acme', 'Ops Intern', 'Remote', %s, %s, %s, %s,
+                    'open', now(), now())
+            """,
+            (pid, source_id, f"https://x/{pid}", ats, category, job_function),
+        )
+
+
+def test_categories_reports_both_axes_separately():
+    sid = _source("Acme")
+    _axis_posting("direct", sid, category="Aerospace & Defense")
+    _axis_posting("agg", sid, job_function="Software Engineering", ats="muse")
+    out = api.categories()
+    assert [c["value"] for c in out["industries"]] == ["Aerospace & Defense"]
+    assert [c["value"] for c in out["job_functions"]] == ["Software Engineering"]
+
+
+def test_categories_reports_coverage_because_neither_axis_spans_the_corpus():
+    # The UI needs these numbers to say out loud that an industry filter
+    # excludes every aggregator posting. An invisible filter hiding most
+    # of the corpus is the exact bug this split fixes.
+    sid = _source("Acme")
+    _axis_posting("a", sid, category="Banking")
+    _axis_posting("b", sid, category="Banking")
+    _axis_posting("c", sid, job_function="Sales", ats="muse")
+    cov = api.categories()["coverage"]
+    assert cov == {"total": 3, "with_industry": 2, "with_function": 1}
+
+
+def test_the_two_axes_filter_independently():
+    sid = _source("Acme")
+    _axis_posting("direct", sid, category="Banking")
+    _axis_posting("agg", sid, job_function="Sales", ats="muse")
+
+    assert [p["id"] for p in api.feed(preset="all", category="Banking")["postings"]] == ["direct"]
+    assert [p["id"] for p in api.feed(preset="all", job_function="Sales")["postings"]] == ["agg"]
+
+
+def test_combining_both_axes_narrows_rather_than_widens():
+    # AND, not OR. Today no posting carries both, so this is empty --
+    # which is the honest answer, not a bug to paper over by
+    # reinterpreting one axis as the other.
+    sid = _source("Acme")
+    _axis_posting("direct", sid, category="Banking")
+    _axis_posting("agg", sid, job_function="Sales", ats="muse")
+    assert api.feed(preset="all", category="Banking", job_function="Sales")["total"] == 0
+
+
+def test_an_axis_with_nothing_open_is_omitted_from_its_list():
+    sid = _source("Acme")
+    _axis_posting("gone", sid, job_function="Sales", ats="muse")
+    with db.cursor() as cur:
+        cur.execute("UPDATE postings SET status = 'closed' WHERE id = 'gone'")
+    assert api.categories()["job_functions"] == []

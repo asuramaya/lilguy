@@ -122,7 +122,13 @@ class MuseConnector(Connector):
                         location=locations,
                         url=job.get("refs", {}).get("landing_page", ""),
                         source="muse",
-                        category=category or ", ".join(job_categories) or "Uncategorized",
+                        # The Muse indexes by JOB FUNCTION, so that is
+                        # what this value is -- it was previously written
+                        # to `category`, which everywhere else in this
+                        # project means the employer's industry. The
+                        # industry of a Muse employer is genuinely
+                        # unknown to us, so it stays empty.
+                        job_function=category or ", ".join(job_categories) or "",
                         posted_at=job.get("publication_date"),
                         description_snippet=strip_html(job.get("contents", "")),
                         description=to_display_text(job.get("contents", "")),

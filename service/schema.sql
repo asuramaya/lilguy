@@ -266,3 +266,41 @@ CREATE INDEX IF NOT EXISTS postings_liveness_due_idx
 ALTER TABLE events DROP CONSTRAINT IF EXISTS events_kind_check;
 ALTER TABLE events ADD CONSTRAINT events_kind_check
     CHECK (kind IN ('promoted', 'disabled', 'reinstated', 'backup_restore_test', 'expired'));
+
+-- Job function, the second category axis.
+--
+-- `category` was holding two incompatible vocabularies at once. Measured
+-- 2026-08-17: direct boards carried 333 distinct labels across 2,035
+-- open postings, all of them the EMPLOYER'S INDUSTRY copied down from
+-- sources.category ("Aerospace & Defense"); The Muse carried 20 labels
+-- across 2,795 postings, all of them the JOB'S FUNCTION ("Healthcare",
+-- "Software Engineering"). Exactly 2 labels of 353 appeared in both, so
+-- the two vocabularies were disjoint and sharing a column.
+--
+-- Reader-visible symptom: filtering "Healthcare" returned Muse nursing
+-- roles but not the direct-board hospital systems, which sat under
+-- "Healthcare Services". Neither answer was wrong; they answered
+-- different questions, and nothing in the UI could tell them apart.
+--
+-- Operator ruling: keep the blanks honest. A direct board does not know
+-- the job's function and an aggregator does not know the employer's
+-- industry, so each axis is populated ONLY where it is genuinely known.
+-- Inference was considered and rejected -- a wrong industry label is
+-- invisible to a reader, and worse than an absent one.
+-- NOT NULL DEFAULT '' to match `category` directly above it. This table
+-- already spells "not known" as the empty string for these labels, and
+-- introducing a NULL that means the same thing would leave two spellings
+-- of one idea for every future query to remember. (`description` is
+-- genuinely three-state -- NULL means "not fetched yet" -- but there is
+-- no third state here.)
+ALTER TABLE postings ADD COLUMN IF NOT EXISTS job_function TEXT NOT NULL DEFAULT '';
+
+-- One-time move of the mislabelled aggregator values onto the axis they
+-- actually describe. Idempotent by the job_function = '' guard: once a
+-- row has moved, category is '' and this cannot fire again.
+UPDATE postings
+   SET job_function = category, category = ''
+ WHERE ats = 'muse' AND job_function = '' AND category <> '';
+
+CREATE INDEX IF NOT EXISTS postings_job_function_idx
+    ON postings (job_function) WHERE status = 'open';

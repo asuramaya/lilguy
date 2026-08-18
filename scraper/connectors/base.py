@@ -12,7 +12,18 @@ class Posting:
     location: str
     url: str
     source: str  # ats connector name, e.g. "greenhouse"
-    category: str = ""  # from sources.yaml, e.g. "Industrial Manufacturing"
+    # The EMPLOYER'S INDUSTRY, from sources.yaml, e.g. "Industrial
+    # Manufacturing". A direct board knows this because the source IS one
+    # company. An aggregator does not, and must leave it empty rather
+    # than put something else here -- these two fields used to share one
+    # column and the vocabularies were disjoint.
+    category: str = ""
+    # The JOB'S FUNCTION, e.g. "Software Engineering". The opposite case:
+    # an aggregator that indexes by function knows this per posting,
+    # while a direct board has no idea and leaves it empty. Neither field
+    # is ever inferred from the other; a blank means "not known from this
+    # source", which is information a guess would destroy.
+    job_function: str = ""
     posted_at: Optional[str] = None  # ISO date string if the ATS provides one
     # Short, whitespace-collapsed text used for keyword MATCHING (see
     # user_filter.passes). Not for display.
@@ -45,6 +56,7 @@ class Posting:
             "url": self.url,
             "source": self.source,
             "category": self.category,
+            "job_function": self.job_function,
             "posted_at": self.posted_at,
             "description_snippet": self.description_snippet,
             "description": self.description,

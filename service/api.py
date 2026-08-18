@@ -141,7 +141,8 @@ def feed(
                     "provider's own date where there is one, not on when this feed first "
                     "saw the posting.")] = None,
     q: Annotated[Optional[str], Query(description="Free-text match against title and company")] = None,
-    category: Annotated[Optional[str], Query(description="Exact category match")] = None,
+    category: Annotated[Optional[str], Query(description="Exact match on the employer's industry")] = None,
+    job_function: Annotated[Optional[str], Query(description="Exact match on the job's function")] = None,
     offset: Annotated[int, Query(ge=0)] = 0,
     limit: Annotated[int, Query(le=5000)] = 200,
 ):
@@ -209,8 +210,17 @@ def feed(
     if max_age_days is not None:
         now = datetime.now(timezone.utc)
         matched = [r for r in matched if not is_too_old(r, max_age_days, now)]
+    # Two INDEPENDENT axes, AND-ed when both are given. Combining them
+    # narrows to postings that know both, which today is none -- a
+    # direct board never carries a function and an aggregator never
+    # carries an industry. That empty result is correct and honest
+    # rather than a bug to paper over: the UI's job is to make the
+    # coverage visible (see /categories' `coverage`), not to silently
+    # reinterpret one axis as the other.
     if category:
         matched = [r for r in matched if (r.get("category") or "") == category]
+    if job_function:
+        matched = [r for r in matched if (r.get("job_function") or "") == job_function]
     if q:
         needle = q.strip().lower()
         if needle:
@@ -454,30 +464,55 @@ def ats(name: str):
             "sources": sources_on_platform}
 
 
+def _axis_counts(cur, column: str) -> list[dict]:
+    # Ranked by OPEN POSTINGS, not by source count. The controls filter
+    # postings, so what a reader wants ranked is what they will actually
+    # get back, and the two diverge sharply -- one aggregator source
+    # carries thousands of postings while most direct boards carry a
+    # handful. Column name is interpolated from a fixed allowlist at the
+    # call sites below, never from user input.
+    cur.execute(
+        f"SELECT {column} AS value, count(*) FILTER (WHERE status = 'open') AS open_postings "
+        f"FROM postings WHERE {column} IS NOT NULL AND {column} <> '' "
+        f"GROUP BY {column} HAVING count(*) FILTER (WHERE status = 'open') > 0 "
+        "ORDER BY open_postings DESC, value"
+    )
+    return [_row_to_filter_dict(r) for r in cur.fetchall()]
+
+
 @app.get("/categories")
 def categories():
-    """Categories ranked by how many OPEN POSTINGS carry them.
+    """The two category axes, each with its own coverage.
 
-    Ranking by source count would be the easier query and the wrong
-    number: the category control filters postings, so what a reader
-    wants ranked is what they'll actually get back. The two diverge
-    sharply here -- one aggregator source carries thousands of postings
-    while most direct boards carry a handful.
+    `category` is the EMPLOYER'S INDUSTRY and only direct boards know it.
+    `job_function` is the JOB'S FUNCTION and only aggregators that index
+    by function know it. They were one column until 2026-08-17, which
+    meant filtering "Healthcare" returned aggregator nursing roles but
+    not the direct-board hospital systems filed under "Healthcare
+    Services" -- two answers to different questions, indistinguishable in
+    the UI.
 
-    The taxonomy is deliberately fine-grained (~310 labels for 579
-    sources; the operator ruled specificity is the point, 2026-08-17),
-    which makes an alphabetical dropdown of every label unusable. This
-    endpoint is what lets the UI put the ones that actually have
-    postings behind them first.
+    `coverage` is not decoration. Neither axis spans the whole corpus,
+    and a filter that silently hides most of it is exactly the bug this
+    split fixes -- so the UI is given the numbers to say so out loud.
     """
     with cursor() as cur:
+        industries = _axis_counts(cur, "category")
+        functions = _axis_counts(cur, "job_function")
         cur.execute(
-            "SELECT category, count(*) FILTER (WHERE status = 'open') AS open_postings "
-            "FROM postings WHERE category IS NOT NULL AND category <> '' "
-            "GROUP BY category HAVING count(*) FILTER (WHERE status = 'open') > 0 "
-            "ORDER BY open_postings DESC, category"
+            "SELECT count(*) AS total, "
+            "count(*) FILTER (WHERE category IS NOT NULL AND category <> '') AS with_industry, "
+            "count(*) FILTER (WHERE job_function IS NOT NULL AND job_function <> '') AS with_function "
+            "FROM postings WHERE status = 'open'"
         )
-        return {"categories": [_row_to_filter_dict(r) for r in cur.fetchall()]}
+        coverage = _row_to_filter_dict(cur.fetchone())
+
+    return {
+        "categories": industries,   # kept: the industry axis under its original name
+        "industries": industries,
+        "job_functions": functions,
+        "coverage": coverage,
+    }
 
 
 # Deliberately reuses feed() rather than reimplementing the query: a
