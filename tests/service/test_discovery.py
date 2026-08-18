@@ -389,3 +389,63 @@ def test_a_failing_commoncrawl_fetcher_does_not_stop_the_others(monkeypatch):
     with db.cursor() as cur:
         cur.execute("SELECT company FROM discovery_candidates")
         assert [r["company"] for r in cur.fetchall()] == ["Visa"]
+
+
+def _candidate(company, review_status="no_match", version=0, next_check_days=90):
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO discovery_candidates (company, review_status, probe_set_version, "
+            "                                  checked_at, next_check_at) "
+            "VALUES (%s, %s, %s, now(), now() + make_interval(days => %s)) RETURNING id",
+            (company, review_status, version, next_check_days),
+        )
+        return cur.fetchone()["id"]
+
+
+def _due_companies(limit=10):
+    """What run_discovery_cycle would pick up, without running probes."""
+    with db.cursor() as cur:
+        cur.execute(
+            "SELECT company FROM discovery_candidates "
+            "WHERE review_status = 'unchecked' "
+            "   OR (review_status IN ('no_match', 'rejected') "
+            "       AND (next_check_at <= now() OR probe_set_version < %s)) "
+            "ORDER BY (review_status = 'unchecked') DESC, "
+            "         (probe_set_version >= %s) DESC, next_check_at "
+            "LIMIT %s",
+            (discovery.PROBE_SET_VERSION, discovery.PROBE_SET_VERSION, limit),
+        )
+        return [r["company"] for r in cur.fetchall()]
+
+
+def test_a_candidate_judged_by_an_older_probe_set_becomes_due_again():
+    # "No ATS found" is a claim about the PROBE SET, not the company.
+    # Confirmed live: "ramp" is a real Ashby board with a live
+    # internship, judged no_match two days before Ashby shipped and
+    # parked for 90 days on the strength of that verdict.
+    _candidate("stale", version=discovery.PROBE_SET_VERSION - 1, next_check_days=90)
+    assert "stale" in _due_companies()
+
+
+def test_a_candidate_judged_by_the_current_probe_set_keeps_its_cooldown():
+    # Otherwise every reseed re-probes the same tokens forever.
+    _candidate("current", version=discovery.PROBE_SET_VERSION, next_check_days=90)
+    assert _due_companies() == []
+
+
+def test_never_checked_candidates_are_not_buried_behind_the_re_examination():
+    # An unchecked row also carries version 0, so a naive "current
+    # version first" rule would put every genuinely new candidate behind
+    # the entire backlog.
+    for i in range(3):
+        _candidate(f"stale{i}", version=discovery.PROBE_SET_VERSION - 1, next_check_days=90)
+    _candidate("brand-new", review_status="unchecked", version=0, next_check_days=0)
+    assert _due_companies(limit=1) == ["brand-new"]
+
+
+def test_a_promoted_candidate_is_never_re_examined_by_a_version_bump():
+    # Its fate lives in sources.status from promotion onward; re-probing
+    # it could overwrite the audit trail for an active source.
+    _candidate("already-live", review_status="promoted",
+               version=discovery.PROBE_SET_VERSION - 1, next_check_days=90)
+    assert _due_companies() == []

@@ -516,6 +516,28 @@ def _probe_jsonld(company: str, domain: str):
 
 PROBES = [_probe_greenhouse, _probe_lever, _probe_ashby, _probe_smartrecruiters, _probe_workday]
 
+# BUMP THIS WHENEVER PROBES CHANGES.
+#
+# A candidate records the version that judged it. "No ATS found" is a
+# claim about the probe set rather than about the company, so a verdict
+# reached without a connector that now exists has to be revisited --
+# and those verdicts carry 14-to-90-day cooldowns, so left alone they
+# stay wrong for months.
+#
+# Found the hard way: "ramp" is a real Ashby board with a live
+# internship, judged no_match two days before Ashby support shipped and
+# parked until November. 14,538 candidates were judged before Ashby and
+# SmartRecruiters existed.
+#
+# Bumping re-opens each affected candidate exactly once, which is why
+# this is a version rather than a blanket reset -- Common Crawl
+# re-supplies the same tokens daily and a reset-on-reseed would re-probe
+# them forever.
+#
+# 1: greenhouse, lever, workday, jsonld
+# 2: + ashby, smartrecruiters (2026-08-18)
+PROBE_SET_VERSION = 2
+
 
 def probe_candidate(company: str) -> dict | None:
     """Try each ATS probe in order, cheapest first. jsonld needs a domain
@@ -603,7 +625,8 @@ def _process_candidate(row: dict) -> dict:
         except Exception as exc:  # noqa: BLE001
             with cursor() as cur:
                 cur.execute(
-                    "UPDATE discovery_candidates SET review_status = 'no_match', checked_at = %s, "
+                    "UPDATE discovery_candidates SET review_status = 'no_match', "
+                    f"probe_set_version = {PROBE_SET_VERSION}, checked_at = %s, "
                     "next_check_at = %s WHERE id = %s",
                     (now, now + timedelta(days=NO_MATCH_RECHECK_DAYS), row["id"]),
                 )
@@ -612,7 +635,8 @@ def _process_candidate(row: dict) -> dict:
     if hit is None:
         with cursor() as cur:
             cur.execute(
-                "UPDATE discovery_candidates SET review_status = 'no_match', checked_at = %s, "
+                "UPDATE discovery_candidates SET review_status = 'no_match', "
+                f"probe_set_version = {PROBE_SET_VERSION}, checked_at = %s, "
                 "next_check_at = %s WHERE id = %s",
                 (now, now + timedelta(days=NO_MATCH_RECHECK_DAYS), row["id"]),
             )
@@ -639,6 +663,7 @@ def _process_candidate(row: dict) -> dict:
             )
             cur.execute(
                 "UPDATE discovery_candidates SET ats = %s, config = %s, review_status = 'promoted', "
+                f"probe_set_version = {PROBE_SET_VERSION}, "
                 "evidence = %s, checked_at = %s WHERE id = %s",
                 (hit["ats"], psycopg2.extras.Json(hit["config"]), psycopg2.extras.Json(verdict["evidence"]),
                  now, row["id"]),
@@ -655,6 +680,7 @@ def _process_candidate(row: dict) -> dict:
             code = verdict.get("code", "")
             cur.execute(
                 "UPDATE discovery_candidates SET ats = %s, config = %s, review_status = 'rejected', "
+                f"probe_set_version = {PROBE_SET_VERSION}, "
                 "evidence = %s, checked_at = %s, next_check_at = %s WHERE id = %s",
                 (hit["ats"], psycopg2.extras.Json(hit["config"]),
                  psycopg2.extras.Json({**verdict["evidence"], "reason": verdict["reason"], "code": code}),
@@ -684,12 +710,25 @@ def run_discovery_cycle(limit: int = 5, max_workers: int = DISCOVERY_CANDIDATE_W
         # confirmed ACTIVE source -- corrupting the audit trail (the
         # actual `sources` row and its data were unaffected, this only
         # broke discovery_candidates' own record of what happened).
+        # The third clause is the connector-addition case: a candidate
+        # judged by an OLDER probe set is due regardless of its cooldown,
+        # because that cooldown was granted on the strength of a verdict
+        # a connector we now have might overturn.
+        #
+        # Ordering has three tiers, and the first one matters: NEVER-
+        # checked candidates go first. They also carry version 0 (the
+        # column default), so a naive "current version first" rule would
+        # have buried every genuinely new candidate behind a 14,000-row
+        # re-examination backlog.
         cur.execute(
             "SELECT id, company, ats, config FROM discovery_candidates "
             "WHERE review_status = 'unchecked' "
-            "   OR (review_status IN ('no_match', 'rejected') AND next_check_at <= now()) "
-            "ORDER BY next_check_at LIMIT %s FOR UPDATE SKIP LOCKED",
-            (limit,),
+            "   OR (review_status IN ('no_match', 'rejected') "
+            "       AND (next_check_at <= now() OR probe_set_version < %s)) "
+            "ORDER BY (review_status = 'unchecked') DESC, "
+            "         (probe_set_version >= %s) DESC, next_check_at "
+            "LIMIT %s FOR UPDATE SKIP LOCKED",
+            (PROBE_SET_VERSION, PROBE_SET_VERSION, limit),
         )
         due = cur.fetchall()
 

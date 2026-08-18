@@ -373,3 +373,19 @@ ALTER TABLE events DROP CONSTRAINT IF EXISTS events_kind_check;
 ALTER TABLE events ADD CONSTRAINT events_kind_check
     CHECK (kind IN ('promoted', 'disabled', 'reinstated', 'backup_restore_test',
                     'expired', 'stalled'));
+
+-- Which generation of the ATS probe matrix judged this candidate.
+--
+-- "No ATS found" is a claim about the PROBE SET, not about the company.
+-- When a connector is added, every verdict reached without it becomes
+-- suspect -- and those verdicts carry 14-to-90-day cooldowns, so they
+-- stay wrong for months.
+--
+-- Confirmed live: "ramp" is a real Ashby board with a live internship,
+-- judged no_match on 2026-08-16, two days before Ashby support shipped,
+-- and parked until 2026-11-14. 14,538 candidates were judged before
+-- Ashby and SmartRecruiters existed.
+--
+-- Defaults to 0 so every pre-existing row is older than the current
+-- version and becomes eligible exactly once.
+ALTER TABLE discovery_candidates ADD COLUMN IF NOT EXISTS probe_set_version SMALLINT NOT NULL DEFAULT 0;
