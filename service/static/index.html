@@ -397,8 +397,8 @@
   .title-cell a { color: var(--ink); text-decoration: none; font-weight: 500; }
   .title-cell a:hover { color: var(--accent); text-decoration: underline; }
 
-  .company-cell { color: var(--ink-secondary); }
-  .location-cell { color: var(--ink-tertiary); font-size: 12.5px; }
+  .company-cell { color: var(--ink-secondary); text-align: center; }
+  .location-cell { color: var(--ink-tertiary); font-size: 12.5px; text-align: center; }
 
   .swatch-tag {
     display: inline-flex;
@@ -2583,6 +2583,77 @@ function humanizeCodedLocation(location) {
   return `${sub}, ${country}`;
 }
 
+// A second, narrower reduction for the other shape this corpus's
+// locations show up in: not a Workday code, but plain text carrying
+// more than a reader needs -- "South San Francisco, California,
+// United States" where "South San Francisco, United States" says the
+// same thing, or "Milford, DE - 255 North Rehoboth Boulevard" where
+// the street address is never useful in a list of postings. Same
+// non-destructive, display-only rule as humanizeCodedLocation: only
+// touches shapes it's confident about, returns null (falls through to
+// the raw string) rather than guess at anything ambiguous -- e.g. a
+// bare 2-letter code in a 2-part location ("Milford, DE") is left
+// alone since DE means Delaware in one table and Germany in the
+// other, and picking wrong is worse than not touching it.
+// Recognizes the last slot of a "City, Region, Country" location as a
+// country -- the full name from COUNTRY_CODE_NAMES, or one of the
+// handful of common abbreviations sources actually ship instead of it.
+const COUNTRY_ALIASES = { usa: "United States", "u.s.a.": "United States", us: "United States", uk: "United Kingdom", "u.k.": "United Kingdom" };
+const COUNTRY_NAME_LOOKUP = new Map(Object.values(COUNTRY_CODE_NAMES).map((n) => [n.toLowerCase(), n]));
+for (const [alias, canonical] of Object.entries(COUNTRY_ALIASES)) COUNTRY_NAME_LOOKUP.set(alias, canonical);
+
+function simplifyVerboseLocation(location) {
+  let s = (location || "").trim();
+  if (!s) return null;
+  let changed = false;
+
+  // Drop a trailing " - <address>" segment, but only when that segment
+  // actually looks like a street address (carries a digit -- a suite
+  // number, a street number) rather than a legitimate place name like
+  // "Singapore City, Singapore - Singapore".
+  const dashParts = s.split(/\s+-\s+/);
+  if (dashParts.length > 1 && /\d/.test(dashParts[dashParts.length - 1])) {
+    s = dashParts.slice(0, -1).join(" - ");
+    changed = true;
+  }
+
+  let parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+
+  // Drop a trailing part that's pure digits (a postal code with no
+  // other content, e.g. "...Binh Duong, 820000").
+  if (parts.length > 1 && /^\d+$/.test(parts[parts.length - 1])) {
+    parts = parts.slice(0, -1);
+    changed = true;
+  }
+
+  // Expand a 2-letter or full-name country code, but only in the last
+  // slot of a 3+-part location -- that position is unambiguous
+  // (City, Region, Country), unlike a bare 2-part "City, XX".
+  if (parts.length >= 3) {
+    const last = parts[parts.length - 1];
+    const expanded = COUNTRY_CODE_NAMES[last.toUpperCase()];
+    if (expanded) {
+      parts[parts.length - 1] = expanded;
+      changed = true;
+    }
+  }
+
+  // "City, Region, Country" reads the same as "City, Country" and is
+  // shorter -- collapse the middle once there's an unambiguous country
+  // name in the last slot to anchor the shape.
+  if (parts.length === 3) {
+    const canonical = COUNTRY_NAME_LOOKUP.get(parts[2].toLowerCase());
+    if (canonical) {
+      parts = [parts[0], canonical];
+      changed = true;
+    }
+  }
+
+  if (!changed) return null;
+  const result = parts.join(", ");
+  return result && result !== location ? result : null;
+}
+
 // A button that narrows the feed to this place, not a link that leaves
 // it. Opening Maps answered "where is this," which a reader can already
 // tell from the text -- "what ELSE is open here" is the more useful
@@ -2601,6 +2672,11 @@ function locationHtml(location) {
     // other Quebec postings, on top of just reading better.
     return `<button type="button" class="entity" title="${escapeHtml(location)} -- show all open postings in ${escapeHtml(coded)}" ` +
            `data-filter-axis="location" data-filter-value="${escapeHtml(coded)}">${escapeHtml(coded)}</button>`;
+  }
+  const simplified = simplifyVerboseLocation(location);
+  if (simplified) {
+    return `<button type="button" class="entity" title="${escapeHtml(location)} -- show all open postings in ${escapeHtml(simplified)}" ` +
+           `data-filter-axis="location" data-filter-value="${escapeHtml(simplified)}">${escapeHtml(simplified)}</button>`;
   }
   const text = escapeHtml(location || "—");
   if (!mapsUrl(location)) return text;
