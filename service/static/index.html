@@ -382,7 +382,16 @@
      6-line row height for postings sitting next to it that have a
      completely ordinary "Austin, TX". This is a LAYOUT decision, not a
      content one -- it doesn't try to parse or shorten what the source
-     actually said, just refuses to let it consume the page. */
+     actually said, just refuses to let it consume the page.
+
+     Goes on an inner wrapper, NEVER the <td> itself -- confirmed live,
+     -webkit-line-clamp requires display:-webkit-box, and setting that
+     directly on a table cell overrides its display:table-cell. The
+     cell stops participating in table layout at all: every cell in the
+     row becomes its own full-width block stacked vertically instead of
+     sitting in its column, which is where the huge dead space between
+     Title/Company/Location and the "sorted by date poste[d]" overflow
+     off the right edge both came from -- not two bugs, one cause. */
   .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
   .title-cell a { color: var(--ink); text-decoration: none; font-weight: 500; }
@@ -1934,9 +1943,9 @@ function renderFeed() {
     }
     return divider + `
     <tr>
-      <td class="title-cell clamp-2" data-label="Title"><a href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
-      <td class="company-cell clamp-2" data-label="Company" title="${escapeHtml(p.company)}">${entityLink("company", p.company_key, p.company)}</td>
-      <td class="location-cell clamp-2" data-label="Location" title="${escapeHtml(p.location || "")}">${locationHtml(p.location)}</td>
+      <td class="title-cell" data-label="Title"><a class="clamp-2" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
+      <td class="company-cell" data-label="Company" title="${escapeHtml(p.company)}"><span class="clamp-2">${entityLink("company", p.company_key, p.company)}</span></td>
+      <td class="location-cell" data-label="Location" title="${escapeHtml(p.location || "")}"><span class="clamp-2">${locationHtml(p.location)}</span></td>
       <td data-label="Category">${categoryCell(p)}</td>
       <td class="age-cell mono ${posted.cls}" data-label="Posted" title="${escapeHtml(posted.title)}"${posted.label ? ` aria-label="${escapeHtml(posted.label)}"` : ""}>${escapeHtml(posted.text)}</td>
       <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</td>
