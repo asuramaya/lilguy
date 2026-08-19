@@ -1934,7 +1934,7 @@ function renderFeed() {
     }
     return divider + `
     <tr>
-      <td class="title-cell truncate" data-label="Title"><a href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
+      <td class="title-cell clamp-2" data-label="Title"><a href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
       <td class="company-cell clamp-2" data-label="Company" title="${escapeHtml(p.company)}">${entityLink("company", p.company_key, p.company)}</td>
       <td class="location-cell clamp-2" data-label="Location" title="${escapeHtml(p.location || "")}">${locationHtml(p.location)}</td>
       <td data-label="Category">${categoryCell(p)}</td>
@@ -2514,6 +2514,66 @@ function mapsUrl(location) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(", "))}`;
 }
 
+// Some Workday tenants configure their OWN location field as an
+// internal facilities code, not a place -- confirmed live:
+// "CA-QC-LONGUEUIL-J01 ~ 1000 Blvd Marie-Victorin ~ J01 BLDG" is
+// globalhr's raw value, verbatim, for a posting in Longueuil, Quebec.
+// That is a DATA problem (the source itself never published a clean
+// location), not a display bug -- so this is a display-only,
+// non-destructive reduction to "country, region", never a rewrite of
+// what's actually stored. Deliberately narrow: it only recognizes the
+// specific two-letter-code-prefix shape ("XX-YY-...") and only
+// expands codes it actually has a name for, rather than trying to
+// parse arbitrary free text -- the same lesson company_resolution.py
+// just taught the hard way about trusting one heuristic to handle
+// every shape a source might send.
+const CODE_PREFIX_RE = /^([A-Z]{2})-([A-Z]{2,3})-/;
+
+const COUNTRY_CODE_NAMES = {
+  US: "United States", CA: "Canada", MX: "Mexico", GB: "United Kingdom", IE: "Ireland",
+  DE: "Germany", FR: "France", ES: "Spain", IT: "Italy", NL: "Netherlands", BE: "Belgium",
+  CH: "Switzerland", AT: "Austria", SE: "Sweden", NO: "Norway", DK: "Denmark", FI: "Finland",
+  PL: "Poland", PT: "Portugal", CZ: "Czechia", RO: "Romania", HU: "Hungary", GR: "Greece",
+  IN: "India", CN: "China", JP: "Japan", KR: "South Korea", SG: "Singapore", MY: "Malaysia",
+  TH: "Thailand", VN: "Vietnam", PH: "Philippines", ID: "Indonesia", AU: "Australia",
+  NZ: "New Zealand", BR: "Brazil", AR: "Argentina", CL: "Chile", CO: "Colombia", PE: "Peru",
+  ZA: "South Africa", AE: "United Arab Emirates", SA: "Saudi Arabia", IL: "Israel", TR: "Turkey",
+};
+
+// Only the two subnational vocabularies actually common in this
+// corpus's Workday-coded locations. A code this table doesn't recognize
+// still renders as-is (e.g. "XX, Mexico") -- short and honest, rather
+// than guessed at.
+const US_STATE_CODE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
+  CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
+  IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
+  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada",
+  NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York", NC: "North Carolina",
+  ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas",
+  UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia",
+  WI: "Wisconsin", WY: "Wyoming", DC: "D.C.",
+};
+
+const CA_PROVINCE_CODE_NAMES = {
+  AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
+  NL: "Newfoundland and Labrador", NS: "Nova Scotia", ON: "Ontario", PE: "Prince Edward Island",
+  QC: "Quebec", SK: "Saskatchewan", NT: "Northwest Territories", NU: "Nunavut", YT: "Yukon",
+};
+
+function humanizeCodedLocation(location) {
+  const m = CODE_PREFIX_RE.exec((location || "").trim());
+  if (!m) return null;
+  const [, countryCode, subCode] = m;
+  const country = COUNTRY_CODE_NAMES[countryCode];
+  if (!country) return null;   // unrecognized country code -- don't guess at the rest either
+  const subTable = countryCode === "US" ? US_STATE_CODE_NAMES : countryCode === "CA" ? CA_PROVINCE_CODE_NAMES : null;
+  const sub = subTable?.[subCode] || subCode;
+  return `${sub}, ${country}`;
+}
+
 // A button that narrows the feed to this place, not a link that leaves
 // it. Opening Maps answered "where is this," which a reader can already
 // tell from the text -- "what ELSE is open here" is the more useful
@@ -2524,6 +2584,15 @@ function mapsUrl(location) {
 // duplicating that logic -- the URL itself just isn't used for the
 // href anymore.
 function locationHtml(location) {
+  const coded = humanizeCodedLocation(location);
+  if (coded) {
+    // Filtering by the CODE itself would only ever match this one
+    // posting (nothing else on the corpus carries the same facility
+    // string) -- filtering by "Quebec, Canada" can actually surface
+    // other Quebec postings, on top of just reading better.
+    return `<button type="button" class="entity" title="${escapeHtml(location)} -- show all open postings in ${escapeHtml(coded)}" ` +
+           `data-filter-axis="location" data-filter-value="${escapeHtml(coded)}">${escapeHtml(coded)}</button>`;
+  }
   const text = escapeHtml(location || "—");
   if (!mapsUrl(location)) return text;
   const place = placeParts(location).join(", ");
