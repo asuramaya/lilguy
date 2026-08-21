@@ -137,6 +137,50 @@ async def _run_frontend_headless_test():
                     assert "matching" in (eval_result["countText"] or "").lower() or "postings" in (eval_result["countText"] or "").lower()
                     break
 
+            # 2. Test search filtering
+            search_expr = """
+            (function() {
+                const s = document.getElementById('search');
+                s.value = 'software';
+                s.dispatchEvent(new Event('input', { bubbles: true }));
+                return new Promise(resolve => setTimeout(() => {
+                    resolve(JSON.stringify({
+                        rowCount: document.querySelectorAll('#feed-body tr').length,
+                        countText: document.getElementById('feed-count')?.textContent
+                    }));
+                }, 300));
+            })()
+            """
+            await ws.send(json.dumps({
+                "id": 4,
+                "method": "Runtime.evaluate",
+                "params": {"expression": search_expr, "awaitPromise": True}
+            }))
+
+            while True:
+                resp_msg = await ws.recv()
+                data = json.loads(resp_msg)
+                if data.get("id") == 4:
+                    search_res = json.loads(data["result"]["result"]["value"])
+                    assert search_res["rowCount"] > 0, f"Expected search results for 'software', got {search_res}"
+                    break
+
+            # 3. Test location alignment style
+            align_expr = "window.getComputedStyle(document.querySelector('.location-cell')).textAlign"
+            await ws.send(json.dumps({
+                "id": 5,
+                "method": "Runtime.evaluate",
+                "params": {"expression": align_expr}
+            }))
+
+            while True:
+                resp_msg = await ws.recv()
+                data = json.loads(resp_msg)
+                if data.get("id") == 5:
+                    align_val = data["result"]["result"]["value"]
+                    assert align_val == "left", f"Expected location-cell text-align to be 'left', got '{align_val}'"
+                    break
+
     finally:
         chrome_proc.terminate()
         httpd.shutdown()
