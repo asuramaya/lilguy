@@ -1958,11 +1958,11 @@ async function loadFeedCategories() {
   if (feedCategoriesLoaded) return;
   if (EDGE_DATA.active && EDGE_DATA.meta) {
     const data = {
-      industries: Object.keys(EDGE_DATA.meta.categories || {}).map(k => ({ name: k, count: EDGE_DATA.meta.categories[k] })),
-      job_functions: Object.keys(EDGE_DATA.meta.job_functions || {}).map(k => ({ name: k, count: EDGE_DATA.meta.job_functions[k] })),
-      cycle_seasons: Object.keys(EDGE_DATA.meta.cycle_seasons || {}),
-      cycle_years: Object.keys(EDGE_DATA.meta.cycle_years || {}).map(Number).sort((a,b)=>b-a),
-      work_arrangements: Object.keys(EDGE_DATA.meta.work_arrangements || {}),
+      industries: Object.entries(EDGE_DATA.meta.categories || {}).map(([val, count]) => ({ value: val, open_postings: count })),
+      job_functions: Object.entries(EDGE_DATA.meta.job_functions || {}).map(([val, count]) => ({ value: val, open_postings: count })),
+      cycle_seasons: Object.entries(EDGE_DATA.meta.cycle_seasons || {}).map(([val, count]) => ({ value: val, open_postings: count })),
+      cycle_years: Object.entries(EDGE_DATA.meta.cycle_years || {}).map(([val, count]) => ({ value: Number(val), open_postings: count })).sort((a,b) => b.value - a.value),
+      work_arrangements: Object.entries(EDGE_DATA.meta.work_arrangements || {}).map(([val, count]) => ({ value: val, open_postings: count })),
       coverage: {
         total: EDGE_DATA.meta.total_open_postings,
         with_industry: Object.values(EDGE_DATA.meta.categories || {}).reduce((a,b)=>a+b, 0),
@@ -1972,10 +1972,10 @@ async function loadFeedCategories() {
     populateAxisDatalist(AXES.industry, data.industries || []);
     populateAxisDatalist(AXES.function, data.job_functions || []);
     populatePillGroup("feed-cycle-season", data.cycle_seasons || [], "Any season",
-                      v => v.charAt(0).toUpperCase() + v.slice(1));
+                      v => v ? (v.charAt(0).toUpperCase() + v.slice(1)) : "");
     populateCycleSelect("feed-cycle-year", data.cycle_years || [], "Any year", String);
     populatePillGroup("feed-arrangement", data.work_arrangements || [], "Anywhere",
-                      v => v.charAt(0).toUpperCase() + v.slice(1));
+                      v => v ? (v.charAt(0).toUpperCase() + v.slice(1)) : "");
     feedCoverage = data.coverage || null;
     feedCategoriesLoaded = true;
     return;
