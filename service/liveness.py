@@ -33,6 +33,7 @@ import sys
 import time
 from pathlib import Path
 
+import re
 import psycopg2.extras
 import requests
 
@@ -54,6 +55,27 @@ UA = {
 }
 
 GONE_STATUSES = (404, 410)
+WORKDAY_GONE_STATUSES = (403, 404, 410)
+GONE_PHRASES = (
+    "page doesn't exist",
+    "page does not exist",
+    "job is no longer available",
+    "position is no longer available",
+    "job posting has expired",
+    "this posting has expired",
+    "no longer accepting applications",
+    "this job has been closed",
+)
+
+
+def _workday_cxs_url(posting_id: str, url: str) -> str | None:
+    parts = (posting_id or "").split(":", 3)
+    if len(parts) == 4 and parts[3]:
+        tenant, site, path = parts[1], parts[2], parts[3]
+        m = re.search(r"\.(wd\d+)\.myworkdayjobs\.com", url or "")
+        wd_host = m.group(1) if m else "wd5"
+        return f"https://{tenant}.{wd_host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}{path}"
+    return None
 
 # Re-check cadence for a posting that IS alive. Old listings are checked
 # again sooner because age is what correlates with death -- a posting
@@ -125,8 +147,23 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
         # catch-all around code that talks to two different systems can
         # only ever tell you about the one you guessed at.
         try:
-            resp = http.get(row["url"], headers=UA, timeout=TIMEOUT, allow_redirects=True)
-            status = resp.status_code
+            pid = row.get("id") or ""
+            p_url = row.get("url") or ""
+            is_workday = pid.startswith("workday:") or row.get("ats") == "workday"
+            cxs_url = _workday_cxs_url(pid, p_url) if is_workday else None
+
+            if cxs_url:
+                cxs_headers = {"User-Agent": UA["User-Agent"], "Accept": "application/json"}
+                resp = http.get(cxs_url, headers=cxs_headers, timeout=TIMEOUT)
+                status = resp.status_code
+                if status in WORKDAY_GONE_STATUSES:
+                    status = 404
+            else:
+                resp = http.get(p_url, headers=UA, timeout=TIMEOUT, allow_redirects=True)
+                status = resp.status_code
+                resp_text = getattr(resp, "text", "") or ""
+                if status == 200 and any(phrase in resp_text.lower() for phrase in GONE_PHRASES):
+                    status = 404
         except Exception:  # noqa: BLE001 - a network error is "did not find out"
             status = None
 

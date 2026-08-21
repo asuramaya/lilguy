@@ -712,6 +712,15 @@ def standardize_posting(p: dict) -> dict:
             ats_val = d["id"].split(":")[0]
         d["ats"] = ats_val or "direct"
 
+    # Strip bare requisition IDs (e.g., "R5036878", "00638135") from description fields
+    req_id_re = re.compile(r"^[A-Za-z0-9_-]{3,25}$")
+    desc_val = (d.get("description") or "").strip()
+    snip_val = (d.get("description_snippet") or "").strip()
+    if desc_val and req_id_re.match(desc_val):
+        d["description"] = ""
+    if snip_val and req_id_re.match(snip_val):
+        d["description_snippet"] = ""
+
     # Intelligently infer category while preserving Uncategorized fallbacks (never drop)
     d["category"] = infer_category(d["company"], d["title"], d["job_function"], d.get("category", ""))
 
