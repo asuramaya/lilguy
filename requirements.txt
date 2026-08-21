@@ -1,0 +1,13 @@
+# lilguy core dependencies
+fastapi>=0.110.0
+uvicorn>=0.28.0
+requests>=2.31.0
+psycopg2-binary>=2.9.9
+pyyaml>=6.0.1
+pydantic>=2.6.0
+beautifulsoup4>=4.12.0
+websockets>=12.0
+
+# Testing & E2E verification
+pytest>=8.0.0
+anyio>=4.0.0

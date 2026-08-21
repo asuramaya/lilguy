@@ -6,6 +6,9 @@
 // @match        https://job-boards.greenhouse.io/*
 // @match        https://boards.greenhouse.io/*
 // @match        https://jobs.lever.co/*
+// @match        https://jobs.ashbyhq.com/*
+// @match        https://ats.rippling.com/*
+// @match        https://*.smartrecruiters.com/*
 // @match        https://*.myworkdayjobs.com/*
 // @grant        GM_setValue
 // @grant        GM_getValue
