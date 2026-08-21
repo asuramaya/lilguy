@@ -3108,17 +3108,17 @@ async function renderPostingPage(id) {
         ? "This source publishes no description for this posting."
         : "Description not fetched yet — it arrives on the next scrape of this source."}</div>`;
 
-  const alsoListed = data.also_listed.length ? `
+  const alsoListedHtml = (alsoListed || []).length ? `
     <div class="section-title">Also listed via</div>
-    <div class="mini-list">${data.also_listed.map(d => `
+    <div class="mini-list">${alsoListed.map(d => `
       <a class="mini-row" href="${entityHref("posting", d.id)}" data-route="posting" data-value="${escapeHtml(d.id)}">
-        <span>${escapeHtml(d.source_entry)} <span class="meta">· ${escapeHtml(d.ats)}</span></span>
-        <span class="meta">${escapeHtml(d.status)}</span>
+        <span>${escapeHtml(d.source_entry || d.company || "")} <span class="meta">· ${escapeHtml(d.ats || "")}</span></span>
+        <span class="meta">${escapeHtml(d.status || "active")}</span>
       </a>`).join("")}</div>` : "";
 
-  const siblings = data.same_company.length ? `
+  const siblingsHtml = (siblings || []).length ? `
     <div class="section-title">Other openings at ${escapeHtml(p.company)}</div>
-    <div class="mini-list">${data.same_company.map(o => `
+    <div class="mini-list">${siblings.map(o => `
       <a class="mini-row" href="${entityHref("posting", o.id)}" data-route="posting" data-value="${escapeHtml(o.id)}">
         <span>${escapeHtml(o.title)}</span>
         <span class="meta">${escapeHtml(o.location || "")}</span>
@@ -3139,12 +3139,12 @@ async function renderPostingPage(id) {
       <div><span class="k">Job function</span><span class="v">${escapeHtml(p.job_function || "not reported by this source")}</span></div>
       <div><span class="k">Platform</span><span class="v">${entityLink("ats", p.ats, p.ats)}</span></div>
       <div><span class="k">Via source</span><span class="v">${escapeHtml(p.source_entry || "—")}</span></div>
-      <div><span class="k">Status</span><span class="v">${escapeHtml(p.status)}</span></div>
+      <div><span class="k">Status</span><span class="v">${escapeHtml(p.status || "active")}</span></div>
     </div>
     <div class="section-title">Description</div>
     ${description}
-    ${alsoListed}
-    ${siblings}`;
+    ${alsoListedHtml}
+    ${siblingsHtml}`;
 }
 
 // --- company page -------------------------------------------------------
