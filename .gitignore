@@ -15,3 +15,5 @@ MY_FEED.md
 # documents the shape, this file holds the actual generated values and
 # must never be committed. See docs/service-architecture.md.
 .env
+.wrangler/
+dist/
