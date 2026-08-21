@@ -19,10 +19,10 @@ if [ -f "/.dockerenv" ] || [ -f "/srv/internships/.env" ]; then
 else
   # Running locally
   PY_BIN="python3"
-  if [ -x ".venv-test/bin/python" ]; then
-    PY_BIN=".venv-test/bin/python"
-  elif [ -x ".venv/bin/python" ]; then
+  if [ -x ".venv/bin/python" ]; then
     PY_BIN=".venv/bin/python"
+  elif [ -x ".venv-test/bin/python" ]; then
+    PY_BIN=".venv-test/bin/python"
   fi
   $PY_BIN service/edge_export.py --out-dir "${OUT_DIR}" || {
     echo "--> Trying via ssh to hd-agent to export database..."

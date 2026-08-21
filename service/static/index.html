@@ -503,54 +503,212 @@
   .legend b { color: var(--ink-secondary); font-weight: 500; }
 
 
-  /* --- entity pages ------------------------------------------------ */
-  .detail { padding-top: 4px; }
-  .crumb {
-    display: inline-flex; align-items: center; gap: 6px;
-    background: none; border: none; padding: 4px 0; margin-bottom: 14px;
-    color: var(--ink-tertiary); font-family: inherit; font-size: 12.5px; cursor: pointer;
+  .header-gh-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    color: var(--ink-secondary);
+    text-decoration: none;
+    flex-shrink: 0;
+    transition: color 0.15s ease, background 0.15s ease, transform 0.15s ease;
   }
-  .crumb:hover { color: var(--accent); }
-  .detail h2 { margin: 0 0 4px; font-size: 21px; font-weight: 650; letter-spacing: -0.01em; }
-  .detail .sub { color: var(--ink-secondary); font-size: 13px; margin-bottom: 18px; }
-  .detail .sub a { color: var(--ink-secondary); }
+  .header-gh-link:hover {
+    color: var(--ink);
+    background: var(--row-hover);
+  }
+  .header-gh-link:active {
+    transform: scale(0.95);
+  }
 
-  .kv { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 20px; }
-  .kv div { display: flex; flex-direction: column; gap: 2px; }
-  .kv dt, .kv .k {
-    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  /* --- entity pages & rich detail layout ----------------------------- */
+  .detail { padding-top: 8px; }
+  
+  .detail-nav-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    font-size: 13px;
+  }
+  .crumb-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--row);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 12px;
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 550;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .crumb-back-btn:hover {
+    background: var(--row-hover);
+    border-color: var(--accent-dim);
+    color: var(--accent);
+  }
+  .crumb-sep {
+    color: var(--ink-tertiary);
+    user-select: none;
+  }
+  .crumb-item {
+    color: var(--ink-secondary);
+    text-decoration: none;
+  }
+  .crumb-item:hover {
+    color: var(--accent);
+  }
+  .crumb-current {
+    color: var(--ink-tertiary);
+    max-width: 380px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-header {
+    margin-bottom: 18px;
+  }
+  .detail-title {
+    margin: 0 0 8px;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    line-height: 1.25;
+    color: var(--ink);
+  }
+  .detail-sub {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    color: var(--ink-secondary);
+    font-size: 13.5px;
+    margin-bottom: 12px;
+  }
+  .company-lead {
+    font-weight: 600;
+    color: var(--ink);
+  }
+  .sub-sep {
     color: var(--ink-tertiary);
   }
-  .kv dd, .kv .v { margin: 0; font-size: 13px; color: var(--ink); }
-
-  .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 8px 14px; border-radius: 5px; font-size: 13px; font-family: inherit;
-    text-decoration: none; cursor: pointer; border: 1px solid var(--border-strong);
-    background: var(--row); color: var(--ink);
+  .detail-badges-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
   }
-  .btn:hover { border-color: var(--accent-dim); color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #1a1206; font-weight: 600; }
-  .btn.primary:hover { background: #f0a03d; color: #1a1206; }
+
+  .detail-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin: 20px 0 24px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid var(--border-strong);
+    background: var(--row);
+    color: var(--ink);
+    transition: all 0.15s ease;
+  }
+  .btn:hover {
+    border-color: var(--accent-dim);
+    color: var(--accent);
+    background: var(--row-hover);
+  }
+  .btn.btn-lg {
+    padding: 9px 16px;
+    font-size: 13.5px;
+  }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #1a1206;
+    font-weight: 650;
+  }
+  .btn.primary:hover {
+    background: #f0a03d;
+    border-color: #f0a03d;
+    color: #1a1206;
+  }
+
+  .detail-kv-card {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 14px 18px;
+    background: var(--row);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 18px 0 24px;
+  }
+  .kv-item {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .kv-item .k {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-tertiary);
+    font-weight: 550;
+  }
+  .kv-item .v {
+    font-size: 13px;
+    color: var(--ink);
+    word-break: break-word;
+  }
 
   .section-title {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--ink-tertiary); margin: 26px 0 10px;
-    border-bottom: 1px solid var(--border); padding-bottom: 6px;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    color: var(--ink-tertiary);
+    margin: 28px 0 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
   }
-
-  /* Job descriptions are stored as plain text with real line breaks (see
-     to_display_text) precisely so they can be rendered without a
-     sanitizer -- pre-wrap honours that structure without markup. */
-  .description {
+  
+  .description-card {
+    background: var(--row);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 24px;
+  }
+  .description-body {
     white-space: pre-wrap;
     font-size: 13.5px;
-    line-height: 1.65;
+    line-height: 1.7;
     color: var(--ink-secondary);
-    max-width: 68ch;
+    max-width: 78ch;
+    word-break: break-word;
   }
-  .description-missing { color: var(--ink-tertiary); font-style: italic; font-size: 13px; }
+  .description-missing {
+    color: var(--ink-tertiary);
+    font-style: italic;
+    font-size: 13px;
+  }
 
   .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
@@ -1120,6 +1278,29 @@
       gap: 8px;
       padding-bottom: 60px;
     }
+
+    /* Mobile Detail Page Layout */
+    .detail { padding-top: 4px; }
+    .detail-title { font-size: 18px; }
+    .detail-actions {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .detail-actions .btn {
+      width: 100%;
+      justify-content: center;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .detail-kv-card {
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 12px;
+      padding: 12px;
+    }
+    .description-card {
+      padding: 14px;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -1144,6 +1325,11 @@
           &#9776;<span id="filters-badge" class="filters-badge">0</span>
         </button>
       </div>
+      <a href="https://github.com/asuramaya/lilguy" target="_blank" rel="noopener" class="header-gh-link" aria-label="GitHub Repository" title="GitHub Repository">
+        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+      </a>
     </div>
   </div>
 </header>
@@ -2992,17 +3178,36 @@ if (brandHome) {
   brandHome.addEventListener("click", (e) => {
     if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.button === 0) {
       e.preventDefault();
+      // Leave detail page if viewing a single role, company or source
+      leaveDetail();
+
+      // Clear search input
       const searchInput = document.getElementById("search");
       if (searchInput) searchInput.value = "";
       const searchClear = document.getElementById("search-clear");
       if (searchClear) searchClear.classList.remove("visible");
 
+      // Reset active view lens to postings
       if (pillValue("feed-view") !== "postings") {
         setPillValue("feed-view", "postings");
       }
+
+      // Reset all active filters
       const resetBtn = document.getElementById("filters-reset");
       if (resetBtn) {
         resetBtn.click();
+      } else {
+        document.getElementById("feed-category").value = "";
+        document.getElementById("feed-function").value = "";
+        setPillValue("feed-arrangement", "", { silent: true });
+        document.getElementById("feed-location").value = "";
+        setPillValue("feed-cycle-season", "", { silent: true });
+        document.getElementById("feed-cycle-year").value = "";
+        setPillValue("feed-age", "", { silent: true });
+        syncCategoryHint();
+        loadFeed({ resetPage: true });
+        updateFiltersUi();
+        syncUrl();
       }
       closeFilters();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3396,8 +3601,46 @@ function leaveDetail() {
   route();
 }
 
+function slugifyCompany(company) {
+  return (company || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 function crumb(label) {
-  return `<button class="crumb" onclick="leaveDetail()">← ${escapeHtml(label)}</button>`;
+  return `<button type="button" class="crumb-back-btn" onclick="leaveDetail()">← ${escapeHtml(label)}</button>`;
+}
+
+function copyCurrentPostingUrl(btn) {
+  const url = window.location.href;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = "✓ Link Copied!";
+      btn.style.borderColor = "var(--ok)";
+      btn.style.color = "var(--ok)";
+      setTimeout(() => {
+        btn.innerHTML = orig;
+        btn.style.borderColor = "";
+        btn.style.color = "";
+      }, 2000);
+    }).catch(() => {
+      prompt("Copy link:", url);
+    });
+  } else {
+    prompt("Copy link:", url);
+  }
+}
+
+function filterFeedByCompany(companyName) {
+  leaveDetail();
+  const searchInput = document.getElementById("search");
+  if (searchInput) {
+    searchInput.value = companyName;
+    const clearBtn = document.getElementById("search-clear");
+    if (clearBtn) clearBtn.classList.add("visible");
+  }
+  loadFeed({ resetPage: true });
+  syncUrl();
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function getJson(url) {
@@ -3412,7 +3655,7 @@ function showDetailLoading() {
 }
 
 function showDetailError(message) {
-  detailEl().innerHTML = `${crumb("Back to feed")}<div class="empty">${escapeHtml(message)}</div>`;
+  detailEl().innerHTML = `${crumb("Back to all roles")}<div class="empty">${escapeHtml(message)}</div>`;
 }
 
 // --- posting page -------------------------------------------------------
@@ -3426,19 +3669,16 @@ async function renderPostingPage(id) {
   if (EDGE_DATA.active && EDGE_DATA.corpus) {
     p = EDGE_DATA.corpus.find(x => x.id === id);
     if (!p) return showDetailError("No such posting in active feed");
-    if (p.dedup_key) {
-      alsoListed = EDGE_DATA.corpus.filter(x => x.dedup_key === p.dedup_key && x.id !== p.id);
-    }
-    if (p.company_key) {
-      siblings = EDGE_DATA.corpus.filter(x => x.company_key === p.company_key && x.id !== p.id).slice(0, 25);
-    }
+
+    // In Edge mode, fetch description shard if present
     let descText = p.description || "";
-    if (!descText && p.desc_id) {
+    if (p.desc_id) {
       try {
         const descRes = await fetch(`/data/descriptions/${p.desc_id}.json`);
         if (descRes.ok) {
           const descJson = await descRes.json();
-          descText = descJson.description || "";
+          p = { ...p, ...descJson };
+          descText = descJson.description || p.description || "";
         }
       } catch(e) {}
     }
@@ -3446,6 +3686,14 @@ async function renderPostingPage(id) {
       descText = p.description_snippet;
     }
     p = { ...p, description: descText };
+
+    const compKey = (p.company_key || slugifyCompany(p.company)).toLowerCase();
+    if (p.dedup_key) {
+      alsoListed = EDGE_DATA.corpus.filter(x => x.dedup_key === p.dedup_key && x.id !== p.id);
+    }
+    if (compKey) {
+      siblings = EDGE_DATA.corpus.filter(x => ((x.company_key || "").toLowerCase() === compKey || slugifyCompany(x.company) === compKey) && x.id !== p.id).slice(0, 30);
+    }
   } else {
     const data = await getJson(`/posting/${encodeURIComponent(id)}`);
     if (data.error) return showDetailError(data.error);
@@ -3453,17 +3701,39 @@ async function renderPostingPage(id) {
     alsoListed = data.also_listed || [];
     siblings = data.same_company || [];
   }
+
+  const compKey = p.company_key || slugifyCompany(p.company);
   const posted = postedCell(p);
   const found = foundCell(p);
+  const atsName = p.ats || p.source || "Direct ATS";
+  const compRolesCount = siblings.length + 1;
+
+  // Build badge pills
+  const badges = [];
+  if (p.work_arrangement) {
+    const waLabel = p.work_arrangement.charAt(0).toUpperCase() + p.work_arrangement.slice(1);
+    badges.push(`<span class="swatch-tag tag-${escapeHtml(p.work_arrangement)}" title="Workplace type: ${escapeHtml(waLabel)}">${escapeHtml(waLabel)}</span>`);
+  }
+  if (p.job_function && p.job_function !== "Other") {
+    badges.push(`<span class="swatch-tag is-function" title="Job function: ${escapeHtml(p.job_function)}">${escapeHtml(p.job_function)}</span>`);
+  }
+  if (p.category && p.category !== "Uncategorized") {
+    badges.push(`<span class="swatch-tag" title="Industry: ${escapeHtml(p.category)}">${escapeHtml(p.category)}</span>`);
+  }
+  if (p.cycle_season || p.cycle_year) {
+    const seasonText = p.cycle_season ? p.cycle_season.charAt(0).toUpperCase() + p.cycle_season.slice(1) : "";
+    const term = `${seasonText} ${p.cycle_year || ""}`.trim();
+    badges.push(`<span class="swatch-tag" style="border-color: var(--accent-dim); color: var(--accent);" title="Recruiting term: ${escapeHtml(term)}">📅 ${escapeHtml(term)}</span>`);
+  }
 
   const description = p.description
-    ? `<div class="description">${escapeHtml(p.description)}</div>`
+    ? `<div class="description-body">${escapeHtml(p.description)}</div>`
     : `<div class="description-missing">${p.description === ""
-        ? "This source publishes no description for this posting."
-        : "Description not fetched yet — it arrives on the next scrape of this source."}</div>`;
+        ? "This employer publishes no full-text description for this posting."
+        : "Description not indexed yet — will be fetched on the next scrape of this source."}</div>`;
 
   const alsoListedHtml = (alsoListed || []).length ? `
-    <div class="section-title">Also listed via</div>
+    <div class="section-title">Also listed via (${alsoListed.length})</div>
     <div class="mini-list">${alsoListed.map(d => `
       <a class="mini-row" href="${entityHref("posting", d.id)}" data-route="posting" data-value="${escapeHtml(d.id)}">
         <span>${escapeHtml(d.source_entry || d.company || "")} <span class="meta">· ${escapeHtml(d.ats || "")}</span></span>
@@ -3471,34 +3741,57 @@ async function renderPostingPage(id) {
       </a>`).join("")}</div>` : "";
 
   const siblingsHtml = (siblings || []).length ? `
-    <div class="section-title">Other openings at ${escapeHtml(p.company)}</div>
+    <div class="section-title">Other open roles at ${escapeHtml(p.company)} (${siblings.length})</div>
     <div class="mini-list">${siblings.map(o => `
       <a class="mini-row" href="${entityHref("posting", o.id)}" data-route="posting" data-value="${escapeHtml(o.id)}">
-        <span>${escapeHtml(o.title)}</span>
-        <span class="meta">${escapeHtml(o.location || "")}</span>
+        <span class="mini-row-title">${escapeHtml(o.title)}</span>
+        <span class="meta">${escapeHtml(o.location || "")} · ${escapeHtml(postedCell(o).text)}</span>
       </a>`).join("")}</div>` : "";
 
   detailEl().innerHTML = `
-    ${crumb("Back to feed")}
-    <h2>${escapeHtml(p.title)}</h2>
-    <div class="sub">${entityLink("company", p.company_key, p.company)} · ${locationHtml(p.location)}</div>
-    <div class="actions">
-      <a class="btn primary" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">Apply on ${escapeHtml(p.ats)} ↗</a>
-      ${entityLink("company", p.company_key, `All roles at ${p.company}`, "btn")}
+    <div class="detail-nav-bar">
+      <button type="button" class="crumb-back-btn" onclick="leaveDetail()">← Back to all roles</button>
+      <span class="crumb-sep">/</span>
+      <a class="crumb-item" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">${escapeHtml(p.company)}</a>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-current">${escapeHtml(p.title)}</span>
     </div>
-    <div class="kv">
-      <div><span class="k">Posted</span><span class="v" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</span></div>
-      <div><span class="k">Found</span><span class="v" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</span></div>
-      <div><span class="k">Industry</span><span class="v">${escapeHtml(p.category || "not reported by this source")}</span></div>
-      <div><span class="k">Job function</span><span class="v">${escapeHtml(p.job_function || "not reported by this source")}</span></div>
-      <div><span class="k">Platform</span><span class="v">${entityLink("ats", p.ats, p.ats)}</span></div>
-      <div><span class="k">Via source</span><span class="v">${escapeHtml(p.source_entry || "—")}</span></div>
-      <div><span class="k">Status</span><span class="v">${escapeHtml(p.status || "active")}</span></div>
+
+    <div class="detail-header">
+      <h1 class="detail-title">${escapeHtml(p.title)}</h1>
+      <div class="detail-sub">
+        <a class="entity company-lead" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">${escapeHtml(p.company)}</a>
+        <span class="sub-sep">·</span>
+        <span class="detail-location">${locationHtml(p.location)}</span>
+      </div>
+      <div class="detail-badges-row">${badges.join(" ")}</div>
     </div>
-    <div class="section-title">Description</div>
-    ${description}
+
+    <div class="detail-actions">
+      <a class="btn primary btn-lg" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">Apply on ${escapeHtml(atsName)} ↗</a>
+      <a class="btn btn-lg" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">All roles at ${escapeHtml(p.company)} (${compRolesCount}) →</a>
+      <button type="button" class="btn btn-lg" id="btn-copy-link" onclick="copyCurrentPostingUrl(this)">📋 Copy Link</button>
+    </div>
+
+    <div class="detail-kv-card">
+      <div class="kv-item"><span class="k">Company</span><span class="v"><a class="entity" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">${escapeHtml(p.company)}</a></span></div>
+      <div class="kv-item"><span class="k">Location</span><span class="v">${locationHtml(p.location)}</span></div>
+      <div class="kv-item"><span class="k">Workplace</span><span class="v">${escapeHtml(p.work_arrangement ? p.work_arrangement.toUpperCase() : "Not specified")}</span></div>
+      <div class="kv-item"><span class="k">Job Function</span><span class="v">${escapeHtml(p.job_function || "General")}</span></div>
+      <div class="kv-item"><span class="k">Industry</span><span class="v">${escapeHtml(p.category || "General")}</span></div>
+      <div class="kv-item"><span class="k">Recruiting Cycle</span><span class="v">${escapeHtml(p.cycle_season ? (p.cycle_season.toUpperCase() + " " + (p.cycle_year || "")) : "Rolling / Immediate")}</span></div>
+      <div class="kv-item"><span class="k">Posted</span><span class="v" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</span></div>
+      <div class="kv-item"><span class="k">First Seen</span><span class="v" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</span></div>
+      <div class="kv-item"><span class="k">Platform / ATS</span><span class="v">${entityLink("ats", p.ats, atsName)}</span></div>
+      <div class="kv-item"><span class="k">Source</span><span class="v">${escapeHtml(p.source_entry || p.source || "Direct")}</span></div>
+    </div>
+
+    <div class="section-title">Job Description</div>
+    <div class="description-card">${description}</div>
+
     ${alsoListedHtml}
-    ${siblingsHtml}`;
+    ${siblingsHtml}
+  `;
 }
 
 // --- company page -------------------------------------------------------
@@ -3506,14 +3799,16 @@ async function renderPostingPage(id) {
 async function renderCompanyPage(key) {
   showDetailLoading();
   let data = null;
+  const cleanKey = (key || "").toLowerCase();
   if (EDGE_DATA.active && EDGE_DATA.corpus) {
-    const matched = EDGE_DATA.corpus.filter(p => (p.company_key || "").toLowerCase() === key.toLowerCase());
-    if (!matched.length) return showDetailError("No such company");
+    const matched = EDGE_DATA.corpus.filter(p => (p.company_key || "").toLowerCase() === cleanKey || slugifyCompany(p.company) === cleanKey);
+    if (!matched.length) return showDetailError(`No open postings found for company "${key}"`);
     const names = {};
     for (const r of matched) names[r.company] = (names[r.company] || 0) + 1;
     const displayName = Object.keys(names).reduce((a, b) => names[a] > names[b] ? a : b);
     const atsSet = new Set(matched.map(r => r.ats).filter(Boolean));
     data = {
+      company_key: cleanKey,
       display_name: displayName,
       open_count: matched.length,
       category: matched[0].category || "",
@@ -3526,22 +3821,15 @@ async function renderCompanyPage(key) {
     if (data.error) return showDetailError(data.error);
   }
 
-  const open = data.postings.filter(p => p.status === "open");
-  const other = data.postings.filter(p => p.status !== "open");
+  const open = data.postings.filter(p => p.status === "open" || !p.status);
+  const other = data.postings.filter(p => p.status && p.status !== "open");
 
-  // A raw URL slug is not a company profile, and pretending otherwise
-  // would be worse than saying so -- some names in the corpus are
-  // genuinely unresolved tokens like "ag" or "djeholdings".
   const looksUnresolved = data.display_name === data.display_name.toLowerCase()
                            && !data.display_name.includes(" ");
   const banner = looksUnresolved
     ? `<div class="banner"><b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name — it hasn't been identified yet.</div>`
     : "";
 
-  // "Where these come from" rather than a bare chip row: for a company
-  // scraped straight off its own board, this IS the source page, so the
-  // board's health has to be legible here or folding the two together
-  // would lose it.
   const via = data.reached_via.map(v => `
     <div class="board-card">
       <a class="board-name" href="${entityHref(v.source_id ? "source" : "ats", v.source_id || v.ats)}"
@@ -3562,22 +3850,38 @@ async function renderCompanyPage(key) {
 
   const rows = list => `<div class="mini-list">${list.map(p => `
     <a class="mini-row" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}">
-      <span>${escapeHtml(p.title)}</span>
+      <span class="mini-row-title">${escapeHtml(p.title)}</span>
       <span class="meta">${escapeHtml(p.location || "")} · ${escapeHtml(postedCell(p).text)}</span>
     </a>`).join("")}</div>`;
 
   detailEl().innerHTML = `
-    ${crumb("Back to feed")}
-    <h2>${escapeHtml(data.display_name)}</h2>
-    <div class="sub">${escapeHtml(data.category || "Uncategorized")} · ${data.open_count} open ${data.open_count === 1 ? "role" : "roles"}</div>
+    <div class="detail-nav-bar">
+      <button type="button" class="crumb-back-btn" onclick="leaveDetail()">← Back to all roles</button>
+      <span class="crumb-sep">/</span>
+      <span class="crumb-current">${escapeHtml(data.display_name)}</span>
+    </div>
+
+    <div class="detail-header">
+      <h1 class="detail-title">${escapeHtml(data.display_name)}</h1>
+      <div class="detail-sub">
+        <span>${escapeHtml(data.category || "Uncategorized")}</span>
+        <span class="sub-sep">·</span>
+        <span><b>${data.open_count}</b> open ${data.open_count === 1 ? "internship" : "internships"}</span>
+      </div>
+    </div>
+
+    <div class="detail-actions">
+      <button type="button" class="btn primary btn-lg" onclick="filterFeedByCompany('${escapeHtml(data.display_name)}')">🔍 View all in search table (${data.open_count}) →</button>
+      <button type="button" class="btn btn-lg" onclick="copyCurrentPostingUrl(this)">📋 Copy Company Link</button>
+    </div>
+
     ${banner}
-    ${data.name_variants.length > 1
+    ${data.name_variants && data.name_variants.length > 1
       ? `<div class="banner">Also appears as ${data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ")} — merged into one page.</div>`
       : ""}
-    <div class="section-title">${open.length} open ${open.length === 1 ? "posting" : "postings"}</div>
+    <div class="section-title">${open.length} Open ${open.length === 1 ? "Posting" : "Postings"}</div>
     ${open.length ? rows(open) : `<div class="empty">No open postings right now.</div>`}
-    <div class="section-title">Where these come from</div>
-    ${via}
+    ${via.length ? `<div class="section-title">Where these come from</div>${via}` : ""}
     ${other.length ? `<div class="section-title">${other.length} closed or duplicate</div>${rows(other)}` : ""}`;
 }
 

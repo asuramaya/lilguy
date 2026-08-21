@@ -700,6 +700,18 @@ def standardize_posting(p: dict) -> dict:
     else:
         d["company"] = standardize_company_name(c_raw)
 
+    # Ensure company_key is always consistently populated for clean routing & grouping
+    if not d.get("company_key"):
+        ck = re.sub(r"[^a-z0-9]+", "", d["company"].lower())
+        d["company_key"] = ck or "unidentified"
+
+    # Ensure ats / platform is always populated
+    if not d.get("ats"):
+        ats_val = d.get("source") or ""
+        if not ats_val and ":" in d.get("id", ""):
+            ats_val = d["id"].split(":")[0]
+        d["ats"] = ats_val or "direct"
+
     # Intelligently infer category while preserving Uncategorized fallbacks (never drop)
     d["category"] = infer_category(d["company"], d["title"], d["job_function"], d.get("category", ""))
 

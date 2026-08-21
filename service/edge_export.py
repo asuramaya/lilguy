@@ -144,20 +144,58 @@ def fetch_descriptions(posting_ids: list[str]) -> dict[str, dict]:
             """)
             rows = cur.fetchall()
             for r in rows:
+                d = dict(r)
+                std = standardize_posting(d)
                 desc_map[r["id"]] = {
                     "id": r["id"],
-                    "company": standardize_company_name(r["company"]),
-                    "title": r["title"],
-                    "location": r["location"],
+                    "company": std["company"],
+                    "company_key": std["company_key"],
+                    "title": std["title"],
+                    "location": std["location"],
                     "url": r["url"],
-                    "ats": r["ats"],
+                    "ats": std["ats"],
+                    "category": std["category"],
+                    "job_function": std["job_function"],
+                    "work_arrangement": std["work_arrangement"],
+                    "cycle_season": std["cycle_season"],
+                    "cycle_year": std["cycle_year"],
                     "posted_at": r["posted_at"],
                     "description": r["description"],
-                    "company_key": r["company_key"],
-                    "dedup_key": r["dedup_key"]
+                    "dedup_key": r.get("dedup_key")
                 }
     except Exception:
         pass
+
+    # Ingest from data/all_postings.json if available
+    all_file = ROOT / "data" / "all_postings.json"
+    if all_file.exists():
+        try:
+            with open(all_file, "r", encoding="utf-8") as f:
+                all_raw = json.load(f)
+                for r in all_raw:
+                    pid = r.get("id")
+                    desc = r.get("description")
+                    if pid and desc and pid not in desc_map:
+                        std = standardize_posting(r)
+                        desc_map[pid] = {
+                            "id": pid,
+                            "company": std["company"],
+                            "company_key": std["company_key"],
+                            "title": std["title"],
+                            "location": std["location"],
+                            "url": r.get("url", ""),
+                            "ats": std["ats"],
+                            "category": std["category"],
+                            "job_function": std["job_function"],
+                            "work_arrangement": std["work_arrangement"],
+                            "cycle_season": std["cycle_season"],
+                            "cycle_year": std["cycle_year"],
+                            "posted_at": r.get("posted_at", ""),
+                            "description": desc,
+                            "dedup_key": r.get("dedup_key")
+                        }
+        except Exception:
+            pass
 
     # Merge with existing files in dist/data/descriptions if DB didn't have all descriptions
     existing_desc_dir = ROOT / "dist" / "data" / "descriptions"
@@ -168,7 +206,13 @@ def fetch_descriptions(posting_ids: list[str]) -> dict[str, dict]:
                     data = json.load(df)
                     pid = data.get("id")
                     if pid and pid not in desc_map:
-                        data["company"] = standardize_company_name(data.get("company", ""))
+                        std = standardize_posting(data)
+                        data["company"] = std["company"]
+                        data["company_key"] = std["company_key"]
+                        data["ats"] = std["ats"]
+                        data["category"] = std["category"]
+                        data["job_function"] = std["job_function"]
+                        data["work_arrangement"] = std["work_arrangement"]
                         desc_map[pid] = data
             except Exception:
                 pass
