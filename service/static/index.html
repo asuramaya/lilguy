@@ -511,12 +511,38 @@
   .legend b { color: var(--ink-secondary); font-weight: 500; }
 
 
+  .header-right-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .lang-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--row);
+    border: 1px solid var(--border);
+    color: var(--ink-secondary);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 550;
+    padding: 4px 7px;
+    border-radius: 6px;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.15s ease;
+  }
+  .lang-select:hover, .lang-select:focus {
+    border-color: var(--border-strong);
+    color: var(--ink);
+    background: var(--surface-hover);
+  }
   .header-gh-link {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 30px;
+    height: 30px;
     border-radius: 6px;
     color: var(--ink-secondary);
     text-decoration: none;
@@ -1099,8 +1125,20 @@
 
     .header-bar {
       padding: 6px 0;
-      gap: 10px;
+      gap: 8px;
       min-height: 44px;
+    }
+    .header-right-actions {
+      gap: 4px;
+    }
+    .lang-select {
+      font-size: 11px !important;
+      padding: 3px 5px;
+      max-width: 68px;
+    }
+    .header-gh-link {
+      width: 28px;
+      height: 28px;
     }
     .brand {
       gap: 6px;
@@ -1333,11 +1371,23 @@
           &#9776;<span id="filters-badge" class="filters-badge">0</span>
         </button>
       </div>
-      <a href="https://github.com/asuramaya/lilguy" target="_blank" rel="noopener" class="header-gh-link" aria-label="GitHub Repository" title="GitHub Repository">
-        <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
-          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-        </svg>
-      </a>
+      <div class="header-right-actions">
+        <select id="lang-select" class="lang-select" aria-label="Select Language" title="Language">
+          <option value="en">🇺🇸 EN</option>
+          <option value="es">🇪🇸 ES</option>
+          <option value="fr">🇫🇷 FR</option>
+          <option value="zh">🇨🇳 中文</option>
+          <option value="de">🇩🇪 DE</option>
+          <option value="pt">🇧🇷 PT</option>
+          <option value="ja">🇯🇵 JA</option>
+          <option value="hi">🇮🇳 HI</option>
+        </select>
+        <a href="https://github.com/asuramaya/lilguy" target="_blank" rel="noopener" class="header-gh-link" aria-label="GitHub Repository" title="GitHub Repository">
+          <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+        </a>
+      </div>
     </div>
   </div>
 </header>
@@ -1678,14 +1728,808 @@ function escapeHtml(s) {
   }[c]));
 }
 
+// --- Internationalization (i18n) & Multi-Language UX -----------------
+const I18N = {
+  en: {
+    brand_title: "lilguy.win Home",
+    search_placeholder: "Search title or company…",
+    clear_search: "Clear search",
+    filters: "Filters",
+    github_repo: "GitHub Repository",
+    back_to_feed: "Back to all roles",
+    open_postings: "open postings",
+    matching_this_cycle: "matching this cycle",
+    unstated_cycle_note: "+ {count} that state no cycle",
+    matching_total: "{count} matching",
+    loading: "loading…",
+    loading_feed: "loading feed…",
+    sorted_by: "sorted by {sort}, {dir}",
+    sort_oldest: "oldest first",
+    sort_newest: "newest first",
+    sort_date_posted: "date posted",
+    no_match_filter: "No postings match that filter.",
+    no_postings_sourced: "No open postings sourced yet.",
+    group_unstated_title: "{count} posting{s} whose title states no cycle — these may or may not be the one you asked for",
+    reset_all: "Reset all",
+    reset: "Reset",
+    done: "Done",
+    page_prev: "← Prev",
+    page_next: "Next →",
+    page_status: "Page {page} of {pages}",
+    page_range: "({start}–{end} of {total})",
+    apply_on: "Apply on {ats} ↗",
+    all_roles_at: "All roles at {company} ({count}) →",
+    view_all_in_table: "🔍 View all in search table ({count}) →",
+    copy_link: "📋 Copy Link",
+    copy_company_link: "📋 Copy Company Link",
+    link_copied: "✓ Link Copied!",
+    translate_desc: "🌐 Translate Description",
+    job_description: "Job Description",
+    desc_missing_publisher: "This employer publishes no full-text description for this posting.",
+    desc_missing_index: "Description not indexed yet — will be fetched on the next scrape of this source.",
+    other_roles_at: "Other open roles at {company} ({count})",
+    also_listed_via: "Also listed via ({count})",
+    where_from: "Where these come from",
+    key_company: "Company",
+    key_location: "Location",
+    key_workplace: "Workplace",
+    key_function: "Job Function",
+    key_industry: "Industry",
+    key_cycle: "Recruiting Cycle",
+    key_posted: "Posted",
+    key_first_seen: "First Seen",
+    key_platform: "Platform / ATS",
+    key_source: "Source",
+    rolling_immediate: "Rolling / Immediate",
+    not_specified: "Not specified",
+    unresolved_banner: "<b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name — it hasn't been identified yet.",
+    also_appears_as: "Also appears as {names} — merged into one page.",
+    open_count_title: "{count} open {item}",
+    open_postings_section: "{count} Open {item}",
+    closed_duplicates: "{count} closed or duplicate",
+    no_open_postings_company: "No open postings right now.",
+    // Filter Aside Titles
+    sec_view: "View",
+    sec_preset: "Preset",
+    sec_industry: "Industry",
+    sec_function: "Function",
+    sec_where: "Workplace",
+    sec_location: "Location",
+    sec_cycle: "Recruiting Cycle",
+    sec_age: "Posting Age",
+    // Table column headers
+    th_title: "Title",
+    th_company: "Company",
+    th_location: "Location",
+    th_category: "Category",
+    th_cycle: "Cycle",
+    th_age: "Age"
+  },
+  es: {
+    brand_title: "lilguy.win Inicio",
+    search_placeholder: "Buscar puesto o empresa…",
+    clear_search: "Borrar búsqueda",
+    filters: "Filtros",
+    github_repo: "Repositorio GitHub",
+    back_to_feed: "Volver a todas las ofertas",
+    open_postings: "ofertas abiertas",
+    matching_this_cycle: "coinciden con este ciclo",
+    unstated_cycle_note: "+ {count} sin ciclo especificado",
+    matching_total: "{count} ofertas encontradas",
+    loading: "cargando…",
+    loading_feed: "cargando ofertas…",
+    sorted_by: "ordenado por {sort}, {dir}",
+    sort_oldest: "más antiguas",
+    sort_newest: "más recientes",
+    sort_date_posted: "fecha de publicación",
+    no_match_filter: "Ninguna oferta coincide con ese filtro.",
+    no_postings_sourced: "No hay ofertas recopiladas aún.",
+    group_unstated_title: "{count} oferta{s} sin ciclo explícito en el título",
+    reset_all: "Restablecer todo",
+    reset: "Restablecer",
+    done: "Listo",
+    page_prev: "← Anterior",
+    page_next: "Siguiente →",
+    page_status: "Página {page} de {pages}",
+    page_range: "({start}–{end} de {total})",
+    apply_on: "Postular en {ats} ↗",
+    all_roles_at: "Todas las ofertas en {company} ({count}) →",
+    view_all_in_table: "🔍 Ver todas en la tabla ({count}) →",
+    copy_link: "📋 Copiar enlace",
+    copy_company_link: "📋 Copiar enlace de empresa",
+    link_copied: "✓ ¡Enlace copiado!",
+    translate_desc: "🌐 Traducir descripción",
+    job_description: "Descripción del puesto",
+    desc_missing_publisher: "La empresa no publica descripción de texto completa para este puesto.",
+    desc_missing_index: "Descripción no indexada aún — se recopilará en el próximo rastreo.",
+    other_roles_at: "Otras ofertas en {company} ({count})",
+    also_listed_via: "También publicado en ({count})",
+    where_from: "Origen de las publicaciones",
+    key_company: "Empresa",
+    key_location: "Ubicación",
+    key_workplace: "Modalidad",
+    key_function: "Área / Función",
+    key_industry: "Industria",
+    key_cycle: "Ciclo de selección",
+    key_posted: "Publicado",
+    key_first_seen: "Detectado",
+    key_platform: "Plataforma / ATS",
+    key_source: "Fuente",
+    rolling_immediate: "Continuo / Inmediato",
+    not_specified: "No especificado",
+    unresolved_banner: "<b>Nombre no identificado.</b> Este es el identificador de la URL de la bolsa de trabajo, no un nombre verificado.",
+    also_appears_as: "También aparece como {names} — agrupado en una página.",
+    open_count_title: "{count} {item} abiertas",
+    open_postings_section: "{count} {item} abiertas",
+    closed_duplicates: "{count} cerradas o duplicadas",
+    no_open_postings_company: "No hay ofertas abiertas actualmente.",
+    sec_view: "Vista",
+    sec_preset: "Preajuste",
+    sec_industry: "Industria",
+    sec_function: "Área de trabajo",
+    sec_where: "Modalidad",
+    sec_location: "Ubicación",
+    sec_cycle: "Ciclo de contratación",
+    sec_age: "Antigüedad",
+    th_title: "Puesto",
+    th_company: "Empresa",
+    th_location: "Ubicación",
+    th_category: "Categoría",
+    th_cycle: "Ciclo",
+    th_age: "Fecha"
+  },
+  fr: {
+    brand_title: "lilguy.win Accueil",
+    search_placeholder: "Rechercher poste ou entreprise…",
+    clear_search: "Effacer la recherche",
+    filters: "Filtres",
+    github_repo: "Dépôt GitHub",
+    back_to_feed: "Retour aux offres",
+    open_postings: "offres disponibles",
+    matching_this_cycle: "correspondant à cette période",
+    unstated_cycle_note: "+ {count} sans période spécifiée",
+    matching_total: "{count} offres trouvées",
+    loading: "chargement…",
+    loading_feed: "chargement du flux…",
+    sorted_by: "trié par {sort}, {dir}",
+    sort_oldest: "plus anciennes",
+    sort_newest: "plus récentes",
+    sort_date_posted: "date de publication",
+    no_match_filter: "Aucune offre ne correspond à ce filtre.",
+    no_postings_sourced: "Aucune offre collectée pour le moment.",
+    group_unstated_title: "{count} offre{s} sans période mentionnée",
+    reset_all: "Tout réinitialiser",
+    reset: "Réinitialiser",
+    done: "Fermer",
+    page_prev: "← Précédent",
+    page_next: "Suivant →",
+    page_status: "Page {page} sur {pages}",
+    page_range: "({start}–{end} sur {total})",
+    apply_on: "Postuler sur {ats} ↗",
+    all_roles_at: "Toutes les offres chez {company} ({count}) →",
+    view_all_in_table: "🔍 Voir tout dans le tableau ({count}) →",
+    copy_link: "📋 Copier le lien",
+    copy_company_link: "📋 Copier le lien entreprise",
+    link_copied: "✓ Lien copié !",
+    translate_desc: "🌐 Traduire la description",
+    job_description: "Description du poste",
+    desc_missing_publisher: "L'employeur ne publie pas de texte descriptif complet pour ce poste.",
+    desc_missing_index: "Description non indexée pour l'instant.",
+    other_roles_at: "Autres offres chez {company} ({count})",
+    also_listed_via: "Également publié sur ({count})",
+    where_from: "Origine des offres",
+    key_company: "Entreprise",
+    key_location: "Lieu",
+    key_workplace: "Mode de travail",
+    key_function: "Domaine",
+    key_industry: "Secteur",
+    key_cycle: "Période",
+    key_posted: "Publié",
+    key_first_seen: "Détecté",
+    key_platform: "Plateforme / ATS",
+    key_source: "Source",
+    rolling_immediate: "Immédiat / Continu",
+    not_specified: "Non spécifié",
+    unresolved_banner: "<b>Nom non identifié.</b> Identifiant brut issu de l'URL du site.",
+    also_appears_as: "Apparaît aussi sous {names} — fusionné.",
+    open_count_title: "{count} {item} ouvertes",
+    open_postings_section: "{count} {item} ouvertes",
+    closed_duplicates: "{count} clôturées ou doublons",
+    no_open_postings_company: "Aucune offre active en ce moment.",
+    sec_view: "Vue",
+    sec_preset: "Préselection",
+    sec_industry: "Secteur",
+    sec_function: "Métier",
+    sec_where: "Lieu de travail",
+    sec_location: "Ville / Pays",
+    sec_cycle: "Saison / Année",
+    sec_age: "Ancienneté",
+    th_title: "Poste",
+    th_company: "Entreprise",
+    th_location: "Lieu",
+    th_category: "Secteur",
+    th_cycle: "Période",
+    th_age: "Date"
+  },
+  zh: {
+    brand_title: "lilguy.win 首页",
+    search_placeholder: "搜索职位或公司…",
+    clear_search: "清空搜索",
+    filters: "筛选",
+    github_repo: "GitHub 仓库",
+    back_to_feed: "返回全部职位",
+    open_postings: "个开放职位",
+    matching_this_cycle: "符合当前学期",
+    unstated_cycle_note: "+ {count} 条未注明学期",
+    matching_total: "共 {count} 条符合条件",
+    loading: "加载中…",
+    loading_feed: "正在加载职位列表…",
+    sorted_by: "按 {sort} 排序，{dir}",
+    sort_oldest: "最早发布优先",
+    sort_newest: "最新发布优先",
+    sort_date_posted: "发布日期",
+    no_match_filter: "没有符合该筛选条件的职位。",
+    no_postings_sourced: "暂无职位数据。",
+    group_unstated_title: "{count} 条标题未注明招聘学期的职位",
+    reset_all: "重置全部",
+    reset: "重置",
+    done: "完成",
+    page_prev: "← 上一页",
+    page_next: "下一页 →",
+    page_status: "第 {page} / {pages} 页",
+    page_range: "({start}–{end}，共 {total} 条)",
+    apply_on: "在 {ats} 上申请 ↗",
+    all_roles_at: "{company} 的所有职位 ({count}) →",
+    view_all_in_table: "🔍 在搜索表格中查看全部 ({count}) →",
+    copy_link: "📋 复制链接",
+    copy_company_link: "📋 复制公司主页链接",
+    link_copied: "✓ 链接已复制！",
+    translate_desc: "🌐 翻译职位描述",
+    job_description: "职位描述",
+    desc_missing_publisher: "雇主未为此职位发布完整文本描述。",
+    desc_missing_index: "职位描述尚未索引 — 将在下次爬取时更新。",
+    other_roles_at: "{company} 的其他职位 ({count})",
+    also_listed_via: "其他渠道发布 ({count})",
+    where_from: "数据来源渠道",
+    key_company: "招聘公司",
+    key_location: "工作地点",
+    key_workplace: "工作模式",
+    key_function: "职能分类",
+    key_industry: "所属行业",
+    key_cycle: "招聘周期",
+    key_posted: "发布时间",
+    key_first_seen: "首次抓取",
+    key_platform: "招聘平台 / ATS",
+    key_source: "抓取来源",
+    rolling_immediate: "即时 / 滚动招聘",
+    not_specified: "未特别注明",
+    unresolved_banner: "<b>未识别的企业名称。</b> 此名称来自原始 URL 标识符。",
+    also_appears_as: "在其他招聘渠道亦显示为 {names} — 已合并。",
+    open_count_title: "{count} 个正在招聘的{item}",
+    open_postings_section: "{count} 个开放{item}",
+    closed_duplicates: "{count} 个已关闭或重复职位",
+    no_open_postings_company: "该企业目前暂无开放职位。",
+    sec_view: "视图",
+    sec_preset: "快捷预设",
+    sec_industry: "所属行业",
+    sec_function: "职能方向",
+    sec_where: "工作模式",
+    sec_location: "工作地点",
+    sec_cycle: "招聘学期",
+    sec_age: "发布时限",
+    th_title: "职位名称",
+    th_company: "公司",
+    th_location: "工作地点",
+    th_category: "行业",
+    th_cycle: "周期",
+    th_age: "发布时间"
+  },
+  de: {
+    brand_title: "lilguy.win Startseite",
+    search_placeholder: "Position oder Unternehmen suchen…",
+    clear_search: "Suche löschen",
+    filters: "Filter",
+    github_repo: "GitHub-Repository",
+    back_to_feed: "Zurück zu allen Angeboten",
+    open_postings: "offene Stellen",
+    matching_this_cycle: "passend zu diesem Zeitraum",
+    unstated_cycle_note: "+ {count} ohne Zeitraumangabe",
+    matching_total: "{count} Stellen gefunden",
+    loading: "Wird geladen…",
+    loading_feed: "Lade Angebote…",
+    sorted_by: "sortiert nach {sort}, {dir}",
+    sort_oldest: "älteste zuerst",
+    sort_newest: "neueste zuerst",
+    sort_date_posted: "Veröffentlichungsdatum",
+    no_match_filter: "Keine Stellen entsprechen diesem Filter.",
+    no_postings_sourced: "Noch keine Stellen erfasst.",
+    group_unstated_title: "{count} Stelle(n) ohne Zeitangabe im Titel",
+    reset_all: "Alle zurücksetzen",
+    reset: "Zurücksetzen",
+    done: "Fertig",
+    page_prev: "← Zurück",
+    page_next: "Weiter →",
+    page_status: "Seite {page} von {pages}",
+    page_range: "({start}–{end} von {total})",
+    apply_on: "Bewerben auf {ats} ↗",
+    all_roles_at: "Alle Stellen bei {company} ({count}) →",
+    view_all_in_table: "🔍 Alle in Tabelle anzeigen ({count}) →",
+    copy_link: "📋 Link kopieren",
+    copy_company_link: "📋 Unternehmens-Link kopieren",
+    link_copied: "✓ Link kopiert!",
+    translate_desc: "🌐 Beschreibung übersetzen",
+    job_description: "Stellenbeschreibung",
+    desc_missing_publisher: "Der Arbeitgeber hat keine Volltextbeschreibung veröffentlicht.",
+    desc_missing_index: "Beschreibung noch nicht indexiert.",
+    other_roles_at: "Weitere Stellen bei {company} ({count})",
+    also_listed_via: "Auch gelistet über ({count})",
+    where_from: "Herkunft der Angebote",
+    key_company: "Unternehmen",
+    key_location: "Standort",
+    key_workplace: "Arbeitsmodell",
+    key_function: "Fachbereich",
+    key_industry: "Branche",
+    key_cycle: "Bewerbungszeitraum",
+    key_posted: "Veröffentlicht",
+    key_first_seen: "Erfasst",
+    key_platform: "Plattform / ATS",
+    key_source: "Quelle",
+    rolling_immediate: "Laufend / Sofort",
+    not_specified: "Nicht angegeben",
+    unresolved_banner: "<b>Unbestätigter Name.</b> Roh-Token aus der URL des Jobportals.",
+    also_appears_as: "Erscheint auch als {names} — zusammengeführt.",
+    open_count_title: "{count} offene {item}",
+    open_postings_section: "{count} offene {item}",
+    closed_duplicates: "{count} geschlossene oder Duplikate",
+    no_open_postings_company: "Aktuell keine offenen Stellen.",
+    sec_view: "Ansicht",
+    sec_preset: "Vorauswahl",
+    sec_industry: "Branche",
+    sec_function: "Funktionsbereich",
+    sec_where: "Arbeitsort",
+    sec_location: "Standort",
+    sec_cycle: "Semester / Jahr",
+    sec_age: "Alter",
+    th_title: "Stelle",
+    th_company: "Unternehmen",
+    th_location: "Standort",
+    th_category: "Branche",
+    th_cycle: "Zeitraum",
+    th_age: "Datum"
+  },
+  pt: {
+    brand_title: "lilguy.win Início",
+    search_placeholder: "Buscar vaga ou empresa…",
+    clear_search: "Limpar busca",
+    filters: "Filtros",
+    github_repo: "Repositório GitHub",
+    back_to_feed: "Voltar para todas as vagas",
+    open_postings: "vagas abertas",
+    matching_this_cycle: "correspondentes a este período",
+    unstated_cycle_note: "+ {count} sem período especificado",
+    matching_total: "{count} vagas encontradas",
+    loading: "carregando…",
+    loading_feed: "carregando vagas…",
+    sorted_by: "ordenado por {sort}, {dir}",
+    sort_oldest: "mais antigas",
+    sort_newest: "mais recentes",
+    sort_date_posted: "data de publicação",
+    no_match_filter: "Nenhuma vaga corresponde a este filtro.",
+    no_postings_sourced: "Nenhuma vaga coletada ainda.",
+    group_unstated_title: "{count} vaga(s) sem período declarado no título",
+    reset_all: "Redefinir tudo",
+    reset: "Redefinir",
+    done: "Concluído",
+    page_prev: "← Anterior",
+    page_next: "Próximo →",
+    page_status: "Página {page} de {pages}",
+    page_range: "({start}–{end} de {total})",
+    apply_on: "Candidatar-se em {ats} ↗",
+    all_roles_at: "Todas as vagas na {company} ({count}) →",
+    view_all_in_table: "🔍 Ver todas na tabela ({count}) →",
+    copy_link: "📋 Copiar link",
+    copy_company_link: "📋 Copiar link da empresa",
+    link_copied: "✓ Link copiado!",
+    translate_desc: "🌐 Traduzir descrição",
+    job_description: "Descrição da vaga",
+    desc_missing_publisher: "A empresa não publicou descrição completa em texto para esta vaga.",
+    desc_missing_index: "Descrição ainda não indexada.",
+    other_roles_at: "Outras vagas na {company} ({count})",
+    also_listed_via: "Também listado em ({count})",
+    where_from: "Origem das vagas",
+    key_company: "Empresa",
+    key_location: "Localização",
+    key_workplace: "Modelo de trabalho",
+    key_function: "Área de atuação",
+    key_industry: "Setor",
+    key_cycle: "Período de seleção",
+    key_posted: "Publicado",
+    key_first_seen: "Detectado",
+    key_platform: "Plataforma / ATS",
+    key_source: "Fonte",
+    rolling_immediate: "Imediato / Contínuo",
+    not_specified: "Não especificado",
+    unresolved_banner: "<b>Nome não identificado.</b> Identificador bruto da URL do site.",
+    also_appears_as: "Também aparece como {names} — mesclado.",
+    open_count_title: "{count} {item} abertas",
+    open_postings_section: "{count} {item} abertas",
+    closed_duplicates: "{count} encerradas ou duplicadas",
+    no_open_postings_company: "Nenhuma vaga aberta no momento.",
+    sec_view: "Visualização",
+    sec_preset: "Pré-definição",
+    sec_industry: "Setor",
+    sec_function: "Área",
+    sec_where: "Modalidade",
+    sec_location: "Localização",
+    sec_cycle: "Ciclo / Período",
+    sec_age: "Tempo de publicação",
+    th_title: "Vaga",
+    th_company: "Empresa",
+    th_location: "Local",
+    th_category: "Setor",
+    th_cycle: "Período",
+    th_age: "Data"
+  },
+  ja: {
+    brand_title: "lilguy.win ホーム",
+    search_placeholder: "職種または企業名で検索…",
+    clear_search: "検索をクリア",
+    filters: "フィルター",
+    github_repo: "GitHubリポジトリ",
+    back_to_feed: "すべての求人一覧に戻る",
+    open_postings: "件の募集",
+    matching_this_cycle: "該当する採用時期の求人",
+    unstated_cycle_note: "+ 時期未記載 {count} 件",
+    matching_total: "該当 {count} 件",
+    loading: "読み込み中…",
+    loading_feed: "求人一覧を読み込み中…",
+    sorted_by: "{sort}（{dir}）",
+    sort_oldest: "古い順",
+    sort_newest: "新しい順",
+    sort_date_posted: "掲載日",
+    no_match_filter: "条件に一致する求人は見つかりませんでした。",
+    no_postings_sourced: "取得済みの求人はまだありません。",
+    group_unstated_title: "タイトルに採用時期の記載がない求人（{count}件）",
+    reset_all: "すべてリセット",
+    reset: "リセット",
+    done: "完了",
+    page_prev: "← 前へ",
+    page_next: "次へ →",
+    page_status: "ページ {page} / {pages}",
+    page_range: "({start}–{end} / 全 {total} 件)",
+    apply_on: "{ats} で応募する ↗",
+    all_roles_at: "{company} の全求人 ({count}) →",
+    view_all_in_table: "🔍 テーブルで全件表示 ({count}) →",
+    copy_link: "📋 リンクをコピー",
+    copy_company_link: "📋 企業ページリンクをコピー",
+    link_copied: "✓ リンクをコピーしました！",
+    translate_desc: "🌐 説明文を翻訳",
+    job_description: "募集要項・仕事内容",
+    desc_missing_publisher: "企業側で全文テキストが公開されていません。",
+    desc_missing_index: "募集要項は次回の更新時に取得されます。",
+    other_roles_at: "{company} のその他の募集 ({count})",
+    also_listed_via: "他媒体での掲載 ({count})",
+    where_from: "掲載元情報",
+    key_company: "企業名",
+    key_location: "勤務地",
+    key_workplace: "勤務形態",
+    key_function: "職種カテゴリー",
+    key_industry: "業界",
+    key_cycle: "採用時期",
+    key_posted: "掲載日",
+    key_first_seen: "取得日",
+    key_platform: "採用プラットフォーム / ATS",
+    key_source: "取得元",
+    rolling_immediate: "随時 / 即時募集",
+    not_specified: "指定なし",
+    unresolved_banner: "<b>未確認の企業名。</b> URL から抽出された識別子です。",
+    also_appears_as: "別名 {names} としても掲載 — 統合済み。",
+    open_count_title: "募集中 {count} 件",
+    open_postings_section: "募集中 {count} 件",
+    closed_duplicates: "募集終了または重複 ({count}件)",
+    no_open_postings_company: "現在募集中の求人はありません。",
+    sec_view: "表示",
+    sec_preset: "プリセット",
+    sec_industry: "業界",
+    sec_function: "職種",
+    sec_where: "勤務形態",
+    sec_location: "勤務地",
+    sec_cycle: "採用時期",
+    sec_age: "掲載期間",
+    th_title: "職種名",
+    th_company: "企業名",
+    th_location: "勤務地",
+    th_category: "業界",
+    th_cycle: "時期",
+    th_age: "掲載日"
+  },
+  hi: {
+    brand_title: "lilguy.win होम",
+    search_placeholder: "पद या कंपनी खोजें…",
+    clear_search: "सर्च हटाएं",
+    filters: "फ़िल्टर",
+    github_repo: "गिटहब रिपॉजिटरी",
+    back_to_feed: "सभी इंटर्नशिप पर वापस जाएं",
+    open_postings: "सक्रिय पद",
+    matching_this_cycle: "इस सत्र के पद",
+    unstated_cycle_note: "+ {count} बिना सत्र उल्लेख के",
+    matching_total: "{count} पद मिले",
+    loading: "लोड हो रहा है…",
+    loading_feed: "डेटा लोड हो रहा है…",
+    sorted_by: "{sort} अनुसार, {dir}",
+    sort_oldest: "पुराने पहले",
+    sort_newest: "नए पहले",
+    sort_date_posted: "प्रकाशन तिथि",
+    no_match_filter: "इस फ़िल्टर से कोई पद नहीं मिला।",
+    no_postings_sourced: "कोई पद उपलब्ध नहीं है।",
+    group_unstated_title: "{count} पद जिनमें सत्र का उल्लेख नहीं है",
+    reset_all: "सब रीसेट करें",
+    reset: "रीसेट",
+    done: "पूर्ण",
+    page_prev: "← पिछला",
+    page_next: "अगला →",
+    page_status: "पृष्ठ {page} / {pages}",
+    page_range: "({start}–{end} / कुल {total})",
+    apply_on: "{ats} पर आवेदन करें ↗",
+    all_roles_at: "{company} के सभी पद ({count}) →",
+    view_all_in_table: "🔍 तालिका में सभी देखें ({count}) →",
+    copy_link: "📋 लिंक कॉपी करें",
+    copy_company_link: "📋 कंपनी लिंक कॉपी करें",
+    link_copied: "✓ लिंक कॉपी हो गया!",
+    translate_desc: "🌐 विवरण का अनुवाद करें",
+    job_description: "कार्य विवरण",
+    desc_missing_publisher: "कंपनी ने पूर्ण विवरण प्रकाशित नहीं किया है।",
+    desc_missing_index: "विवरण अभी इंडेक्स नहीं हुआ है।",
+    other_roles_at: "{company} में अन्य पद ({count})",
+    also_listed_via: "अन्य स्रोतों पर भी उपलब्ध ({count})",
+    where_from: "डेटा स्रोत",
+    key_company: "कंपनी",
+    key_location: "स्थान",
+    key_workplace: "कार्य स्थल",
+    key_function: "कार्य क्षेत्र",
+    key_industry: "उद्योग",
+    key_cycle: "भर्ती सत्र",
+    key_posted: "प्रकाशित",
+    key_first_seen: "सर्वप्रथम प्राप्त",
+    key_platform: "प्लेटफ़ॉर्म / ATS",
+    key_source: "स्रोत",
+    rolling_immediate: "निरंतर / तत्काल",
+    not_specified: "अनिर्दिष्ट",
+    unresolved_banner: "<b>अपुष्ट नाम।</b> यह यूआरएल से प्राप्त टोकन है।",
+    also_appears_as: "{names} के रूप में भी उपलब्ध — संयुक्त।",
+    open_count_title: "{count} सक्रिय {item}",
+    open_postings_section: "{count} सक्रिय {item}",
+    closed_duplicates: "{count} बंद या डुप्लिकेट",
+    no_open_postings_company: "फिलहाल कोई सक्रिय पद नहीं है।",
+    sec_view: "व्यू",
+    sec_preset: "प्रीसेट",
+    sec_industry: "उद्योग",
+    sec_function: "कार्य क्षेत्र",
+    sec_where: "कार्य स्थल",
+    sec_location: "स्थान",
+    sec_cycle: "भर्ती सत्र",
+    sec_age: "समयावधि",
+    th_title: "पद",
+    th_company: "कंपनी",
+    th_location: "स्थान",
+    th_category: "श्रेणी",
+    th_cycle: "सत्र",
+    th_age: "दिनांक"
+  }
+};
+
+const SEARCH_SYNONYMS = {
+  // Spanish
+  "pasantia": "intern internship",
+  "pasantias": "intern internship",
+  "pasantía": "intern internship",
+  "pasantías": "intern internship",
+  "practica": "intern internship",
+  "practicas": "intern internship",
+  "práctica": "intern internship",
+  "prácticas": "intern internship",
+  "practicante": "intern",
+  "desarrollador": "developer engineer software",
+  "ingeniero": "engineer",
+  "ingenieria": "engineering",
+  "ingeniería": "engineering",
+  "diseno": "design",
+  "diseño": "design",
+  "finanzas": "finance",
+  "verano": "summer",
+  "remoto": "remote",
+  "hibrido": "hybrid",
+  "híbrido": "hybrid",
+  // French
+  "stage": "intern internship",
+  "stages": "intern internship",
+  "stagiaire": "intern",
+  "stagiaires": "intern",
+  "developpeur": "developer engineer software",
+  "développeur": "developer engineer software",
+  "ingenieur": "engineer",
+  "ingénieur": "engineer",
+  "informatique": "software computer science",
+  "ete": "summer",
+  "été": "summer",
+  "teletravail": "remote",
+  "télétravail": "remote",
+  // German
+  "praktikum": "intern internship",
+  "praktika": "intern internship",
+  "praktikant": "intern",
+  "praktikantin": "intern",
+  "werkstudent": "intern working student",
+  "entwickler": "developer engineer software",
+  "ingenieur": "engineer",
+  "informatik": "computer science software",
+  "sommer": "summer",
+  // Portuguese
+  "estagio": "intern internship",
+  "estagios": "intern internship",
+  "estágio": "intern internship",
+  "estágios": "intern internship",
+  "estagiario": "intern",
+  "estagiária": "intern",
+  "estagiário": "intern",
+  "desenvolvedor": "developer engineer software",
+  "engenheiro": "engineer",
+  "engenharia": "engineering",
+  "verao": "summer",
+  "verão": "summer",
+  // Chinese
+  "实习": "intern internship",
+  "实习生": "intern",
+  "暑期": "summer",
+  "开发": "developer engineer software",
+  "工程师": "engineer",
+  "前端": "frontend",
+  "后端": "backend",
+  "全栈": "fullstack",
+  "算法": "algorithm machine learning",
+  "产品": "product",
+  "设计": "design",
+  "金融": "finance",
+  "远程": "remote",
+  // Japanese
+  "インターン": "intern internship",
+  "インターンシップ": "intern internship",
+  "エンジニア": "engineer",
+  "開発": "developer software",
+  "夏": "summer",
+  "リモート": "remote"
+};
+
+const LANG_STORAGE_KEY = "lilguy:lang";
+
+function getCurrentLang() {
+  const saved = localStorage.getItem(LANG_STORAGE_KEY);
+  if (saved && I18N[saved]) return saved;
+  const nav = (navigator.language || "").slice(0, 2).toLowerCase();
+  if (I18N[nav]) return nav;
+  return "en";
+}
+
+function t(key, params = {}) {
+  const lang = getCurrentLang();
+  let str = (I18N[lang] && I18N[lang][key]) || (I18N.en && I18N.en[key]) || key;
+  for (const [k, v] of Object.entries(params)) {
+    str = str.replace(new RegExp("{\\s*" + k + "\\s*}", "g"), String(v));
+  }
+  return str;
+}
+
+function setLang(lang) {
+  if (!I18N[lang]) lang = "en";
+  try { localStorage.setItem(LANG_STORAGE_KEY, lang); } catch(e) {}
+  document.documentElement.lang = lang;
+  const select = document.getElementById("lang-select");
+  if (select && select.value !== lang) select.value = lang;
+  applyI18nToStaticDom();
+
+  // Re-render active view
+  const detail = document.getElementById("tab-detail");
+  if (detail && !detail.hidden) {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("posting")) renderPostingPage(params.get("posting"));
+    else if (params.get("company")) renderCompanyPage(params.get("company"));
+    else if (params.get("source")) renderSourcePage(params.get("source"));
+    else if (params.get("ats")) renderAtsPage(params.get("ats"));
+  } else {
+    loadFeed();
+  }
+}
+
+function applyI18nToStaticDom() {
+  const searchInput = document.getElementById("search");
+  if (searchInput) searchInput.placeholder = t("search_placeholder");
+  const searchClear = document.getElementById("search-clear");
+  if (searchClear) {
+    searchClear.setAttribute("aria-label", t("clear_search"));
+    searchClear.setAttribute("title", t("clear_search"));
+  }
+  const brandHome = document.getElementById("brand-home");
+  if (brandHome) {
+    brandHome.setAttribute("aria-label", t("brand_title"));
+    brandHome.setAttribute("title", t("brand_title"));
+  }
+  const filtersToggle = document.getElementById("filters-toggle");
+  if (filtersToggle) {
+    filtersToggle.setAttribute("aria-label", t("filters"));
+    filtersToggle.setAttribute("title", t("filters"));
+  }
+  const resetBtn = document.getElementById("filters-reset");
+  if (resetBtn) resetBtn.textContent = t("reset_all");
+  const resetFooterBtn = document.getElementById("filters-reset-footer");
+  if (resetFooterBtn) resetFooterBtn.textContent = t("reset");
+  const doneFooterBtn = document.getElementById("filters-done");
+  if (doneFooterBtn) doneFooterBtn.textContent = t("done");
+
+  const asideHeaderTitle = document.querySelector(".filters-aside-header .title");
+  if (asideHeaderTitle) asideHeaderTitle.textContent = t("filters");
+
+  // Filter section headers
+  const sectionKeyMap = {
+    "view": "sec_view",
+    "preset": "sec_preset",
+    "industry": "sec_industry",
+    "function": "sec_function",
+    "where": "sec_where",
+    "location": "sec_location",
+    "cycle": "sec_cycle",
+    "age": "sec_age"
+  };
+  for (const [sec, k] of Object.entries(sectionKeyMap)) {
+    const el = document.querySelector(`.filter-section[data-section="${sec}"] .filter-section-toggle span:first-child`);
+    if (el) el.textContent = t(k);
+  }
+
+  // Table Column Headers
+  const colMap = {
+    "title": "th_title",
+    "company": "th_company",
+    "location": "th_location",
+    "category": "th_category",
+    "cycle_season": "th_cycle",
+    "posted_at_ts": "th_age"
+  };
+  for (const [col, k] of Object.entries(colMap)) {
+    const btn = document.querySelector(`#tab-feed-postings table .sort-btn[data-sort="${col}"]`);
+    if (btn) {
+      const caret = btn.querySelector(".sort-caret");
+      btn.textContent = t(k);
+      if (caret) btn.appendChild(caret);
+    }
+  }
+}
+
 function timeAgo(iso) {
   if (!iso) return "recent";
   if (typeof iso === "string" && iso.toLowerCase().startsWith("posted ")) {
     return iso.replace(/^posted\s+/i, "");
   }
   const d = new Date(iso);
-  if (isNaN(d)) return String(iso);
-  const secs = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (isNaN(d.getTime())) return String(iso);
+  const now = new Date();
+  const secs = Math.floor((now.getTime() - d.getTime()) / 1000);
+  const lang = getCurrentLang();
+
+  if (typeof Intl !== "undefined" && Intl.RelativeTimeFormat) {
+    try {
+      const rtf = new Intl.RelativeTimeFormat(lang, { numeric: "auto" });
+      if (secs < 60) return rtf.format(-Math.max(1, secs), "second");
+      const mins = Math.floor(secs / 60);
+      if (mins < 60) return rtf.format(-mins, "minute");
+      const hours = Math.floor(secs / 3600);
+      if (hours < 24) return rtf.format(-hours, "hour");
+      const days = Math.floor(secs / 86400);
+      if (days < 30) return rtf.format(-days, "day");
+      const months = Math.floor(days / 30);
+      if (months < 12) return rtf.format(-months, "month");
+      return rtf.format(-Math.floor(days / 365), "year");
+    } catch(e) {}
+  }
+
   if (secs < 60) return "just now";
   if (secs < 3600) return Math.floor(secs / 60) + "m ago";
   if (secs < 86400) return Math.floor(secs / 3600) + "h ago";
@@ -1695,6 +2539,7 @@ function timeAgo(iso) {
   if (days < 365) return Math.floor(days / 30) + "mo ago";
   return Math.floor(days / 365) + "y ago";
 }
+
 
 // Relative time is the right default for scanning ("2h ago" answers
 // "is this fresh?" faster than a date does), but it throws away the
@@ -2253,9 +3098,19 @@ function edgeSearch(query, postings) {
   const q = query.trim().toLowerCase();
   if (!q) return postings;
 
-  const terms = q.split(/\s+/).filter(Boolean);
-  const results = [];
+  const rawTerms = q.split(/\s+/).filter(Boolean);
+  const termGroups = rawTerms.map(term => {
+    const list = [term];
+    const syns = SEARCH_SYNONYMS[term];
+    if (syns) {
+      for (const s of syns.split(/\s+/)) {
+        if (!list.includes(s)) list.push(s);
+      }
+    }
+    return list;
+  });
 
+  const results = [];
   for (const p of postings) {
     const title = (p.title || "").toLowerCase();
     const company = (p.company || "").toLowerCase();
@@ -2270,30 +3125,37 @@ function edgeSearch(query, postings) {
     if (q.length > 3 && title.includes(q)) rank += 40;
     if (q.length > 3 && snippet.includes(q)) rank += 15;
 
-    for (const term of terms) {
-      let termFound = false;
-      if (title.includes(term)) {
-        rank += 10;
-        if (title.startsWith(term)) rank += 5;
-        termFound = true;
+    for (const group of termGroups) {
+      let groupFound = false;
+      for (const term of group) {
+        if (title.includes(term)) {
+          rank += 10;
+          if (title.startsWith(term)) rank += 5;
+          groupFound = true;
+          break;
+        }
+        if (company.includes(term)) {
+          rank += 8;
+          groupFound = true;
+          break;
+        }
+        if (snippet.includes(term)) {
+          rank += 3;
+          groupFound = true;
+          break;
+        }
+        if (location.includes(term)) {
+          rank += 2;
+          groupFound = true;
+          break;
+        }
+        if (category.includes(term) || fn.includes(term)) {
+          rank += 2;
+          groupFound = true;
+          break;
+        }
       }
-      if (company.includes(term)) {
-        rank += 8;
-        termFound = true;
-      }
-      if (snippet.includes(term)) {
-        rank += 3;
-        termFound = true;
-      }
-      if (location.includes(term)) {
-        rank += 2;
-        termFound = true;
-      }
-      if (category.includes(term) || fn.includes(term)) {
-        rank += 2;
-        termFound = true;
-      }
-      if (!termFound) {
+      if (!groupFound) {
         allMatched = false;
         break;
       }
@@ -2509,11 +3371,11 @@ function renderPager() {
   const start = feedTotal ? feedOffset + 1 : 0;
   const end = Math.min(feedOffset + feedPostings.length, feedTotal);
   const html = feedTotal ? `
-    <button type="button" class="pager-btn" data-pager="prev" ${page <= 1 ? "disabled" : ""}>&larr; Prev</button>
-    <span class="pager-status mono">Page ${page} of ${pages}
-      <span class="pager-range">(${start.toLocaleString()}&ndash;${end.toLocaleString()} of ${feedTotal.toLocaleString()})</span>
+    <button type="button" class="pager-btn" data-pager="prev" ${page <= 1 ? "disabled" : ""}>${t("page_prev")}</button>
+    <span class="pager-status mono">${t("page_status", { page, pages })}
+      <span class="pager-range">${t("page_range", { start: start.toLocaleString(), end: end.toLocaleString(), total: feedTotal.toLocaleString() })}</span>
     </span>
-    <button type="button" class="pager-btn" data-pager="next" ${page >= pages ? "disabled" : ""}>Next &rarr;</button>
+    <button type="button" class="pager-btn" data-pager="next" ${page >= pages ? "disabled" : ""}>${t("page_next")}</button>
   ` : "";
   for (const id of ["feed-pager-top", "feed-pager"]) {
     const wrap = document.getElementById(id);
@@ -2602,16 +3464,15 @@ function renderFeed() {
   // combined number would claim a confidence the data does not support.
   const confirmed = feedTotal - feedUnstatedCycle;
   document.getElementById("feed-count").innerHTML = feedUnstatedCycle
-    ? `<strong>${confirmed}</strong> matching this cycle` +
-      ` <span class="truncated">+ ${feedUnstatedCycle} that state no cycle</span>`
-    : `<strong>${feedTotal}</strong> matching`;
+    ? `<strong>${confirmed.toLocaleString()}</strong> ${t("matching_this_cycle")}` +
+      ` <span class="truncated">${t("unstated_cycle_note", { count: feedUnstatedCycle.toLocaleString() })}</span>`
+    : `<strong>${t("matching_total", { count: feedTotal.toLocaleString() })}</strong>`;
 
   renderPager();
-  document.getElementById("feed-sort-line").textContent =
-    `sorted by ${({posted_at_ts: "date posted"})[feedSort.key] || feedSort.key.replace(/_/g, " ")}, ${feedSort.dir === 1 ? "oldest first" : "newest first"}`;
-
+  const sortName = feedSort.key === "posted_at_ts" ? t("sort_date_posted") : (t("th_" + feedSort.key) || feedSort.key.replace(/_/g, " "));
+  const sortDir = feedSort.dir === 1 ? t("sort_oldest") : t("sort_newest");
+  document.getElementById("feed-sort-line").textContent = t("sorted_by", { sort: sortName, dir: sortDir });
   applySort("tab-feed", feedSort);
-
   // Subscribing should capture the filters you can see, not a generic
   // feed -- otherwise "subscribe" quietly means something other than
   // what is on screen.
@@ -2620,7 +3481,7 @@ function renderFeed() {
 
   const body = document.getElementById("feed-body");
   if (!filtered.length) {
-    body.innerHTML = emptyRow(6, feedPostings.length ? "No postings match that filter." : "No open postings sourced yet.");
+    body.innerHTML = emptyRow(6, feedPostings.length ? t("no_match_filter") : t("no_postings_sourced"));
     return;
   }
   // A labelled divider where the confirmed matches end. Without it the
@@ -2634,12 +3495,11 @@ function renderFeed() {
     if (grouped && !dividerShown && !statesCycle(p)) {
       dividerShown = true;
       divider = `<tr class="group-divider"><td colspan="6">` +
-        `${feedUnstatedCycle} posting${feedUnstatedCycle === 1 ? "" : "s"} whose title states no cycle — ` +
-        `these may or may not be the one you asked for` +
+        t("group_unstated_title", { count: feedUnstatedCycle.toLocaleString(), s: feedUnstatedCycle === 1 ? "" : "s" }) +
         `</td></tr>`;
     }
     return divider + `
-    <tr>
+    <tr>`;
       <td class="title-cell" data-label="Title"><a class="clamp-2" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
       <td class="company-cell" data-label="Company" title="${escapeHtml(p.company)}"><span class="clamp-2">${entityLink("company", p.company_key, p.company)}</span></td>
       <td class="location-cell" data-label="Location" title="${escapeHtml(p.location || "")}"><span class="clamp-2">${locationHtml(p.location)}</span></td>
@@ -2909,7 +3769,11 @@ const VIEW_SEARCH_PLACEHOLDER = {
 let viewLoaded = { postings: true };
 
 function updateSearchPlaceholder(view) {
-  document.getElementById("search").placeholder = VIEW_SEARCH_PLACEHOLDER[view] || VIEW_SEARCH_PLACEHOLDER.postings;
+  if (view === "postings") {
+    document.getElementById("search").placeholder = t("search_placeholder");
+  } else {
+    document.getElementById("search").placeholder = VIEW_SEARCH_PLACEHOLDER[view] || t("search_placeholder");
+  }
 }
 
 function ensureViewLoaded(view) {
@@ -3668,6 +4532,12 @@ function showDetailError(message) {
 
 // --- posting page -------------------------------------------------------
 
+function translateCurrentRole(url) {
+  const lang = getCurrentLang();
+  const target = `https://translate.google.com/translate?sl=auto&tl=${encodeURIComponent(lang)}&u=${encodeURIComponent(url)}`;
+  window.open(target, "_blank", "noopener");
+}
+
 async function renderPostingPage(id) {
   showDetailLoading();
   let p = null;
@@ -3676,7 +4546,7 @@ async function renderPostingPage(id) {
 
   if (EDGE_DATA.active && EDGE_DATA.corpus) {
     p = EDGE_DATA.corpus.find(x => x.id === id);
-    if (!p) return showDetailError("No such posting in active feed");
+    if (!p) return showDetailError(t("no_match_filter"));
 
     // In Edge mode, fetch description shard if present
     let descText = p.description || "";
@@ -3720,28 +4590,28 @@ async function renderPostingPage(id) {
   const badges = [];
   if (p.work_arrangement) {
     const waLabel = p.work_arrangement.charAt(0).toUpperCase() + p.work_arrangement.slice(1);
-    badges.push(`<span class="swatch-tag tag-${escapeHtml(p.work_arrangement)}" title="Workplace type: ${escapeHtml(waLabel)}">${escapeHtml(waLabel)}</span>`);
+    badges.push(`<span class="swatch-tag tag-${escapeHtml(p.work_arrangement)}" title="${escapeHtml(t("key_workplace"))}: ${escapeHtml(waLabel)}">${escapeHtml(waLabel)}</span>`);
   }
   if (p.job_function && p.job_function !== "Other") {
-    badges.push(`<span class="swatch-tag is-function" title="Job function: ${escapeHtml(p.job_function)}">${escapeHtml(p.job_function)}</span>`);
+    badges.push(`<span class="swatch-tag is-function" title="${escapeHtml(t("key_function"))}: ${escapeHtml(p.job_function)}">${escapeHtml(p.job_function)}</span>`);
   }
   if (p.category && p.category !== "Uncategorized") {
-    badges.push(`<span class="swatch-tag" title="Industry: ${escapeHtml(p.category)}">${escapeHtml(p.category)}</span>`);
+    badges.push(`<span class="swatch-tag" title="${escapeHtml(t("key_industry"))}: ${escapeHtml(p.category)}">${escapeHtml(p.category)}</span>`);
   }
   if (p.cycle_season || p.cycle_year) {
     const seasonText = p.cycle_season ? p.cycle_season.charAt(0).toUpperCase() + p.cycle_season.slice(1) : "";
     const term = `${seasonText} ${p.cycle_year || ""}`.trim();
-    badges.push(`<span class="swatch-tag" style="border-color: var(--accent-dim); color: var(--accent);" title="Recruiting term: ${escapeHtml(term)}">📅 ${escapeHtml(term)}</span>`);
+    badges.push(`<span class="swatch-tag" style="border-color: var(--accent-dim); color: var(--accent);" title="${escapeHtml(t("key_cycle"))}: ${escapeHtml(term)}">📅 ${escapeHtml(term)}</span>`);
   }
 
   const description = p.description
     ? `<div class="description-body">${escapeHtml(p.description)}</div>`
     : `<div class="description-missing">${p.description === ""
-        ? "This employer publishes no full-text description for this posting."
-        : "Description not indexed yet — will be fetched on the next scrape of this source."}</div>`;
+        ? t("desc_missing_publisher")
+        : t("desc_missing_index")}</div>`;
 
   const alsoListedHtml = (alsoListed || []).length ? `
-    <div class="section-title">Also listed via (${alsoListed.length})</div>
+    <div class="section-title">${escapeHtml(t("also_listed_via", { count: alsoListed.length }))}</div>
     <div class="mini-list">${alsoListed.map(d => `
       <a class="mini-row" href="${entityHref("posting", d.id)}" data-route="posting" data-value="${escapeHtml(d.id)}">
         <span>${escapeHtml(d.source_entry || d.company || "")} <span class="meta">· ${escapeHtml(d.ats || "")}</span></span>
@@ -3749,7 +4619,7 @@ async function renderPostingPage(id) {
       </a>`).join("")}</div>` : "";
 
   const siblingsHtml = (siblings || []).length ? `
-    <div class="section-title">Other open roles at ${escapeHtml(p.company)} (${siblings.length})</div>
+    <div class="section-title">${escapeHtml(t("other_roles_at", { company: p.company, count: siblings.length }))}</div>
     <div class="mini-list">${siblings.map(o => `
       <a class="mini-row" href="${entityHref("posting", o.id)}" data-route="posting" data-value="${escapeHtml(o.id)}">
         <span class="mini-row-title">${escapeHtml(o.title)}</span>
@@ -3758,7 +4628,7 @@ async function renderPostingPage(id) {
 
   detailEl().innerHTML = `
     <div class="detail-nav-bar">
-      <button type="button" class="crumb-back-btn" onclick="leaveDetail()">← Back to all roles</button>
+      <button type="button" class="crumb-back-btn" onclick="leaveDetail()">← ${escapeHtml(t("back_to_feed"))}</button>
       <span class="crumb-sep">/</span>
       <a class="crumb-item" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">${escapeHtml(p.company)}</a>
       <span class="crumb-sep">/</span>
@@ -3776,25 +4646,26 @@ async function renderPostingPage(id) {
     </div>
 
     <div class="detail-actions">
-      <a class="btn primary btn-lg" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">Apply on ${escapeHtml(atsName)} ↗</a>
-      <a class="btn btn-lg" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">All roles at ${escapeHtml(p.company)} (${compRolesCount}) →</a>
-      <button type="button" class="btn btn-lg" id="btn-copy-link" onclick="copyCurrentPostingUrl(this)">📋 Copy Link</button>
+      <a class="btn primary btn-lg" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">${escapeHtml(t("apply_on", { ats: atsName }))}</a>
+      <a class="btn btn-lg" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">${escapeHtml(t("all_roles_at", { company: p.company, count: compRolesCount }))}</a>
+      <button type="button" class="btn btn-lg" id="btn-copy-link" onclick="copyCurrentPostingUrl(this)">${escapeHtml(t("copy_link"))}</button>
+      <button type="button" class="btn btn-lg" onclick="translateCurrentRole('${escapeHtml(p.url)}')">${escapeHtml(t("translate_desc"))}</button>
     </div>
 
     <div class="detail-kv-card">
-      <div class="kv-item"><span class="k">Company</span><span class="v"><a class="entity" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">${escapeHtml(p.company)}</a></span></div>
-      <div class="kv-item"><span class="k">Location</span><span class="v">${locationHtml(p.location)}</span></div>
-      <div class="kv-item"><span class="k">Workplace</span><span class="v">${escapeHtml(p.work_arrangement ? p.work_arrangement.toUpperCase() : "Not specified")}</span></div>
-      <div class="kv-item"><span class="k">Job Function</span><span class="v">${escapeHtml(p.job_function || "General")}</span></div>
-      <div class="kv-item"><span class="k">Industry</span><span class="v">${escapeHtml(p.category || "General")}</span></div>
-      <div class="kv-item"><span class="k">Recruiting Cycle</span><span class="v">${escapeHtml(p.cycle_season ? (p.cycle_season.toUpperCase() + " " + (p.cycle_year || "")) : "Rolling / Immediate")}</span></div>
-      <div class="kv-item"><span class="k">Posted</span><span class="v" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</span></div>
-      <div class="kv-item"><span class="k">First Seen</span><span class="v" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</span></div>
-      <div class="kv-item"><span class="k">Platform / ATS</span><span class="v">${entityLink("ats", p.ats, atsName)}</span></div>
-      <div class="kv-item"><span class="k">Source</span><span class="v">${escapeHtml(p.source_entry || p.source || "Direct")}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_company"))}</span><span class="v"><a class="entity" href="${entityHref("company", compKey)}" data-route="company" data-value="${escapeHtml(compKey)}">${escapeHtml(p.company)}</a></span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_location"))}</span><span class="v">${locationHtml(p.location)}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_workplace"))}</span><span class="v">${escapeHtml(p.work_arrangement ? p.work_arrangement.toUpperCase() : t("not_specified"))}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_function"))}</span><span class="v">${escapeHtml(p.job_function || "General")}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_industry"))}</span><span class="v">${escapeHtml(p.category || "General")}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_cycle"))}</span><span class="v">${escapeHtml(p.cycle_season ? (p.cycle_season.toUpperCase() + " " + (p.cycle_year || "")) : t("rolling_immediate"))}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_posted"))}</span><span class="v" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_first_seen"))}</span><span class="v" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_platform"))}</span><span class="v">${entityLink("ats", p.ats, atsName)}</span></div>
+      <div class="kv-item"><span class="k">${escapeHtml(t("key_source"))}</span><span class="v">${escapeHtml(p.source_entry || p.source || "Direct")}</span></div>
     </div>
 
-    <div class="section-title">Job Description</div>
+    <div class="section-title">${escapeHtml(t("job_description"))}</div>
     <div class="description-card">${description}</div>
 
     ${alsoListedHtml}
@@ -3810,7 +4681,7 @@ async function renderCompanyPage(key) {
   const cleanKey = (key || "").toLowerCase();
   if (EDGE_DATA.active && EDGE_DATA.corpus) {
     const matched = EDGE_DATA.corpus.filter(p => (p.company_key || "").toLowerCase() === cleanKey || slugifyCompany(p.company) === cleanKey);
-    if (!matched.length) return showDetailError(`No open postings found for company "${key}"`);
+    if (!matched.length) return showDetailError(t("no_open_postings_company"));
     const names = {};
     for (const r of matched) names[r.company] = (names[r.company] || 0) + 1;
     const displayName = Object.keys(names).reduce((a, b) => names[a] > names[b] ? a : b);
@@ -3835,7 +4706,7 @@ async function renderCompanyPage(key) {
   const looksUnresolved = data.display_name === data.display_name.toLowerCase()
                            && !data.display_name.includes(" ");
   const banner = looksUnresolved
-    ? `<div class="banner"><b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name — it hasn't been identified yet.</div>`
+    ? `<div class="banner">${t("unresolved_banner")}</div>`
     : "";
 
   const via = data.reached_via.map(v => `
@@ -3864,7 +4735,7 @@ async function renderCompanyPage(key) {
 
   detailEl().innerHTML = `
     <div class="detail-nav-bar">
-      <button type="button" class="crumb-back-btn" onclick="leaveDetail()">← Back to all roles</button>
+      <button type="button" class="crumb-back-btn" onclick="leaveDetail()">← ${escapeHtml(t("back_to_feed"))}</button>
       <span class="crumb-sep">/</span>
       <span class="crumb-current">${escapeHtml(data.display_name)}</span>
     </div>
@@ -3874,23 +4745,23 @@ async function renderCompanyPage(key) {
       <div class="detail-sub">
         <span>${escapeHtml(data.category || "Uncategorized")}</span>
         <span class="sub-sep">·</span>
-        <span><b>${data.open_count}</b> open ${data.open_count === 1 ? "internship" : "internships"}</span>
+        <span><b>${data.open_count}</b> ${escapeHtml(t("open_count_title", { count: data.open_count, item: data.open_count === 1 ? "internship" : "internships" }))}</span>
       </div>
     </div>
 
     <div class="detail-actions">
-      <button type="button" class="btn primary btn-lg" onclick="filterFeedByCompany('${escapeHtml(data.display_name)}')">🔍 View all in search table (${data.open_count}) →</button>
-      <button type="button" class="btn btn-lg" onclick="copyCurrentPostingUrl(this)">📋 Copy Company Link</button>
+      <button type="button" class="btn primary btn-lg" onclick="filterFeedByCompany('${escapeHtml(data.display_name)}')">${escapeHtml(t("view_all_in_table", { count: data.open_count }))}</button>
+      <button type="button" class="btn btn-lg" onclick="copyCurrentPostingUrl(this)">${escapeHtml(t("copy_company_link"))}</button>
     </div>
 
     ${banner}
     ${data.name_variants && data.name_variants.length > 1
-      ? `<div class="banner">Also appears as ${data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ")} — merged into one page.</div>`
+      ? `<div class="banner">${t("also_appears_as", { names: data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ") })}</div>`
       : ""}
-    <div class="section-title">${open.length} Open ${open.length === 1 ? "Posting" : "Postings"}</div>
-    ${open.length ? rows(open) : `<div class="empty">No open postings right now.</div>`}
-    ${via.length ? `<div class="section-title">Where these come from</div>${via}` : ""}
-    ${other.length ? `<div class="section-title">${other.length} closed or duplicate</div>${rows(other)}` : ""}`;
+    <div class="section-title">${escapeHtml(t("open_postings_section", { count: open.length, item: open.length === 1 ? "Posting" : "Postings" }))}</div>
+    ${open.length ? rows(open) : `<div class="empty">${escapeHtml(t("no_open_postings_company"))}</div>`}
+    ${via.length ? `<div class="section-title">${escapeHtml(t("where_from"))}</div>${via}` : ""}
+    ${other.length ? `<div class="section-title">${escapeHtml(t("closed_duplicates", { count: other.length }))}</div>${rows(other)}` : ""}`;
 }
 
 // --- source page --------------------------------------------------------
@@ -4068,6 +4939,18 @@ let pendingCandidateAts = initialParams.get("candidate_ats") || "";
     el.hidden = el.dataset.view !== view;
   });
   updateSearchPlaceholder(view);
+
+  // Initialize language selector
+  const langSel = document.getElementById("lang-select");
+  if (langSel) {
+    const curLang = getCurrentLang();
+    langSel.value = curLang;
+    document.documentElement.lang = curLang;
+    langSel.addEventListener("change", (e) => {
+      setLang(e.target.value);
+    });
+  }
+  applyI18nToStaticDom();
 })();
 
 // Categories load first so a deep link's ?category is already applied to
