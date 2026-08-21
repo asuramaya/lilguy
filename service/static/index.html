@@ -832,53 +832,6 @@
   @media (prefers-reduced-motion: no-preference) {
     html { scroll-behavior: smooth; }
   }
-
-  /* Bookmark / Tracker Star */
-  .save-btn {
-    background: none;
-    border: none;
-    color: var(--ink-tertiary);
-    cursor: pointer;
-    padding: 2px 6px;
-    font-size: 14px;
-    line-height: 1;
-    border-radius: 4px;
-    transition: color 0.15s, transform 0.1s;
-    vertical-align: middle;
-  }
-  .save-btn:hover {
-    color: var(--accent);
-    transform: scale(1.15);
-  }
-  .save-btn.saved {
-    color: var(--accent);
-  }
-  .tracker-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    font-family: ui-monospace, monospace;
-    padding: 2px 6px;
-    border-radius: 3px;
-    background: rgba(232, 149, 42, 0.15);
-    color: var(--accent);
-    border: 1px solid var(--accent-dim);
-    margin-left: 6px;
-  }
-  .edge-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    color: var(--ok);
-    background: rgba(74, 155, 110, 0.1);
-    border: 1px solid rgba(74, 155, 110, 0.25);
-    padding: 1px 6px;
-    border-radius: 999px;
-    margin-left: 8px;
-  }
-
 </style>
 </head>
 <body>
@@ -1156,3 +1109,2278 @@
               </div>
             </div>
           </div>
+          <div class="filter-section" data-view="sources" data-section="source-category" hidden>
+            <button type="button" class="filter-section-toggle"><span>Category</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field"><select id="source-category"><option value="">All</option></select></div>
+            </div>
+          </div>
+          <div class="filter-section" data-view="sources" data-section="source-ats" hidden>
+            <button type="button" class="filter-section-toggle"><span>ATS</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field"><select id="source-ats"><option value="">All</option></select></div>
+            </div>
+          </div>
+          <div class="filter-section" data-view="sources" data-section="source-status" hidden>
+            <button type="button" class="filter-section-toggle"><span>Status</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field">
+                <select id="source-status">
+                  <option value="">All</option>
+                  <option value="active" title="Polled on its normal schedule.">Active</option>
+                  <option value="probation" title="Recently found by discovery -- polled more cautiously until it proves out.">Probation</option>
+                  <option value="disabled" title="Backed off after repeated empty or failed scrapes.">Disabled</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <!-- What each status means used to be a standing paragraph on
+               this page; a title attribute puts the same words one hover
+               away instead of in front of every reader every time. -->
+          <div class="filter-section" data-view="discovery" data-section="candidate-status" hidden>
+            <button type="button" class="filter-section-toggle"><span>Status</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field">
+                <select id="candidate-status">
+                  <option value="">All</option>
+                  <option value="promoted" title="A real board was found and its trial fetch verified.">Promoted</option>
+                  <option value="rejected" title="A board was found, but the trial fetch failed verification (zero postings, no internship-shaped titles, all-identical titles, or a company name that didn't match) -- see Reason.">Rejected</option>
+                  <option value="no_match" title="No board found on any connector.">No match</option>
+                  <option value="unchecked" title="Not probed yet.">Unchecked</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div class="filter-section" data-view="discovery" data-section="candidate-ats" hidden>
+            <button type="button" class="filter-section-toggle"><span>ATS guess</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
+            <div class="filter-section-body">
+              <div class="field"><select id="candidate-ats"><option value="">All</option></select></div>
+            </div>
+          </div>
+        </div>
+        <div class="filters-aside-footer">
+          <button type="button" id="filters-done" class="btn">Done</button>
+        </div>
+      </aside>
+    </div>
+    <div id="filters-backdrop" class="filters-backdrop"></div>
+  </section>
+
+  <section id="tab-detail" class="detail" hidden></section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>Sourced directly from company career sites &mdash; no third-party job-board aggregator in the loop.</span>
+    <span><a id="atom-link" href="/feed.atom" target="_blank">subscribe (Atom)</a> &middot; <a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
+  </div>
+</footer>
+
+<script>
+// "all" is the API's reserved no-filter sentinel (see service/api.py's
+// ALL_POSTINGS), and it is the DEFAULT landing view -- operator ruling,
+// 2026-08-17. Measured cause: only 7.6% of the corpus (355 of 4,644
+// postings, 72 of 579 companies) matched the old supply-chain default,
+// so the landing page hid ~92% of what the scrapers actually collect and
+// nearly all recent work was invisible until a reader changed a dropdown
+// they had no reason to suspect. Supply Chain is now one interest among
+// eight rather than the frame around everything.
+//
+// The fork's own filters.yaml is still reachable as "This fork's filter"
+// -- forking and editing that file remains the documented way to make a
+// narrow build, it just isn't imposed on this deployment's readers.
+const DEFAULT_PRESET = "all";
+
+const PRESETS = [
+  ["all", "All internships"],
+  ["operations-logistics-supply-chain", "Supply Chain"],
+  ["software-engineering", "Software Engineering"],
+  ["data-analytics", "Data Analytics"],
+  ["finance", "Finance"],
+  ["human-resources", "Human Resources"],
+  ["marketing", "Marketing"],
+  ["sales", "Sales"],
+  ["", "This fork's filter (filters.yaml)"],
+];
+
+// A page, not a cap. This used to be 1000 with no way to go further,
+// which left ~3800 of 4833 open postings unreachable from the UI -- the
+// same shape as the old "every preset is a filter" gap, just smaller.
+const FEED_PAGE_SIZE = 200;
+
+const presetSelect = document.getElementById("preset");
+for (const [value, label] of PRESETS) {
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = label;
+  presetSelect.appendChild(opt);
+}
+// Set before any ?preset= from the URL is applied, so a shared link still
+// wins over the default.
+presetSelect.value = DEFAULT_PRESET;
+
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function timeAgo(iso) {
+  if (!iso) return "never";
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  const secs = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (secs < 60) return "just now";
+  if (secs < 3600) return Math.floor(secs / 60) + "m ago";
+  if (secs < 86400) return Math.floor(secs / 3600) + "h ago";
+  return Math.floor(secs / 86400) + "d ago";
+}
+
+// Relative time is the right default for scanning ("2h ago" answers
+// "is this fresh?" faster than a date does), but it throws away the
+// actual timestamp -- so the exact local datetime goes in the title.
+function exactTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return isNaN(d) ? "" : d.toLocaleString();
+}
+
+// How old a posting really is, which is the single most decision-
+// relevant fact on the row and used to be wrong: this column showed
+// first_seen -- when THIS system first saw the posting -- under a
+// header reading "Posted". With a young database that made every row
+// look hours old, including Lever postings whose real date was 2021.
+//
+// posted_at_ts is the provider's own date where one exists (99.3% of
+// the open corpus). Where it doesn't, fall back to first_seen but SAY
+// so rather than silently passing our discovery time off as theirs.
+// `approx` marks values the provider only bounded or rounded (Workday's
+// "30+ days ago"), rendered with a leading ~ so the row never implies
+// precision nobody offered.
+// POSTED and FOUND are two different facts and get two different
+// columns. Posted is the employer's own date -- how old the opportunity
+// actually is, and the one that decides whether it's worth applying to.
+// Found is when this feed first pulled it, which only answers "is this
+// new to me since I last looked". They can differ by years: the corpus
+// holds postings from 2016 that this database first saw days ago.
+//
+// Critically, Posted does NOT fall back to Found. An earlier version put
+// the pull time in the Posted column whenever a source gave no date,
+// which is the exact conflation this split exists to remove -- it
+// presented our discovery time as the employer's. When there's no real
+// posting date the column says so, and Found (always present) carries
+// the only date we do have.
+function postedCell(p) {
+  if (!p.posted_at_ts) {
+    return {
+      text: "unknown",
+      cls: "unknown-date",
+      title: "This source publishes no posting date. See the Found column for when this feed first pulled it — that is not the same thing.",
+    };
+  }
+  const rel = timeAgo(p.posted_at_ts);
+  if (!p.posted_at_approx) {
+    return {
+      text: rel,
+      cls: "",
+      label: `Posted ${rel}`,
+      title: `Posted ${exactTime(p.posted_at_ts)}` +
+             (p.posted_at ? `\nProvider value: ${p.posted_at}` : ""),
+    };
+  }
+  // "+", not "~". These are LOWER BOUNDS on age, not fuzzy midpoints:
+  // Workday stops counting at "Posted 30+ Days Ago", so the true age is
+  // at least 30 days and may be far more (a saturated value is the
+  // COMMON case, not an edge one -- 800 of 813 approximate postings are
+  // Workday). "Posted 5 Days Ago" is likewise somewhere in [5, 6) days.
+  // Every approximate value here is "at least this old", so "+" is
+  // always the correct direction, where "~" implied a precision in both
+  // directions that the provider never offered.
+  return {
+    text: `${rel}+`,
+    cls: "approx-date",
+    // Screen readers do not reliably announce title, and a bare "+" is
+    // not something a reader can be expected to decode.
+    label: `Posted at least ${rel} — the source gives a bound, not a date`,
+    title: "The provider published a bounded age, not a date — this posting is " +
+           "AT LEAST this old and may be considerably older.\n" +
+           `Not later than ${exactTime(p.posted_at_ts)}` +
+           (p.posted_at ? `\nProvider value: ${p.posted_at}` : ""),
+  };
+}
+
+function foundCell(p) {
+  return {
+    text: timeAgo(p.first_seen),
+    title: `This feed first pulled this posting ${exactTime(p.first_seen)}. This is our discovery time, not the employer's posting date.`,
+  };
+}
+
+function emptyRow(colspan, message) {
+  return `<tr><td colspan="${colspan}"><div class="empty">${escapeHtml(message)}</div></td></tr>`;
+}
+
+// A category dot used to be one flat --accent-dim for every category --
+// decorative, not informative, and worse than no dot at all since it
+// visually promises colour-coding it doesn't deliver. This gives each
+// category a stable colour derived from its own name, so the same
+// category always renders the same hue everywhere the tag appears.
+// Hue-only (fixed S/L tuned for the dark canvas) keeps every generated
+// colour at roughly equal perceived brightness, rather than risking a
+// hash landing on near-black or near-white.
+// One column, two axes. A posting carries an industry OR a function,
+// never both, so showing only `category` would have left 58% of rows
+// blank the moment the two were split apart. Whichever is known is
+// shown, and which axis it is has to be recoverable -- "Healthcare" the
+// function and "Healthcare Services" the industry are different claims,
+// and a reader who cannot tell them apart is back where they started.
+// A button, not a plain span: it already carries the exact filter
+// value a reader would otherwise have to retype into Industry or
+// Function -- rendering it as inert text just to look tidy would waste
+// that. data-filter-axis/-value are read by the single delegated click
+// handler wired near applyCellFilter() below, the same pattern the
+// entity-link routing already uses for postings/companies/sources.
+function categoryCell(p) {
+  const industry = p.category || "";
+  const fn = p.job_function || "";
+  const value = industry || fn;
+  if (!value) return "";
+  const isFunction = !industry && !!fn;
+  const axis = isFunction ? "function" : "industry";
+  const title = isFunction
+    ? `Job function: ${value} (this source does not report the employer's industry) -- click to filter by it`
+    : `Employer industry: ${value} -- click to filter by it`;
+  return `<button type="button" class="swatch-tag${isFunction ? " is-function" : ""}" ` +
+         `style="--swatch-color:${categoryColor(value)}" title="${escapeHtml(title)}" ` +
+         `data-filter-axis="${axis}" data-filter-value="${escapeHtml(value)}">` +
+         `<span class="swatch-label">${escapeHtml(value)}</span></button>`;
+}
+
+function categoryColor(category) {
+  let hash = 0;
+  for (let i = 0; i < category.length; i++) hash = (hash * 31 + category.charCodeAt(i)) >>> 0;
+  return `hsl(${hash % 360}, 55%, 62%)`;
+}
+
+function populateCategoryOptions(selectEl, rows) {
+  const categories = [...new Set(rows.map(r => r.category).filter(Boolean))].sort();
+  const current = selectEl.value;
+  selectEl.innerHTML = '<option value="">All</option>' +
+    categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
+  if (categories.includes(current)) selectEl.value = current;
+}
+
+// Same shape as populateCategoryOptions but for any already-distinct
+// value list (Sources' ATS column, computed client-side; Discovery's,
+// which the server hands back as `ats_options` since that view is
+// paged and a client-side distinct would only ever see the current
+// page). Preserves the current selection across a re-population the
+// same way populateCategoryOptions does.
+function populateSelectValues(selectEl, values) {
+  const current = selectEl.value;
+  selectEl.innerHTML = '<option value="">All</option>' +
+    values.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
+  if (values.includes(current)) selectEl.value = current;
+}
+
+// The feed's own category control is a combobox rather than a <select>,
+// so it fills a <datalist> instead. Ordered by open-posting count, with
+// the count shown as the option's label -- browsers render that beside
+// the value, which turns "which of these 310 is worth picking" from a
+// guess into a visible number.
+// One implementation, two axes. `_axis` rows arrive as {value,
+// open_postings} from /categories.
+const AXES = {
+  industry: { input: "feed-category", list: "category-options", names: new Set(), label: "industry" },
+  function: { input: "feed-function", list: "function-options", names: new Set(), label: "function" },
+};
+let feedCoverage = null;
+
+// Real <select>s rather than the comboboxes the taxonomy axes use:
+// there are four seasons and a handful of years, so a closed list is
+// both complete and shorter than typing.
+function populateCycleSelect(id, rows, anyLabel, format) {
+  const el = document.getElementById(id);
+  const current = el.value;
+  el.innerHTML = `<option value="">${anyLabel}</option>` + rows.map(r =>
+    `<option value="${escapeHtml(String(r.value))}">${escapeHtml(format(r.value))} (${r.open_postings})</option>`
+  ).join("");
+  if ([...el.options].some(o => o.value === current)) el.value = current;
+}
+
+// Anywhere/Remote/Hybrid/..., Any season/Summer/Fall/..., Any time/Past
+// week/... -- every small fixed-choice axis in the panel is a row of
+// pill buttons rather than a <select>, matching the panel's own visual
+// language. The container stands in for a form control: its
+// `dataset.value` IS the current value, read by pillValue() and written
+// by setPillValue(), and a real "change" Event is dispatched on it so
+// existing `el.addEventListener("change", ...)` wiring works unchanged
+// whether the target is this or a native <select> (cycle year still is
+// one -- numeric and open-ended, unlike four seasons or five age
+// buckets).
+function pillValue(id) {
+  return document.getElementById(id).dataset.value || "";
+}
+
+function setPillValue(id, value, { silent = false } = {}) {
+  const el = document.getElementById(id);
+  el.dataset.value = value;
+  el.querySelectorAll(".pill-btn").forEach(btn => btn.classList.toggle("active", btn.dataset.value === value));
+  if (!silent) el.dispatchEvent(new Event("change"));
+}
+
+// Re-clicking the already-active pill clears back to "" -- these are
+// optional filters being narrowed, not a required lens that always has
+// exactly one value.
+function wirePillGroup(id) {
+  document.getElementById(id).querySelectorAll(".pill-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setPillValue(id, btn.dataset.value === pillValue(id) ? "" : btn.dataset.value);
+    });
+  });
+}
+
+// A lens, not an optional filter: always exactly one value, and
+// re-clicking the active pill is a no-op rather than clearing it. The
+// View control (Postings/Sources/Discovery/Duplicates) is the only pill
+// group this applies to -- every other pill group narrows a result set
+// that still makes sense with nothing selected, but "no view" isn't a
+// real state.
+function wireLensGroup(id) {
+  document.getElementById(id).querySelectorAll(".pill-btn").forEach(btn => {
+    btn.addEventListener("click", () => setPillValue(id, btn.dataset.value));
+  });
+}
+
+function populatePillGroup(id, rows, anyLabel, format) {
+  const el = document.getElementById(id);
+  const current = el.dataset.value || "";
+  el.innerHTML = `<button type="button" class="pill-btn" data-value="">${escapeHtml(anyLabel)}</button>` + rows.map(r =>
+    `<button type="button" class="pill-btn" data-value="${escapeHtml(String(r.value))}">${escapeHtml(format(r.value))} (${r.open_postings})</button>`
+  ).join("");
+  wirePillGroup(id);
+  const stillValid = current === "" || [...el.querySelectorAll(".pill-btn")].some(b => b.dataset.value === current);
+  setPillValue(id, stillValid ? current : "", { silent: true });
+}
+
+function populateAxisDatalist(axis, rows) {
+  axis.names = new Set(rows.map(r => r.value));
+  document.getElementById(axis.list).innerHTML = rows.map(r =>
+    `<option value="${escapeHtml(r.value)}" label="${escapeHtml(r.value)} — ${r.open_postings}"></option>`
+  ).join("");
+}
+
+// A typed value only filters when it names a real value on that axis.
+// Anything else is treated as "any" rather than silently returning zero
+// rows, which is what an exact-match filter over free text would
+// otherwise do on every partially-typed word.
+function axisValue(axis) {
+  const raw = document.getElementById(axis.input).value.trim();
+  if (!raw) return "";
+  if (axis.names.has(raw)) return raw;
+  const ci = [...axis.names].find(c => c.toLowerCase() === raw.toLowerCase());
+  return ci || "";
+}
+
+// A hand-rolled dropdown, not a native `list=` combobox -- see the
+// .combo-menu CSS comment for why the native version was dropped.
+// Reads its options straight from the axis's own <datalist> (already
+// populated by populateAxisDatalist), so there is exactly one place
+// that holds "what industries/functions exist", not two that could
+// drift.
+const COMBO_MAX_OPTIONS = 60;
+
+function wireCombobox(axis) {
+  const input = document.getElementById(axis.input);
+  const field = input.closest(".field");
+  const menu = document.createElement("div");
+  menu.className = "combo-menu";
+  menu.id = `${axis.input}-menu`;
+  menu.hidden = true;
+  menu.setAttribute("role", "listbox");
+  field.appendChild(menu);
+  input.setAttribute("aria-controls", menu.id);
+
+  function matches(query) {
+    const datalist = document.getElementById(axis.list);
+    const opts = [...datalist.options].map(o => ({
+      value: o.value,
+      label: o.getAttribute("label") || o.value,
+    }));
+    const q = query.trim().toLowerCase();
+    // Ranked, not just filtered: a name that STARTS WITH what was typed
+    // reads as the more relevant match than one that merely contains it
+    // somewhere in the middle, and the datalist's own count-descending
+    // order is only meaningful as a tiebreaker within each of those two
+    // groups, not across them.
+    if (!q) return opts.slice(0, COMBO_MAX_OPTIONS);
+    const starts = opts.filter(o => o.value.toLowerCase().startsWith(q));
+    const contains = opts.filter(o => !o.value.toLowerCase().startsWith(q) && o.value.toLowerCase().includes(q));
+    return [...starts, ...contains].slice(0, COMBO_MAX_OPTIONS);
+  }
+
+  function render() {
+    const opts = matches(input.value);
+    menu.innerHTML = opts.length
+      ? opts.map(o => {
+          const [, label, count] = o.label.match(/^(.*) — (\d+)$/) || [null, o.label, null];
+          return `<button type="button" class="combo-option" role="option" data-value="${escapeHtml(o.value)}">` +
+                 `<span class="truncate">${escapeHtml(label)}</span>` +
+                 (count ? `<span class="n">${escapeHtml(count)}</span>` : "") +
+                 `</button>`;
+        }).join("")
+      : `<div class="combo-empty">No match</div>`;
+    menu.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function close() {
+    menu.hidden = true;
+    input.setAttribute("aria-expanded", "false");
+  }
+
+  input.addEventListener("focus", render);
+  input.addEventListener("click", render);
+  input.addEventListener("input", render);
+  // Keydown, not blur alone: Escape should close the menu without also
+  // leaving the field, which a blur-driven close would do as a side
+  // effect of moving focus.
+  input.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
+  // Genuinely leaving the field (not clicking into the menu itself,
+  // which also blurs the input) is the one thing that should close it.
+  input.addEventListener("blur", () => { if (!menu.matches(":hover")) close(); });
+  // mousedown, not click: fires BEFORE the input's blur, so the value
+  // is captured before the menu closes and disappears out from under
+  // the click.
+  menu.addEventListener("mousedown", (e) => {
+    const opt = e.target.closest(".combo-option");
+    if (!opt) return;
+    e.preventDefault();
+    input.value = opt.dataset.value;
+    close();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+const feedCategoryValue = () => axisValue(AXES.industry);
+const feedFunctionValue = () => axisValue(AXES.function);
+
+// Two distinct things to say, and both matter.
+//
+// A typo needs naming, or the reader silently gets the whole feed back.
+// And COVERAGE needs naming, because neither axis spans the corpus:
+// only direct boards report an industry, only aggregators report a
+// function. Filtering by industry therefore excludes every aggregator
+// posting -- not a bug, but invisible unless said out loud, and an
+// invisible filter hiding most of the corpus is precisely the failure
+// this split was made to fix.
+function syncCategoryHint() {
+  const hint = document.getElementById("category-hint");
+  if (!hint) return;
+  const messages = [];
+  for (const axis of [AXES.industry, AXES.function]) {
+    const raw = document.getElementById(axis.input).value.trim();
+    if (raw && !axisValue(axis)) messages.push(`no ${axis.label} named “${raw}” — ignoring it`);
+  }
+  if (!messages.length && feedCoverage) {
+    const industry = feedCategoryValue(), fn = feedFunctionValue();
+    if (industry && fn) {
+      messages.push("industry and function rarely coexist on one posting — expect few results");
+    } else if (industry) {
+      messages.push(`industry is known for ${feedCoverage.with_industry.toLocaleString()} of ` +
+                    `${feedCoverage.total.toLocaleString()} open postings`);
+    } else if (fn) {
+      messages.push(`function is known for ${feedCoverage.with_function.toLocaleString()} of ` +
+                    `${feedCoverage.total.toLocaleString()} open postings`);
+    }
+  }
+  hint.textContent = messages.join(" · ");
+  hint.classList.toggle("is-warning", messages.some(m => m.startsWith("no ")));
+}
+
+function sortRows(rows, key, dir) {
+  return [...rows].sort((a, b) => {
+    const av = a[key] ?? "";
+    const bv = b[key] ?? "";
+    // A missing value sorts LAST in whichever direction is active,
+    // rather than winning "newest first" by virtue of being empty --
+    // postings whose source gave no date shouldn't head the feed.
+    if (av === "" && bv === "") return 0;
+    if (av === "") return 1;
+    if (bv === "") return -1;
+    if (av < bv) return -1 * dir;
+    if (av > bv) return 1 * dir;
+    return 0;
+  });
+}
+
+// Sort state lives on the <th> as aria-sort so the control announces its
+// own state instead of only drawing a caret sighted users can see.
+function applySort(containerId, state) {
+  document.querySelectorAll(`#${containerId} .sort-btn`).forEach(btn => {
+    const th = btn.closest("th");
+    const caret = btn.querySelector(".sort-caret");
+    if (caret) caret.remove();
+    if (btn.dataset.sort === state.key) {
+      th.setAttribute("aria-sort", state.dir === 1 ? "ascending" : "descending");
+      btn.insertAdjacentHTML("beforeend", `<span class="sort-caret" aria-hidden="true">${state.dir === 1 ? "▲" : "▼"}</span>`);
+    } else {
+      th.removeAttribute("aria-sort");
+    }
+  });
+}
+
+function wireSortable(containerId, state, renderFn, dateKeys = []) {
+  document.querySelectorAll(`#${containerId} .sort-btn`).forEach(btn => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.sort;
+      // Dates default to newest-first; text defaults to A-Z. Toggling an
+      // already-active column just flips it.
+      state.dir = state.key === key ? -state.dir : (dateKeys.includes(key) ? -1 : 1);
+      state.key = key;
+      renderFn();
+    });
+  });
+}
+
+// Search runs on every keystroke and rebuilds the whole tbody; measured
+// at ~13ms for 356 rows, so it scales to ~36ms at the 1000-row cap --
+// enough to feel like lag while typing. Debounced so a burst of
+// keystrokes costs one render, not one per character.
+function debounce(fn, ms = 140) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
+// --- URL state ----------------------------------------------------------
+// Filters live in the query string so a filtered view is linkable,
+// bookmarkable and survives a refresh. Previously every reload dumped you
+// back on the default preset with your search cleared.
+
+function syncUrl() {
+  // An entity page owns the query string while it's open; rewriting it
+  // from the feed's filters here would bounce the reader out of the page
+  // they just opened.
+  if (activeDetailRoute()) return;
+  const p = new URLSearchParams();
+  const view = pillValue("feed-view");
+  if (view !== "postings") p.set("view", view);
+  const q = document.getElementById("search").value.trim();
+  if (q) p.set("q", q);
+  // Every filter param below belongs to ONE view -- writing it
+  // regardless of which view is active would let a Postings filter you
+  // set earlier and never cleared leak into a Sources deep link that
+  // has nothing to do with it.
+  if (view === "postings") {
+    // The default is omitted so a plain "/" stays clean, but ANY other
+    // choice is written -- including the empty-string fork filter, which
+    // would otherwise be indistinguishable from "nothing chosen" and snap
+    // back to the default on reload.
+    if (presetSelect.value !== DEFAULT_PRESET) p.set("preset", presetSelect.value);
+    const cat = feedCategoryValue();
+    if (cat) p.set("category", cat);
+    const fn = feedFunctionValue();
+    if (fn) p.set("function", fn);
+    const season = pillValue("feed-cycle-season");
+    if (season) p.set("season", season);
+    const year = document.getElementById("feed-cycle-year").value;
+    if (year) p.set("year", year);
+    const where = pillValue("feed-arrangement");
+    if (where) p.set("where", where);
+    const location = document.getElementById("feed-location").value.trim();
+    if (location) p.set("location", location);
+    const age = pillValue("feed-age");
+    if (age) p.set("age", age);
+  } else if (view === "sources") {
+    const category = document.getElementById("source-category").value;
+    if (category) p.set("source_category", category);
+    const ats = document.getElementById("source-ats").value;
+    if (ats) p.set("source_ats", ats);
+    const status = document.getElementById("source-status").value;
+    if (status) p.set("source_status", status);
+  } else if (view === "discovery") {
+    const status = document.getElementById("candidate-status").value;
+    if (status) p.set("candidate_status", status);
+    const ats = document.getElementById("candidate-ats").value;
+    if (ats) p.set("candidate_ats", ats);
+  }
+  const qs = p.toString();
+  history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
+}
+
+const initialParams = new URLSearchParams(location.search);
+
+// --- feed tab ---------------------------------------------------------
+
+// --- Edge Mode Adapter for Cloudflare Pages & lilguy.win ---
+let EDGE_DATA = {
+  meta: null,
+  presets: [],
+  companies: [],
+  corpus: null,
+  active: false
+};
+
+async function initEdgeData() {
+  try {
+    const metaRes = await fetch("/data/meta.json");
+    if (metaRes.ok) {
+      EDGE_DATA.meta = await metaRes.json();
+      EDGE_DATA.active = true;
+      
+      const dot = document.getElementById("health-dot");
+      const sub = document.getElementById("health-sub");
+      if (dot && sub) {
+        dot.className = "status-dot ok";
+        sub.innerHTML = `Edge CDN &middot; ${EDGE_DATA.meta.total_open_postings.toLocaleString()} live`;
+      }
+
+      fetch("/data/presets.json").then(r => r.ok ? r.json() : []).then(d => { EDGE_DATA.presets = d; });
+      fetch("/data/companies.json").then(r => r.ok ? r.json() : []).then(d => { EDGE_DATA.companies = d; });
+
+      const feedRes = await fetch("/data/feed.json");
+      if (feedRes.ok) {
+        EDGE_DATA.corpus = await feedRes.json();
+        const countEl = document.getElementById("feed-count");
+        if (countEl && countEl.textContent.includes("loading")) {
+          loadFeed();
+        }
+      }
+    }
+  } catch (e) {
+    EDGE_DATA.active = false;
+  }
+}
+
+function edgePassesPreset(p, presetId) {
+  if (!presetId || presetId === "all") return true;
+  const preset = (EDGE_DATA.presets || []).find(pr => pr.id === presetId);
+  if (!preset) return true;
+
+  const title = (p.title || "").toLowerCase();
+  const snippet = (p.description_snippet || "").toLowerCase();
+  const company = (p.company || "").toLowerCase();
+  const text = title + " " + snippet;
+
+  if (preset.trusted_companies && preset.trusted_companies.length) {
+    for (const tc of preset.trusted_companies) {
+      if (company === tc.toLowerCase() || company.includes(tc.toLowerCase())) return true;
+    }
+  }
+
+  if (preset.keywords_any && preset.keywords_any.length) {
+    let matched = false;
+    for (const kw of preset.keywords_any) {
+      if (text.includes(kw.toLowerCase())) {
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) return false;
+  }
+
+  if (preset.exclude_keywords && preset.exclude_keywords.length) {
+    for (const ex of preset.exclude_keywords) {
+      if (text.includes(ex.toLowerCase())) return false;
+    }
+  }
+
+  return true;
+}
+
+function edgeSearch(query, postings) {
+  const q = query.trim().toLowerCase();
+  if (!q) return postings;
+
+  const terms = q.split(/\s+/).filter(Boolean);
+  const results = [];
+
+  for (const p of postings) {
+    const title = (p.title || "").toLowerCase();
+    const company = (p.company || "").toLowerCase();
+    const snippet = (p.description_snippet || "").toLowerCase();
+    const location = (p.location || "").toLowerCase();
+    const category = (p.category || "").toLowerCase();
+    const fn = (p.job_function || "").toLowerCase();
+
+    let rank = 0;
+    let allMatched = true;
+
+    if (q.length > 3 && title.includes(q)) rank += 40;
+    if (q.length > 3 && snippet.includes(q)) rank += 15;
+
+    for (const term of terms) {
+      let termFound = false;
+      if (title.includes(term)) {
+        rank += 10;
+        if (title.startsWith(term)) rank += 5;
+        termFound = true;
+      }
+      if (company.includes(term)) {
+        rank += 8;
+        termFound = true;
+      }
+      if (snippet.includes(term)) {
+        rank += 3;
+        termFound = true;
+      }
+      if (location.includes(term)) {
+        rank += 2;
+        termFound = true;
+      }
+      if (category.includes(term) || fn.includes(term)) {
+        rank += 2;
+        termFound = true;
+      }
+      if (!termFound) {
+        allMatched = false;
+        break;
+      }
+    }
+
+    if (allMatched) {
+      results.push({ posting: p, rank: rank });
+    }
+  }
+
+  results.sort((a, b) => b.rank - a.rank);
+  return results.map(r => r.posting);
+}
+
+function edgeFilterFeed() {
+  if (!EDGE_DATA.corpus) return null;
+
+  const preset = presetSelect.value || "default";
+  const q = document.getElementById("search").value.trim();
+  const category = feedCategoryValue();
+  const jobFunction = feedFunctionValue();
+  const season = pillValue("feed-cycle-season");
+  const year = document.getElementById("feed-cycle-year").value;
+  const where = pillValue("feed-arrangement");
+  const location = document.getElementById("feed-location").value.trim().toLowerCase();
+  const age = pillValue("feed-age");
+  const maxAge = age ? parseInt(age, 10) : null;
+
+  let matched = [];
+  const nowMs = Date.now();
+  const statesCycle = p => Boolean(p.cycle_season) || p.cycle_year != null;
+
+  for (const p of EDGE_DATA.corpus) {
+    if (preset && !edgePassesPreset(p, preset)) continue;
+
+    if (maxAge !== null) {
+      const dt = p.posted_at_ts || p.first_seen;
+      if (dt) {
+        const ageDays = (nowMs - new Date(dt).getTime()) / (86400000);
+        if (ageDays > maxAge) continue;
+      }
+    }
+
+    if (category && (p.category || "") !== category) continue;
+    if (jobFunction && (p.job_function || "") !== jobFunction) continue;
+    if (where && (p.work_arrangement || "").toLowerCase() !== where.toLowerCase()) continue;
+    if (location && !(p.location || "").toLowerCase().includes(location)) continue;
+
+    if (season || year) {
+      if (statesCycle(p)) {
+        if (season && (p.cycle_season || "").toLowerCase() !== season.toLowerCase()) continue;
+        if (year && String(p.cycle_year) !== year) continue;
+      }
+    }
+
+    matched.push(p);
+  }
+
+  if (q) {
+    matched = edgeSearch(q, matched);
+  }
+
+  let unstatedCycle = 0;
+  if (season || year) {
+    const confirmed = matched.filter(statesCycle);
+    const unstated = matched.filter(p => !statesCycle(p));
+    unstatedCycle = unstated.length;
+    matched = confirmed.concat(unstated);
+  }
+
+  return {
+    postings: matched,
+    total: matched.length,
+    unstated_cycle: unstatedCycle
+  };
+}
+
+let feedPostings = [];
+let feedTotal = 0;
+let feedUnstatedCycle = 0;
+let feedOffset = 0;
+let feedSort = { key: "posted_at_ts", dir: -1 };
+
+// Every narrowing control is now a SERVER query rather than a filter
+// over whatever happened to already be loaded. Client-side search ran
+// across one page of results, so with 4711 open postings and a 1000-row
+// page a search silently ignored 79% of the corpus and presented the
+// answer as if it were complete.
+function feedQueryUrl() {
+  const p = new URLSearchParams();
+  if (presetSelect.value) p.set("preset", presetSelect.value);
+  const q = document.getElementById("search").value.trim();
+  if (q) p.set("q", q);
+  const category = feedCategoryValue();
+  if (category) p.set("category", category);
+  const jobFunction = feedFunctionValue();
+  if (jobFunction) p.set("job_function", jobFunction);
+  const season = pillValue("feed-cycle-season");
+  if (season) p.set("cycle_season", season);
+  const year = document.getElementById("feed-cycle-year").value;
+  if (year) p.set("cycle_year", year);
+  const where = pillValue("feed-arrangement");
+  if (where) p.set("work_arrangement", where);
+  const location = document.getElementById("feed-location").value.trim();
+  if (location) p.set("locations_include", location);
+  const age = pillValue("feed-age");
+  if (age) p.set("max_age_days", age);
+  p.set("limit", String(FEED_PAGE_SIZE));
+  if (feedOffset) p.set("offset", String(feedOffset));
+  return `/feed?${p.toString()}`;
+}
+
+// Category options come from /sources, NOT from the current result set.
+// Deriving them from the response worked while filtering was client-side
+// over everything, but now that the server narrows by category the
+// response contains exactly one category once a filter is applied -- so
+// the dropdown would collapse to the option you just picked and you
+// could never switch back. sources.category is the superset every
+// posting's category is copied from, so it's the stable list.
+let feedCategoriesLoaded = false;
+async function loadFeedCategories() {
+  if (feedCategoriesLoaded) return;
+  if (EDGE_DATA.active && EDGE_DATA.meta) {
+    const data = {
+      industries: Object.keys(EDGE_DATA.meta.categories || {}).map(k => ({ name: k, count: EDGE_DATA.meta.categories[k] })),
+      job_functions: Object.keys(EDGE_DATA.meta.job_functions || {}).map(k => ({ name: k, count: EDGE_DATA.meta.job_functions[k] })),
+      cycle_seasons: Object.keys(EDGE_DATA.meta.cycle_seasons || {}),
+      cycle_years: Object.keys(EDGE_DATA.meta.cycle_years || {}).map(Number).sort((a,b)=>b-a),
+      work_arrangements: Object.keys(EDGE_DATA.meta.work_arrangements || {}),
+      coverage: {
+        total: EDGE_DATA.meta.total_open_postings,
+        with_industry: Object.values(EDGE_DATA.meta.categories || {}).reduce((a,b)=>a+b, 0),
+        with_function: Object.values(EDGE_DATA.meta.job_functions || {}).reduce((a,b)=>a+b, 0)
+      }
+    };
+    populateAxisDatalist(AXES.industry, data.industries || []);
+    populateAxisDatalist(AXES.function, data.job_functions || []);
+    populatePillGroup("feed-cycle-season", data.cycle_seasons || [], "Any season",
+                      v => v.charAt(0).toUpperCase() + v.slice(1));
+    populateCycleSelect("feed-cycle-year", data.cycle_years || [], "Any year", String);
+    populatePillGroup("feed-arrangement", data.work_arrangements || [], "Anywhere",
+                      v => v.charAt(0).toUpperCase() + v.slice(1));
+    feedCoverage = data.coverage || null;
+    feedCategoriesLoaded = true;
+    return;
+  }
+  try {
+    // /categories, not /sources: the filter matches POSTINGS, so the list
+    // has to be the categories that postings actually carry, ranked by
+    // how many. Ranking by source count would put a category with one
+    // dormant board above one with four hundred live roles.
+    const res = await fetch("/categories");
+    const data = await res.json();
+    populateAxisDatalist(AXES.industry, data.industries || []);
+    populateAxisDatalist(AXES.function, data.job_functions || []);
+    populatePillGroup("feed-cycle-season", data.cycle_seasons || [], "Any season",
+                      v => v.charAt(0).toUpperCase() + v.slice(1));
+    populateCycleSelect("feed-cycle-year", data.cycle_years || [], "Any year", String);
+    populatePillGroup("feed-arrangement", data.work_arrangements || [], "Anywhere",
+                      v => v.charAt(0).toUpperCase() + v.slice(1));
+    feedCoverage = data.coverage || null;
+    feedCategoriesLoaded = true;
+    let restored = false;
+    for (const [param, id] of [["year", "feed-cycle-year"]]) {
+      const wanted = initialParams.get(param);
+      const el = document.getElementById(id);
+      if (wanted && [...el.options].some(o => o.value === wanted)) {
+        el.value = wanted;
+        restored = true;
+      }
+      initialParams.delete(param);
+    }
+    for (const [param, id] of [["season", "feed-cycle-season"], ["where", "feed-arrangement"]]) {
+      const wanted = initialParams.get(param);
+      if (wanted && document.querySelector(`#${id} .pill-btn[data-value="${CSS.escape(wanted)}"]`)) {
+        setPillValue(id, wanted, { silent: true });
+        restored = true;
+      }
+      initialParams.delete(param);
+    }
+    for (const [param, axis] of [["category", AXES.industry], ["function", AXES.function]]) {
+      const wanted = initialParams.get(param);
+      if (wanted && axis.names.has(wanted)) {
+        document.getElementById(axis.input).value = wanted;
+        restored = true;
+      }
+      initialParams.delete(param);
+    }
+    syncCategoryHint();
+    if (restored) return true;
+  } catch (e) { /* the filter just stays as "All" */ }
+  return false;
+}
+
+// One page of results, replacing the last one -- there is no
+// accumulating "load more" state to reason about. A change to any
+// filter resets to page 1 (resetPage: true); a pager click sets
+// feedOffset itself and leaves it alone.
+//
+// A stale response racing a fresher one used to be a real bug here: type
+// "eng", then "engineering" fast enough and the network could resolve
+// them out of order, letting the SHORTER query's response land last and
+// silently overwrite the more specific one on screen. AbortController
+// makes that impossible instead of merely unlikely -- the in-flight
+// request for anything but the latest query is cancelled the moment a
+// new one starts.
+let feedAbortController = null;
+
+// Real paging, not "load more": Prev/Next over fixed-size pages rather
+// than an ever-growing accumulated list. Rendered both above and below
+// the table -- above so a reader who pages forward doesn't have to
+// scroll back up to page again, below because that's where you land
+// after reading the last row on screen.
+function renderPager() {
+  const page = Math.floor(feedOffset / FEED_PAGE_SIZE) + 1;
+  const pages = Math.max(1, Math.ceil(feedTotal / FEED_PAGE_SIZE));
+  const start = feedTotal ? feedOffset + 1 : 0;
+  const end = Math.min(feedOffset + feedPostings.length, feedTotal);
+  const html = feedTotal ? `
+    <button type="button" class="pager-btn" data-pager="prev" ${page <= 1 ? "disabled" : ""}>&larr; Prev</button>
+    <span class="pager-status mono">Page ${page} of ${pages}
+      <span class="pager-range">(${start.toLocaleString()}&ndash;${end.toLocaleString()} of ${feedTotal.toLocaleString()})</span>
+    </span>
+    <button type="button" class="pager-btn" data-pager="next" ${page >= pages ? "disabled" : ""}>Next &rarr;</button>
+  ` : "";
+  for (const id of ["feed-pager-top", "feed-pager"]) {
+    const wrap = document.getElementById(id);
+    wrap.innerHTML = html;
+    wrap.querySelectorAll('[data-pager="prev"]').forEach(btn => btn.addEventListener("click", () => {
+      feedOffset = Math.max(0, feedOffset - FEED_PAGE_SIZE);
+      loadFeed();
+      document.getElementById("tab-feed").scrollIntoView({ block: "start", behavior: "smooth" });
+    }));
+    wrap.querySelectorAll('[data-pager="next"]').forEach(btn => btn.addEventListener("click", () => {
+      if (feedOffset + FEED_PAGE_SIZE < feedTotal) feedOffset += FEED_PAGE_SIZE;
+      loadFeed();
+      document.getElementById("tab-feed").scrollIntoView({ block: "start", behavior: "smooth" });
+    }));
+  }
+}
+
+async function loadFeed({ resetPage = false } = {}) {
+  if (resetPage) feedOffset = 0;
+  document.getElementById("feed-count").textContent = "loading…";
+
+  if (EDGE_DATA.active && EDGE_DATA.corpus) {
+    const edgeRes = edgeFilterFeed();
+    if (edgeRes) {
+      feedTotal = edgeRes.total;
+      feedUnstatedCycle = edgeRes.unstated_cycle;
+      feedPostings = edgeRes.postings.slice(feedOffset, feedOffset + FEED_PAGE_SIZE);
+      renderFeed();
+      syncUrl();
+      return;
+    }
+  }
+
+  if (feedAbortController) feedAbortController.abort();
+  const controller = new AbortController();
+  feedAbortController = controller;
+  try {
+    const res = await fetch(feedQueryUrl(), { signal: controller.signal });
+    const data = await res.json();
+    if (controller.signal.aborted) return;
+    if (data.error) {
+      document.getElementById("feed-body").innerHTML = emptyRow(6, data.error);
+      document.getElementById("feed-count").textContent = "";
+      return;
+    }
+    feedPostings = data.postings || [];
+    feedTotal = data.total ?? feedPostings.length;
+    feedUnstatedCycle = data.unstated_cycle ?? 0;
+    renderFeed();
+    syncUrl();
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    document.getElementById("feed-body").innerHTML = emptyRow(6, "Couldn't reach the API — is the service running?");
+    document.getElementById("feed-count").textContent = "";
+  }
+}
+
+function renderFeed() {
+  // No client-side narrowing left here: q / category / max_age are all
+  // applied by the server across the whole corpus (see feedQueryUrl).
+  // Sorting stays local because it only ever reorders the page you are
+  // already looking at.
+  // Sorted WITHIN the cycle grouping, not across it.
+  //
+  // The server returns confirmed cycle matches before the ones that
+  // state no cycle, but sortRows re-orders the whole page by date and
+  // would have shuffled the two groups back together -- silently
+  // presenting unconfirmed postings as though they had matched. So the
+  // partition is applied first and each half sorted independently,
+  // which keeps the grouping true under every sort column.
+  const statesCycle = p => Boolean(p.cycle_season) || p.cycle_year != null;
+  const grouped = feedUnstatedCycle > 0;
+  const filtered = grouped
+    ? [...sortRows(feedPostings.filter(statesCycle), feedSort.key, feedSort.dir),
+       ...sortRows(feedPostings.filter(p => !statesCycle(p)), feedSort.key, feedSort.dir)]
+    : sortRows(feedPostings, feedSort.key, feedSort.dir);
+
+  // When a cycle filter is on, the count is split: postings that SAID
+  // they are this cycle, and postings that said nothing. Reporting one
+  // combined number would claim a confidence the data does not support.
+  const confirmed = feedTotal - feedUnstatedCycle;
+  document.getElementById("feed-count").innerHTML = feedUnstatedCycle
+    ? `<strong>${confirmed}</strong> matching this cycle` +
+      ` <span class="truncated">+ ${feedUnstatedCycle} that state no cycle</span>`
+    : `<strong>${feedTotal}</strong> matching`;
+
+  renderPager();
+  document.getElementById("feed-sort-line").textContent =
+    `sorted by ${({posted_at_ts: "date posted"})[feedSort.key] || feedSort.key.replace(/_/g, " ")}, ${feedSort.dir === 1 ? "oldest first" : "newest first"}`;
+
+  applySort("tab-feed", feedSort);
+
+  // Subscribing should capture the filters you can see, not a generic
+  // feed -- otherwise "subscribe" quietly means something other than
+  // what is on screen.
+  const atomLink = document.getElementById("atom-link");
+  if (atomLink) atomLink.href = feedQueryUrl().replace("/feed?", "/feed.atom?");
+
+  const body = document.getElementById("feed-body");
+  if (!filtered.length) {
+    body.innerHTML = emptyRow(6, feedPostings.length ? "No postings match that filter." : "No open postings sourced yet.");
+    return;
+  }
+  // A labelled divider where the confirmed matches end. Without it the
+  // two groups look like one list and the unconfirmed half reads as
+  // though it matched.
+  let dividerShown = false;
+  body.innerHTML = filtered.map(p => {
+    const posted = postedCell(p);
+    const found = foundCell(p);
+    let divider = "";
+    if (grouped && !dividerShown && !statesCycle(p)) {
+      dividerShown = true;
+      divider = `<tr class="group-divider"><td colspan="6">` +
+        `${feedUnstatedCycle} posting${feedUnstatedCycle === 1 ? "" : "s"} whose title states no cycle — ` +
+        `these may or may not be the one you asked for` +
+        `</td></tr>`;
+    }
+    return divider + `
+    <tr>
+      <td class="title-cell" data-label="Title"><a class="clamp-2" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
+      <td class="company-cell" data-label="Company" title="${escapeHtml(p.company)}"><span class="clamp-2">${entityLink("company", p.company_key, p.company)}</span></td>
+      <td class="location-cell" data-label="Location" title="${escapeHtml(p.location || "")}"><span class="clamp-2">${locationHtml(p.location)}</span></td>
+      <td data-label="Category">${categoryCell(p)}</td>
+      <td class="age-cell mono ${posted.cls}" data-label="Posted" title="${escapeHtml(posted.title)}"${posted.label ? ` aria-label="${escapeHtml(posted.label)}"` : ""}>${escapeHtml(posted.text)}</td>
+      <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</td>
+    </tr>
+  `;
+  }).join("");
+}
+
+// --- sources tab --------------------------------------------------------
+
+let sourceRows = [];
+let sourceSort = { key: "company", dir: 1 };
+
+async function loadSources() {
+  document.getElementById("sources-count").textContent = "loading…";
+  if (EDGE_DATA.active && (EDGE_DATA.companies || []).length) {
+    sourceRows = EDGE_DATA.companies.map((c, idx) => ({
+      id: idx + 1,
+      company: c.name,
+      ats: (c.ats_platforms || [])[0] || "direct",
+      category: (c.categories || [])[0] || "",
+      status: "active",
+      added_by: "verified",
+      consecutive_failures: 0,
+      last_scraped_at: new Date().toISOString()
+    }));
+    populateCategoryOptions(document.getElementById("source-category"), sourceRows);
+    populateSelectValues(document.getElementById("source-ats"), [...new Set(sourceRows.map(s => s.ats).filter(Boolean))].sort());
+    renderSources();
+    return;
+  }
+  try {
+    const res = await fetch("/sources");
+    const data = await res.json();
+    sourceRows = data.sources || [];
+    populateCategoryOptions(document.getElementById("source-category"), sourceRows);
+    populateSelectValues(document.getElementById("source-ats"), [...new Set(sourceRows.map(s => s.ats).filter(Boolean))].sort());
+    // A deep link's ?source_category or ?source_ats has nothing to
+    // select against until this fetch resolves -- applied once, here,
+    // rather than at boot. source_status needed no such wait (its
+    // options are static HTML) and was already applied at boot.
+    let restoredFromUrl = false;
+    if (pendingSourceCategory && sourceRows.some(s => s.category === pendingSourceCategory)) {
+      document.getElementById("source-category").value = pendingSourceCategory;
+      restoredFromUrl = true;
+    }
+    if (pendingSourceAts && sourceRows.some(s => s.ats === pendingSourceAts)) {
+      document.getElementById("source-ats").value = pendingSourceAts;
+      restoredFromUrl = true;
+    }
+    // Reflects any restored value in the badge -- bootFeed()'s own
+    // updateFiltersUi() call already ran by the time this fetch
+    // resolves, and nothing else would refresh it otherwise.
+    if (restoredFromUrl) updateFiltersUi();
+    renderSources();
+  } catch (e) {
+    document.getElementById("sources-body").innerHTML = emptyRow(7, "Couldn't reach the API — is the service running?");
+    document.getElementById("sources-count").textContent = "";
+  }
+}
+
+// The search box is shared across all four views now -- see
+// updateSearchPlaceholder() -- so what used to be #source-search is
+// just #search read while the Sources view is active.
+function renderSources() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const category = document.getElementById("source-category").value;
+  const ats = document.getElementById("source-ats").value;
+  const status = document.getElementById("source-status").value;
+  let filtered = sourceRows;
+  if (category) filtered = filtered.filter(s => s.category === category);
+  if (ats) filtered = filtered.filter(s => s.ats === ats);
+  if (status) filtered = filtered.filter(s => s.status === status);
+  if (q) filtered = filtered.filter(s => (s.company || "").toLowerCase().includes(q));
+  filtered = sortRows(filtered, sourceSort.key, sourceSort.dir);
+
+  document.getElementById("sources-count").innerHTML =
+    `<strong>${filtered.length}</strong> of ${sourceRows.length} sources`;
+  applySort("tab-sources", sourceSort);
+
+  document.getElementById("sources-body").innerHTML = filtered.length ? filtered.map(s => `
+    <tr>
+      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(s.company)}">${entityLink("source", s.id, s.company)}</td>
+      <td class="mono truncate" data-label="ATS">${entityLink("ats", s.ats, s.ats)}</td>
+      <td data-label="Category">${s.category ? `<span class="swatch-tag" style="--swatch-color:${categoryColor(s.category)}"><span class="swatch-label">${escapeHtml(s.category)}</span></span>` : "—"}</td>
+      <td data-label="Status"><span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span></td>
+      <td class="location-cell truncate" data-label="Added by">${escapeHtml(s.added_by)}</td>
+      <td class="num-cell mono" data-label="Failures">${s.consecutive_failures}</td>
+      <td class="age-cell mono" data-label="Scraped" title="${escapeHtml(exactTime(s.last_scraped_at))}">${escapeHtml(timeAgo(s.last_scraped_at))}</td>
+    </tr>
+  `).join("") : emptyRow(7, sourceRows.length ? "No sources match that filter." : "No sources.");
+}
+
+// --- candidates tab -------------------------------------------------------
+
+let candidateRows = [];
+let candidateSort = { key: "checked_at", dir: -1 };
+
+// Narrowing is a SERVER query now. This tab used to download every
+// candidate ever considered -- 18,463 rows and 5 MB, measured at 6.3s --
+// to render 500 of them, and the set only grows.
+let candidateTotal = 0;
+
+async function loadCandidates() {
+  document.getElementById("candidates-count").textContent = "loading…";
+  try {
+    const p = new URLSearchParams({ limit: "500" });
+    const q = document.getElementById("search").value.trim();
+    if (q) p.set("q", q);
+    const status = document.getElementById("candidate-status").value;
+    if (status) p.set("review_status", status);
+    const ats = document.getElementById("candidate-ats").value;
+    if (ats) p.set("ats", ats);
+    const res = await fetch(`/candidates?${p}`);
+    const data = await res.json();
+    candidateRows = data.candidates || [];
+    candidateTotal = data.total ?? candidateRows.length;
+    // The full universe of guesses, not just what's on this page -- same
+    // reasoning as Postings' /categories being its own call. Provided by
+    // the server since this view (unlike Sources) is paged.
+    populateSelectValues(document.getElementById("candidate-ats"), data.ats_options || []);
+    // A deep link's ?candidate_ats couldn't be sent on the FIRST request
+    // above -- the select had no options yet to validate it against.
+    // Once populated, if it names a real value and this request didn't
+    // already filter on it, re-run once with it applied. Guarded by
+    // clearing the pending value so this can only ever fire once.
+    if (pendingCandidateAts && !ats && data.ats_options?.includes(pendingCandidateAts)) {
+      document.getElementById("candidate-ats").value = pendingCandidateAts;
+      pendingCandidateAts = "";
+      updateFiltersUi();
+      await loadCandidates();
+      return;
+    }
+    renderCandidates();
+  } catch (e) {
+    document.getElementById("candidates-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
+    document.getElementById("candidates-count").textContent = "";
+  }
+}
+
+function renderCandidates() {
+  // Already narrowed by the server; sorting only reorders this page.
+  const shown = sortRows(candidateRows, candidateSort.key, candidateSort.dir);
+
+  // Counted against the whole MATCH, not against what arrived, so a
+  // truncated page is never mistaken for a complete answer.
+  document.getElementById("candidates-count").innerHTML =
+    `<strong>${candidateTotal}</strong> matching` +
+    (candidateTotal > shown.length
+      ? ` <span class="truncated">(showing first ${shown.length})</span>`
+      : "");
+  applySort("tab-candidates", candidateSort);
+
+  document.getElementById("candidates-body").innerHTML = shown.length ? shown.map(c => {
+    // `reason` is extracted in SQL now -- shipping the whole evidence
+    // blob to read one field was most of that 5 MB.
+    const reason = c.reason || "";
+    return `
+    <tr>
+      <td class="company-cell truncate" data-label="Company" title="${escapeHtml(c.company)}">${escapeHtml(c.company)}</td>
+      <td class="mono truncate" data-label="ATS">${escapeHtml(c.ats || "—")}</td>
+      <td data-label="Status"><span class="status-cell status-${escapeHtml(c.review_status)}">${escapeHtml(c.review_status)}</span></td>
+      <td class="location-cell truncate" data-label="Reason" title="${escapeHtml(reason)}">${escapeHtml(reason || "—")}</td>
+      <td class="age-cell mono" data-label="Checked" title="${escapeHtml(exactTime(c.checked_at))}">${escapeHtml(timeAgo(c.checked_at))}</td>
+    </tr>`;
+  }).join("") : emptyRow(5, "No candidates match that filter.");
+}
+
+// --- duplicates tab ---------------------------------------------------------
+
+let duplicateRows = [];
+let duplicateSort = { key: "first_seen", dir: -1 };
+
+let duplicateTotal = 0;
+
+async function loadDuplicates() {
+  document.getElementById("duplicates-count").textContent = "loading…";
+  try {
+    const p = new URLSearchParams({ limit: "500" });
+    const q = document.getElementById("search").value.trim();
+    if (q) p.set("q", q);
+    const res = await fetch(`/duplicates?${p}`);
+    const data = await res.json();
+    duplicateRows = data.duplicates || [];
+    duplicateTotal = data.total ?? duplicateRows.length;
+    renderDuplicates();
+  } catch (e) {
+    document.getElementById("duplicates-body").innerHTML = emptyRow(4, "Couldn't reach the API — is the service running?");
+    document.getElementById("duplicates-count").textContent = "";
+  }
+}
+
+function renderDuplicates() {
+  // Searched by the server. This used to fetch 500 of 1,425 and filter
+  // THOSE, reporting "N of 500" -- so a duplicate at position 900 was,
+  // as far as a reader could tell, not there at all.
+  const filtered = sortRows(duplicateRows, duplicateSort.key, duplicateSort.dir);
+
+  document.getElementById("duplicates-count").innerHTML =
+    `<strong>${duplicateTotal}</strong> matching` +
+    (duplicateTotal > filtered.length
+      ? ` <span class="truncated">(showing first ${filtered.length})</span>`
+      : "");
+  applySort("tab-duplicates", duplicateSort);
+
+  document.getElementById("duplicates-body").innerHTML = filtered.length ? filtered.map(d => `
+    <tr>
+      <td data-label="Duplicate">
+        <div class="truncate" title="${escapeHtml(d.title)}"><a class="entity" href="${entityHref("posting", d.id)}" data-route="posting" data-value="${escapeHtml(d.id)}">${escapeHtml(d.title)}</a></div>
+        <div class="company-cell truncate">${escapeHtml(d.company)}${d.location ? " &middot; " + escapeHtml(d.location) : ""}</div>
+      </td>
+      <td class="mono truncate" data-label="Source">${escapeHtml(d.source || "—")}</td>
+      <td data-label="Canonical">
+        ${d.canonical_id
+          ? `<div class="truncate" title="${escapeHtml(d.canonical_title)}">${escapeHtml(d.canonical_title)}</div><div class="company-cell truncate">${escapeHtml(d.canonical_company)} &middot; <span class="mono">${escapeHtml(d.canonical_source)}</span></div>`
+          : `<span class="location-cell">canonical posting no longer open</span>`}
+      </td>
+      <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(exactTime(d.first_seen))}">${escapeHtml(timeAgo(d.first_seen))}</td>
+    </tr>
+  `).join("") : emptyRow(4, duplicateRows.length ? "No duplicates match that filter." : "No duplicates caught yet — either genuinely none, or the dedup sweep hasn't run since these sources were added.");
+}
+
+// --- view lens -------------------------------------------------------------
+//
+// Postings, Sources, Discovery and Duplicates used to be four tabs, each
+// with its own toolbar and its own idea of what "search" meant. They're
+// one page now: the View pill decides which result panel and which
+// filter sections show, and the search bar above is genuinely shared --
+// typing while on Sources searches company names there, switching to
+// Discovery re-runs the same text as a company search against
+// candidates. Only Postings gets true pagination and the industry/
+// function/where/cycle/age axes; the other three keep whatever
+// narrowing they already had (a status select, a category select, or
+// nothing beyond search).
+const VIEW_SEARCH_PLACEHOLDER = {
+  postings: "Search title or company…",
+  sources: "Search by company…",
+  discovery: "Search by company…",
+  duplicates: "Search by company…",
+};
+
+// Each view loads its data once, on first visit, exactly like the old
+// per-tab `loaded` guard -- switching the lens back and forth doesn't
+// re-fetch, only a filter change inside that view does.
+let viewLoaded = { postings: true };
+
+function updateSearchPlaceholder(view) {
+  document.getElementById("search").placeholder = VIEW_SEARCH_PLACEHOLDER[view] || VIEW_SEARCH_PLACEHOLDER.postings;
+}
+
+function ensureViewLoaded(view) {
+  if (viewLoaded[view]) return;
+  viewLoaded[view] = true;
+  if (view === "sources") loadSources();
+  else if (view === "discovery") loadCandidates();
+  else if (view === "duplicates") loadDuplicates();
+}
+
+function onViewChanged() {
+  const view = pillValue("feed-view");
+  document.querySelectorAll("#filters-aside .filter-section[data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== "all" && el.dataset.view !== view;
+  });
+  document.querySelectorAll(".feed-main > [data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== view;
+  });
+  updateSearchPlaceholder(view);
+  ensureViewLoaded(view);
+  updateFiltersUi();
+  syncUrl();
+}
+document.getElementById("feed-view").addEventListener("change", onViewChanged);
+
+wireSortable("tab-feed", feedSort, renderFeed, ["posted_at_ts"]);
+wireSortable("tab-sources", sourceSort, renderSources, ["last_scraped_at"]);
+wireSortable("tab-candidates", candidateSort, renderCandidates, ["checked_at"]);
+wireSortable("tab-duplicates", duplicateSort, renderDuplicates, ["first_seen"]);
+
+// Every narrowing control resets to page 1 -- a filter change looking at
+// a stale offset would land you on a page that no longer means what it
+// did a moment ago.
+presetSelect.addEventListener("change", () => { loadFeed({ resetPage: true }); syncUrl(); });
+// Debounced because each keystroke is now a round trip, not a local
+// filter -- 140ms turns a burst of typing into one request. Dispatches
+// by VIEW rather than always meaning postings: the box is shared, so
+// what a keystroke should do depends on which of the four result panels
+// is currently showing.
+document.getElementById("search").addEventListener("input", debounce(() => {
+  const view = pillValue("feed-view");
+  if (view === "sources") renderSources();
+  else if (view === "discovery") loadCandidates();
+  else if (view === "duplicates") loadDuplicates();
+  else loadFeed({ resetPage: true });
+  syncUrl();
+}));
+// "input" as well as "change": a combobox fires change only on commit,
+// so typing a full category name and stopping would leave the feed
+// stale until the field lost focus. Debounced for the same reason the
+// search box is -- one render per burst of keystrokes, not one per key.
+const onFilterChanged = () => { syncCategoryHint(); updateFiltersUi(); loadFeed({ resetPage: true }); syncUrl(); };
+for (const axis of [AXES.industry, AXES.function]) {
+  const el = document.getElementById(axis.input);
+  el.addEventListener("change", onFilterChanged);
+  el.addEventListener("input", debounce(onFilterChanged));
+  wireCombobox(axis);
+}
+for (const id of ["feed-cycle-season", "feed-cycle-year", "feed-arrangement", "feed-age"]) {
+  document.getElementById(id).addEventListener("change", onFilterChanged);
+}
+document.getElementById("feed-location").addEventListener("input", debounce(onFilterChanged));
+
+// --- filters aside -------------------------------------------------------
+//
+// Docked, not a popover: on desktop a genuine flex sibling of .feed-main
+// (see .filters-aside.open in <style>), so opening it reflows the table
+// instead of covering it, and it stays open across clicks elsewhere on
+// the page -- a persistent console, not a menu that dismisses itself.
+// The same element becomes a fixed bottom sheet under 1024px, with a
+// backdrop to dismiss it (a side-by-side panel has nowhere to go on a
+// narrow viewport, so this is the accepted modal tradeoff there only).
+const filtersAside = document.getElementById("filters-aside");
+const filtersToggle = document.getElementById("filters-toggle");
+const filtersBackdrop = document.getElementById("filters-backdrop");
+
+function openFilters() {
+  filtersAside.classList.add("open");
+  filtersToggle.setAttribute("aria-expanded", "true");
+  filtersBackdrop.classList.add("visible");
+  document.addEventListener("keydown", onFiltersKeydown);
+}
+function closeFilters() {
+  filtersAside.classList.remove("open");
+  filtersToggle.setAttribute("aria-expanded", "false");
+  filtersBackdrop.classList.remove("visible");
+  document.removeEventListener("keydown", onFiltersKeydown);
+}
+function onFiltersKeydown(e) {
+  if (e.key === "Escape") { closeFilters(); filtersToggle.focus(); }
+}
+filtersToggle.addEventListener("click", () => {
+  filtersAside.classList.contains("open") ? closeFilters() : openFilters();
+});
+document.getElementById("filters-close").addEventListener("click", closeFilters);
+document.getElementById("filters-done").addEventListener("click", closeFilters);
+// The backdrop only renders on mobile (see the min-width:1024px override
+// in <style>), so this listener is a no-op on desktop -- clicking outside
+// a persistent panel there should not close it.
+filtersBackdrop.addEventListener("click", closeFilters);
+
+// Clears only the ACTIVE view's own filters -- resetting while looking
+// at Sources shouldn't silently discard an Industry filter left set on
+// Postings that you'll come back to.
+document.getElementById("filters-reset").addEventListener("click", () => {
+  const view = pillValue("feed-view");
+  if (view === "sources") {
+    document.getElementById("source-category").value = "";
+    document.getElementById("source-ats").value = "";
+    document.getElementById("source-status").value = "";
+    renderSources();
+  } else if (view === "discovery") {
+    document.getElementById("candidate-status").value = "";
+    document.getElementById("candidate-ats").value = "";
+    loadCandidates();
+  } else if (view === "postings") {
+    document.getElementById("feed-category").value = "";
+    document.getElementById("feed-function").value = "";
+    setPillValue("feed-arrangement", "", { silent: true });
+    document.getElementById("feed-location").value = "";
+    setPillValue("feed-cycle-season", "", { silent: true });
+    document.getElementById("feed-cycle-year").value = "";
+    setPillValue("feed-age", "", { silent: true });
+    syncCategoryHint();
+    loadFeed({ resetPage: true });
+  }
+  updateFiltersUi();
+  syncUrl();
+});
+
+// Each section announces its own collapsed/expanded state into
+// localStorage, scoped per-id, so a reader who folds away the sections
+// they never use (e.g. Cycle, if they never filter by season) doesn't
+// have to re-fold them on every visit.
+const COLLAPSED_SECTIONS_KEY = "internships:feed:collapsedSections";
+function loadCollapsedSections() {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSED_SECTIONS_KEY) || "[]")); }
+  catch (e) { return new Set(); }
+}
+function saveCollapsedSections(set) {
+  try { localStorage.setItem(COLLAPSED_SECTIONS_KEY, JSON.stringify([...set])); } catch (e) { /* private browsing etc. */ }
+}
+const collapsedSections = loadCollapsedSections();
+const filterSectionEls = [...document.querySelectorAll("#filters-aside .filter-section")];
+function applySectionCollapse(el) {
+  const collapsed = collapsedSections.has(el.dataset.section);
+  el.classList.toggle("collapsed", collapsed);
+  el.querySelector(".filter-section-toggle").setAttribute("aria-expanded", String(!collapsed));
+}
+filterSectionEls.forEach(el => {
+  applySectionCollapse(el);
+  el.querySelector(".filter-section-toggle").addEventListener("click", () => {
+    const id = el.dataset.section;
+    collapsedSections.has(id) ? collapsedSections.delete(id) : collapsedSections.add(id);
+    applySectionCollapse(el);
+    saveCollapsedSections(collapsedSections);
+  });
+});
+document.getElementById("filters-collapse-all").addEventListener("click", (e) => {
+  const allCollapsed = filterSectionEls.every(el => collapsedSections.has(el.dataset.section));
+  filterSectionEls.forEach(el => {
+    allCollapsed ? collapsedSections.delete(el.dataset.section) : collapsedSections.add(el.dataset.section);
+    applySectionCollapse(el);
+  });
+  saveCollapsedSections(collapsedSections);
+  e.currentTarget.setAttribute("aria-label", allCollapsed ? "Collapse all sections" : "Expand all sections");
+});
+
+// How many axes are narrowing the CURRENT view -- scoped per view so
+// switching to Sources doesn't show a stale badge count for filters that
+// only apply to Postings. The single count the search bar's own
+// embedded badge and the panel's "Reset all" visibility both read, so
+// the two can never disagree about what counts as active.
+function activeFeedFilterCount() {
+  const view = pillValue("feed-view");
+  if (view === "sources") {
+    return ["source-category", "source-ats", "source-status"]
+      .filter(id => document.getElementById(id).value).length;
+  }
+  if (view === "discovery") {
+    return ["candidate-status", "candidate-ats"]
+      .filter(id => document.getElementById(id).value).length;
+  }
+  if (view === "duplicates") return 0;
+  let n = 0;
+  if (feedCategoryValue()) n++;
+  if (feedFunctionValue()) n++;
+  if (pillValue("feed-arrangement")) n++;
+  if (document.getElementById("feed-location").value.trim()) n++;
+  if (pillValue("feed-cycle-season") || document.getElementById("feed-cycle-year").value) n++;
+  if (pillValue("feed-age")) n++;
+  return n;
+}
+
+function updateFiltersUi() {
+  const n = activeFeedFilterCount();
+  const badge = document.getElementById("filters-badge");
+  badge.classList.toggle("visible", n > 0);
+  badge.textContent = String(n);
+  document.getElementById("filters-reset").hidden = n === 0;
+}
+for (const id of ["source-category", "source-ats", "source-status"]) {
+  document.getElementById(id).addEventListener("change", () => { renderSources(); updateFiltersUi(); syncUrl(); });
+}
+for (const id of ["candidate-status", "candidate-ats"]) {
+  document.getElementById(id).addEventListener("change", () => { loadCandidates(); updateFiltersUi(); syncUrl(); });
+}
+
+fetch("/health").then(r => r.json()).then(d => {
+  document.getElementById("health-sub").textContent = d.ok ? "API live" : "API unhealthy";
+  document.getElementById("health-dot").classList.add(d.ok ? "ok" : "bad");
+}).catch(() => {
+  if (EDGE_DATA.active) return;
+  document.getElementById("health-sub").textContent = "API unreachable";
+  document.getElementById("health-dot").classList.add("bad");
+});
+
+// --- events indicator ---------------------------------------------------
+//
+// "Proactive" without a persistent process or SMTP/webhook credentials to
+// drive one -- see docs/service-architecture.md's "Staying informed"
+// section. Surfaces sources promoted/disabled/reinstated and backup
+// restore-test results on page load, instead of requiring anyone to dig
+// through the Sources/Discovery tabs by hand. "Seen" state lives in
+// localStorage (per-browser, not server-side) -- fine for a
+// single-operator tool; a multi-viewer deployment would need it tracked
+// server-side instead.
+
+const EVENTS_LAST_SEEN_KEY = "internship-feed-events-last-seen";
+
+async function loadEvents() {
+  try {
+    const res = await fetch("/events?limit=50");
+    const data = await res.json();
+    const eventRows = data.events || [];
+    const lastSeen = localStorage.getItem(EVENTS_LAST_SEEN_KEY);
+    const unseen = lastSeen ? eventRows.filter(e => e.created_at > lastSeen) : eventRows;
+
+    const badge = document.getElementById("events-badge");
+    if (unseen.length > 0) {
+      badge.textContent = `${unseen.length} new`;
+      badge.setAttribute("aria-label", `${unseen.length} new source events`);
+      badge.classList.add("visible");
+    }
+
+    const KIND_LABEL = {
+      promoted: "New source", disabled: "Source disabled",
+      reinstated: "Source recovered", backup_restore_test: "Backup check",
+    };
+    const panel = document.getElementById("events-panel");
+    panel.innerHTML = eventRows.length ? eventRows.map(e => `
+      <div class="event-row">
+        <div class="event-kind k-${escapeHtml(e.kind)}">${escapeHtml(KIND_LABEL[e.kind] || e.kind)}${e.company ? " &middot; " + escapeHtml(e.company) : ""}</div>
+        <div class="event-detail">${escapeHtml(e.detail)}</div>
+        <div class="event-time mono" title="${escapeHtml(exactTime(e.created_at))}">${escapeHtml(timeAgo(e.created_at))}</div>
+      </div>
+    `).join("") : `<div class="empty">Nothing logged yet.</div>`;
+
+    badge.addEventListener("click", () => {
+      const open = panel.classList.toggle("open");
+      badge.setAttribute("aria-expanded", String(open));
+      if (open && eventRows.length) {
+        localStorage.setItem(EVENTS_LAST_SEEN_KEY, eventRows[0].created_at);
+        badge.classList.remove("visible");
+      }
+    });
+  } catch (e) {
+    // Events are a nice-to-have indicator, not core functionality --
+    // fail silently rather than showing an error state over this.
+  }
+}
+loadEvents();
+
+document.addEventListener("click", (ev) => {
+  const wrap = document.querySelector(".events-wrap");
+  if (wrap && !wrap.contains(ev.target)) {
+    document.getElementById("events-panel").classList.remove("open");
+    document.getElementById("events-badge").setAttribute("aria-expanded", "false");
+  }
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    document.getElementById("events-panel").classList.remove("open");
+    document.getElementById("events-badge").setAttribute("aria-expanded", "false");
+  }
+});
+
+
+// --- entity pages -------------------------------------------------------
+//
+// Company, source and ATS are three different things (see api.py's note).
+// Routing is query-string based like the rest of this page's state, so a
+// company or posting page is linkable, survives a reload, and works with
+// browser back -- and it all stays inside the one static file, no build
+// step, which is what "a page within the feed itself" needs.
+
+const DETAIL_ROUTES = ["posting", "company", "source", "ats"];
+
+// Locations arrive as free text from third-party boards and a lot of
+// them are not places: "Remote", "2 Locations", "Various". Linking those
+// to Maps produces a nonsense search, so they're skipped. Rough on
+// purpose -- a heuristic that catches the obvious cases beats either
+// linking everything or building a geocoder.
+const NON_PLACE_RE = /^(remote|hybrid|virtual|various|multiple locations?|flexible|anywhere|worldwide|n\/?a|tbd|—|-)$/i;
+const MULTI_LOCATION_RE = /^\d+\s+locations?$/i;
+
+// Words that describe a WORKING ARRANGEMENT rather than a place.
+const ARRANGEMENT_RE = /^(remote|hybrid|onsite|on-site|virtual|flexible|anywhere|various|field|telework)$/i;
+// Country-and-larger terms. A map pin on "United States" is not a
+// useful answer to "where is this job", so a location that reduces to
+// one of these is treated as placeless rather than linked.
+const COUNTRY_ONLY_RE = /^(usa?|u\.s\.a?\.?|united states( of america)?|canada|global|worldwide|international|emea|apac|americas|europe|north america)$/i;
+
+// The corpus holds 1,785 distinct free-text location strings, and the
+// exact-match list above only caught the tidiest of them. "Remote -
+// United States", "Flexible / Remote" and "United States - Remote" all
+// slipped through and produced a Google Maps link to a whole country,
+// which is a worse answer than no link at all.
+//
+// So: split on the separators these strings actually use, drop the
+// arrangement words and the country-level words, and see whether any
+// real place is left. "Remote - New York" keeps its link because New
+// York survives that filter; "Remote - USA" does not.
+// Also strips a LEADING arrangement word inside a part, because not
+// every string uses a separator: "Remote United States of America" has
+// nothing to split on, and without this it would survive as a place.
+const LEADING_ARRANGEMENT_RE = /^(remote|hybrid|onsite|on-site|virtual|flexible|field|telework)\s+/i;
+
+function placeParts(location) {
+  return (location || "")
+    .split(/[-–—,/|]|\bor\b/i)
+    .map(part => part.trim().replace(LEADING_ARRANGEMENT_RE, "").trim())
+    .filter(part => part && !ARRANGEMENT_RE.test(part) && !COUNTRY_ONLY_RE.test(part));
+}
+
+function mapsUrl(location) {
+  const t = (location || "").trim();
+  if (!t || NON_PLACE_RE.test(t) || MULTI_LOCATION_RE.test(t)) return null;
+  if (!/[a-z]/i.test(t)) return null;   // no letters means nothing to search
+  const parts = placeParts(t);
+  if (!parts.length) return null;
+  // Search the surviving place text, not the original: "Remote - New
+  // York" should pin New York, not confuse the query with "Remote".
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(", "))}`;
+}
+
+// Some Workday tenants configure their OWN location field as an
+// internal facilities code, not a place -- confirmed live:
+// "CA-QC-LONGUEUIL-J01 ~ 1000 Blvd Marie-Victorin ~ J01 BLDG" is
+// globalhr's raw value, verbatim, for a posting in Longueuil, Quebec.
+// That is a DATA problem (the source itself never published a clean
+// location), not a display bug -- so this is a display-only,
+// non-destructive reduction to "country, region", never a rewrite of
+// what's actually stored. Deliberately narrow: it only recognizes the
+// specific two-letter-code-prefix shape ("XX-YY-...") and only
+// expands codes it actually has a name for, rather than trying to
+// parse arbitrary free text -- the same lesson company_resolution.py
+// just taught the hard way about trusting one heuristic to handle
+// every shape a source might send.
+const CODE_PREFIX_RE = /^([A-Z]{2})-([A-Z]{2,3})-/;
+
+const COUNTRY_CODE_NAMES = {
+  US: "United States", CA: "Canada", MX: "Mexico", GB: "United Kingdom", IE: "Ireland",
+  DE: "Germany", FR: "France", ES: "Spain", IT: "Italy", NL: "Netherlands", BE: "Belgium",
+  CH: "Switzerland", AT: "Austria", SE: "Sweden", NO: "Norway", DK: "Denmark", FI: "Finland",
+  PL: "Poland", PT: "Portugal", CZ: "Czechia", RO: "Romania", HU: "Hungary", GR: "Greece",
+  IN: "India", CN: "China", JP: "Japan", KR: "South Korea", SG: "Singapore", MY: "Malaysia",
+  TH: "Thailand", VN: "Vietnam", PH: "Philippines", ID: "Indonesia", AU: "Australia",
+  NZ: "New Zealand", BR: "Brazil", AR: "Argentina", CL: "Chile", CO: "Colombia", PE: "Peru",
+  ZA: "South Africa", AE: "United Arab Emirates", SA: "Saudi Arabia", IL: "Israel", TR: "Turkey",
+};
+
+// Only the two subnational vocabularies actually common in this
+// corpus's Workday-coded locations. A code this table doesn't recognize
+// still renders as-is (e.g. "XX, Mexico") -- short and honest, rather
+// than guessed at.
+const US_STATE_CODE_NAMES = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California", CO: "Colorado",
+  CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia", HI: "Hawaii", ID: "Idaho",
+  IL: "Illinois", IN: "Indiana", IA: "Iowa", KS: "Kansas", KY: "Kentucky", LA: "Louisiana",
+  ME: "Maine", MD: "Maryland", MA: "Massachusetts", MI: "Michigan", MN: "Minnesota",
+  MS: "Mississippi", MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada",
+  NH: "New Hampshire", NJ: "New Jersey", NM: "New Mexico", NY: "New York", NC: "North Carolina",
+  ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee", TX: "Texas",
+  UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington", WV: "West Virginia",
+  WI: "Wisconsin", WY: "Wyoming", DC: "D.C.",
+};
+
+const CA_PROVINCE_CODE_NAMES = {
+  AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
+  NL: "Newfoundland and Labrador", NS: "Nova Scotia", ON: "Ontario", PE: "Prince Edward Island",
+  QC: "Quebec", SK: "Saskatchewan", NT: "Northwest Territories", NU: "Nunavut", YT: "Yukon",
+};
+
+function humanizeCodedLocation(location) {
+  const m = CODE_PREFIX_RE.exec((location || "").trim());
+  if (!m) return null;
+  const [, countryCode, subCode] = m;
+  const country = COUNTRY_CODE_NAMES[countryCode];
+  if (!country) return null;   // unrecognized country code -- don't guess at the rest either
+  const subTable = countryCode === "US" ? US_STATE_CODE_NAMES : countryCode === "CA" ? CA_PROVINCE_CODE_NAMES : null;
+  const sub = subTable?.[subCode] || subCode;
+  return `${sub}, ${country}`;
+}
+
+// A second, narrower reduction for the other shape this corpus's
+// locations show up in: not a Workday code, but plain text carrying
+// more than a reader needs -- "South San Francisco, California,
+// United States" where "South San Francisco, United States" says the
+// same thing, or "Milford, DE - 255 North Rehoboth Boulevard" where
+// the street address is never useful in a list of postings. Same
+// non-destructive, display-only rule as humanizeCodedLocation: only
+// touches shapes it's confident about, returns null (falls through to
+// the raw string) rather than guess at anything ambiguous -- e.g. a
+// bare 2-letter code in a 2-part location ("Milford, DE") is left
+// alone since DE means Delaware in one table and Germany in the
+// other, and picking wrong is worse than not touching it.
+// Recognizes the last slot of a "City, Region, Country" location as a
+// country -- the full name from COUNTRY_CODE_NAMES, or one of the
+// handful of common abbreviations sources actually ship instead of it.
+const COUNTRY_ALIASES = { usa: "United States", "u.s.a.": "United States", us: "United States", uk: "United Kingdom", "u.k.": "United Kingdom" };
+const COUNTRY_NAME_LOOKUP = new Map(Object.values(COUNTRY_CODE_NAMES).map((n) => [n.toLowerCase(), n]));
+for (const [alias, canonical] of Object.entries(COUNTRY_ALIASES)) COUNTRY_NAME_LOOKUP.set(alias, canonical);
+
+function simplifyVerboseLocation(location) {
+  let s = (location || "").trim();
+  if (!s) return null;
+  let changed = false;
+
+  // Drop a trailing " - <address>" segment, but only when that segment
+  // actually looks like a street address (carries a digit -- a suite
+  // number, a street number) rather than a legitimate place name like
+  // "Singapore City, Singapore - Singapore".
+  const dashParts = s.split(/\s+-\s+/);
+  if (dashParts.length > 1 && /\d/.test(dashParts[dashParts.length - 1])) {
+    s = dashParts.slice(0, -1).join(" - ");
+    changed = true;
+  }
+
+  let parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+
+  // Drop a trailing part that's pure digits (a postal code with no
+  // other content, e.g. "...Binh Duong, 820000").
+  if (parts.length > 1 && /^\d+$/.test(parts[parts.length - 1])) {
+    parts = parts.slice(0, -1);
+    changed = true;
+  }
+
+  // Expand a 2-letter or full-name country code, but only in the last
+  // slot of a 3+-part location -- that position is unambiguous
+  // (City, Region, Country), unlike a bare 2-part "City, XX".
+  if (parts.length >= 3) {
+    const last = parts[parts.length - 1];
+    const expanded = COUNTRY_CODE_NAMES[last.toUpperCase()];
+    if (expanded) {
+      parts[parts.length - 1] = expanded;
+      changed = true;
+    }
+  }
+
+  // "City, Region, Country" reads the same as "City, Country" and is
+  // shorter -- collapse the middle once there's an unambiguous country
+  // name in the last slot to anchor the shape.
+  if (parts.length === 3) {
+    const canonical = COUNTRY_NAME_LOOKUP.get(parts[2].toLowerCase());
+    if (canonical) {
+      parts = [parts[0], canonical];
+      changed = true;
+    }
+  }
+
+  if (!changed) return null;
+  const result = parts.join(", ");
+  return result && result !== location ? result : null;
+}
+
+// A button that narrows the feed to this place, not a link that leaves
+// it. Opening Maps answered "where is this," which a reader can already
+// tell from the text -- "what ELSE is open here" is the more useful
+// question and used to take a copy-paste round trip through the
+// Location filter to ask. Reuses mapsUrl()'s exact "is this actually a
+// resolvable place" guard (kept intact, unchanged, since
+// tests/frontend/test_maps_url.js exercises it directly) rather than
+// duplicating that logic -- the URL itself just isn't used for the
+// href anymore.
+function locationHtml(location) {
+  const coded = humanizeCodedLocation(location);
+  if (coded) {
+    // Filtering by the CODE itself would only ever match this one
+    // posting (nothing else on the corpus carries the same facility
+    // string) -- filtering by "Quebec, Canada" can actually surface
+    // other Quebec postings, on top of just reading better.
+    return `<button type="button" class="entity" title="${escapeHtml(location)} -- show all open postings in ${escapeHtml(coded)}" ` +
+           `data-filter-axis="location" data-filter-value="${escapeHtml(coded)}">${escapeHtml(coded)}</button>`;
+  }
+  const simplified = simplifyVerboseLocation(location);
+  if (simplified) {
+    return `<button type="button" class="entity" title="${escapeHtml(location)} -- show all open postings in ${escapeHtml(simplified)}" ` +
+           `data-filter-axis="location" data-filter-value="${escapeHtml(simplified)}">${escapeHtml(simplified)}</button>`;
+  }
+  const text = escapeHtml(location || "—");
+  if (!mapsUrl(location)) return text;
+  const place = placeParts(location).join(", ");
+  return `<button type="button" class="entity" title="Show all open postings in ${escapeHtml(place)}" ` +
+         `data-filter-axis="location" data-filter-value="${escapeHtml(place)}">${text}</button>`;
+}
+
+function entityHref(kind, value) {
+  return `?${kind}=${encodeURIComponent(value)}`;
+}
+
+function entityLink(kind, value, text, cls = "entity") {
+  if (!value) return escapeHtml(text || "—");
+  return `<a class="${cls}" href="${entityHref(kind, value)}" data-route="${kind}" data-value="${escapeHtml(value)}">${escapeHtml(text)}</a>`;
+}
+
+// Intercepted globally so every entity link in every renderer routes
+// in-app instead of triggering a full page load.
+document.addEventListener("click", (ev) => {
+  const link = ev.target.closest("a[data-route]");
+  if (!link || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button !== 0) return;
+  ev.preventDefault();
+  navigateTo(link.dataset.route, link.dataset.value);
+});
+
+// The category tag and location on a row already carry the exact value
+// a reader would otherwise retype into a filter field -- clicking one
+// applies it directly instead of making the search a copy-paste
+// exercise. Delegated for the same reason the entity-route handler
+// above is: rows are re-rendered wholesale on every reload, so a
+// listener bound to each button would leak on every one of those.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-filter-axis]");
+  if (!btn) return;
+  const { filterAxis, filterValue } = btn.dataset;
+  // This button can appear on a posting's own detail page (its Location
+  // line uses the same locationHtml()) as well as in the feed table --
+  // from detail, land back on the feed itself rather than applying the
+  // filter behind a page that's still showing.
+  if (activeDetailRoute()) leaveDetail();
+  if (filterAxis === "location") {
+    document.getElementById("feed-location").value = filterValue;
+  } else {
+    const el = document.getElementById(filterAxis === "function" ? "feed-function" : "feed-category");
+    // Industry and function are mutually exclusive per posting, so
+    // setting one and leaving a stale value in the other would usually
+    // just produce zero results -- clear it rather than leave that trap.
+    document.getElementById(filterAxis === "function" ? "feed-category" : "feed-function").value = "";
+    el.value = filterValue;
+  }
+  onFilterChanged();
+  document.getElementById("tab-feed").scrollIntoView({ block: "start", behavior: "smooth" });
+});
+
+function navigateTo(kind, value, { replace = false } = {}) {
+  // replace:true is for a page that FORWARDS to another (a direct board
+  // to its company). Pushing there would trap Back in a loop between the
+  // two; replacing leaves the feed as the previous entry, which is where
+  // Back should actually go.
+  history[replace ? "replaceState" : "pushState"](null, "", entityHref(kind, value));
+  route();
+  window.scrollTo(0, 0);
+}
+
+function leaveDetail() {
+  history.pushState(null, "", location.pathname);
+  route();
+}
+
+function crumb(label) {
+  return `<button class="crumb" onclick="leaveDetail()">← ${escapeHtml(label)}</button>`;
+}
+
+async function getJson(url) {
+  const res = await fetch(url);
+  return res.json();
+}
+
+function detailEl() { return document.getElementById("tab-detail"); }
+
+function showDetailLoading() {
+  detailEl().innerHTML = `<div class="empty">loading…</div>`;
+}
+
+function showDetailError(message) {
+  detailEl().innerHTML = `${crumb("Back to feed")}<div class="empty">${escapeHtml(message)}</div>`;
+}
+
+// --- posting page -------------------------------------------------------
+
+async function renderPostingPage(id) {
+  showDetailLoading();
+  let p = null;
+  let alsoListed = [];
+  let siblings = [];
+
+  if (EDGE_DATA.active && EDGE_DATA.corpus) {
+    p = EDGE_DATA.corpus.find(x => x.id === id);
+    if (!p) return showDetailError("No such posting in active feed");
+    if (p.dedup_key) {
+      alsoListed = EDGE_DATA.corpus.filter(x => x.dedup_key === p.dedup_key && x.id !== p.id);
+    }
+    if (p.company_key) {
+      siblings = EDGE_DATA.corpus.filter(x => x.company_key === p.company_key && x.id !== p.id).slice(0, 25);
+    }
+    let descText = p.description || "";
+    if (!descText && p.desc_id) {
+      try {
+        const descRes = await fetch(`/data/descriptions/${p.desc_id}.json`);
+        if (descRes.ok) {
+          const descJson = await descRes.json();
+          descText = descJson.description || "";
+        }
+      } catch(e) {}
+    }
+    if (!descText && p.description_snippet) {
+      descText = p.description_snippet;
+    }
+    p = { ...p, description: descText };
+  } else {
+    const data = await getJson(`/posting/${encodeURIComponent(id)}`);
+    if (data.error) return showDetailError(data.error);
+    p = data.posting;
+    alsoListed = data.also_listed || [];
+    siblings = data.same_company || [];
+  }
+  const posted = postedCell(p);
+  const found = foundCell(p);
+
+  const description = p.description
+    ? `<div class="description">${escapeHtml(p.description)}</div>`
+    : `<div class="description-missing">${p.description === ""
+        ? "This source publishes no description for this posting."
+        : "Description not fetched yet — it arrives on the next scrape of this source."}</div>`;
+
+  const alsoListed = data.also_listed.length ? `
+    <div class="section-title">Also listed via</div>
+    <div class="mini-list">${data.also_listed.map(d => `
+      <a class="mini-row" href="${entityHref("posting", d.id)}" data-route="posting" data-value="${escapeHtml(d.id)}">
+        <span>${escapeHtml(d.source_entry)} <span class="meta">· ${escapeHtml(d.ats)}</span></span>
+        <span class="meta">${escapeHtml(d.status)}</span>
+      </a>`).join("")}</div>` : "";
+
+  const siblings = data.same_company.length ? `
+    <div class="section-title">Other openings at ${escapeHtml(p.company)}</div>
+    <div class="mini-list">${data.same_company.map(o => `
+      <a class="mini-row" href="${entityHref("posting", o.id)}" data-route="posting" data-value="${escapeHtml(o.id)}">
+        <span>${escapeHtml(o.title)}</span>
+        <span class="meta">${escapeHtml(o.location || "")}</span>
+      </a>`).join("")}</div>` : "";
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(p.title)}</h2>
+    <div class="sub">${entityLink("company", p.company_key, p.company)} · ${locationHtml(p.location)}</div>
+    <div class="actions">
+      <a class="btn primary" href="${escapeHtml(p.url)}" target="_blank" rel="noopener">Apply on ${escapeHtml(p.ats)} ↗</a>
+      ${entityLink("company", p.company_key, `All roles at ${p.company}`, "btn")}
+    </div>
+    <div class="kv">
+      <div><span class="k">Posted</span><span class="v" title="${escapeHtml(posted.title)}">${escapeHtml(posted.text)}</span></div>
+      <div><span class="k">Found</span><span class="v" title="${escapeHtml(found.title)}">${escapeHtml(found.text)}</span></div>
+      <div><span class="k">Industry</span><span class="v">${escapeHtml(p.category || "not reported by this source")}</span></div>
+      <div><span class="k">Job function</span><span class="v">${escapeHtml(p.job_function || "not reported by this source")}</span></div>
+      <div><span class="k">Platform</span><span class="v">${entityLink("ats", p.ats, p.ats)}</span></div>
+      <div><span class="k">Via source</span><span class="v">${escapeHtml(p.source_entry || "—")}</span></div>
+      <div><span class="k">Status</span><span class="v">${escapeHtml(p.status)}</span></div>
+    </div>
+    <div class="section-title">Description</div>
+    ${description}
+    ${alsoListed}
+    ${siblings}`;
+}
+
+// --- company page -------------------------------------------------------
+
+async function renderCompanyPage(key) {
+  showDetailLoading();
+  let data = null;
+  if (EDGE_DATA.active && EDGE_DATA.corpus) {
+    const matched = EDGE_DATA.corpus.filter(p => (p.company_key || "").toLowerCase() === key.toLowerCase());
+    if (!matched.length) return showDetailError("No such company");
+    const names = {};
+    for (const r of matched) names[r.company] = (names[r.company] || 0) + 1;
+    const displayName = Object.keys(names).reduce((a, b) => names[a] > names[b] ? a : b);
+    const atsSet = new Set(matched.map(r => r.ats).filter(Boolean));
+    data = {
+      display_name: displayName,
+      open_count: matched.length,
+      category: matched[0].category || "",
+      name_variants: Object.keys(names),
+      postings: matched,
+      reached_via: [...atsSet].map(ats => ({ ats, ats_platforms: [ats], status: "active" }))
+    };
+  } else {
+    data = await getJson(`/company/${encodeURIComponent(key)}`);
+    if (data.error) return showDetailError(data.error);
+  }
+
+  const open = data.postings.filter(p => p.status === "open");
+  const other = data.postings.filter(p => p.status !== "open");
+
+  // A raw URL slug is not a company profile, and pretending otherwise
+  // would be worse than saying so -- some names in the corpus are
+  // genuinely unresolved tokens like "ag" or "djeholdings".
+  const looksUnresolved = data.display_name === data.display_name.toLowerCase()
+                           && !data.display_name.includes(" ");
+  const banner = looksUnresolved
+    ? `<div class="banner"><b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name — it hasn't been identified yet.</div>`
+    : "";
+
+  // "Where these come from" rather than a bare chip row: for a company
+  // scraped straight off its own board, this IS the source page, so the
+  // board's health has to be legible here or folding the two together
+  // would lose it.
+  const via = data.reached_via.map(v => `
+    <div class="board-card">
+      <a class="board-name" href="${entityHref(v.source_id ? "source" : "ats", v.source_id || v.ats)}"
+         data-route="${v.source_id ? "source" : "ats"}" data-value="${escapeHtml(String(v.source_id || v.ats))}">
+        ${escapeHtml(v.source_entry || v.ats)}</a>
+      <span class="meta">
+        ${entityLink("ats", v.ats, v.ats)}
+        ${v.status ? ` · <span class="status-cell status-${escapeHtml(v.status)}">${escapeHtml(v.status)}</span>` : ""}
+        ${v.last_scraped_at ? ` · checked ${escapeHtml(timeAgo(v.last_scraped_at))}` : ""}
+        ${v.last_run_at
+          ? ` · last run ${v.last_run_ok
+              ? `ok (${v.fetched_count} fetched, ${v.internship_count} relevant)`
+              : `<b class="bad">failed</b> — ${escapeHtml(String(v.last_run_error || "").slice(0, 90))}`}`
+          : ""}
+        ${v.consecutive_failures ? ` · <b class="bad">${v.consecutive_failures} consecutive failures</b>` : ""}
+      </span>
+    </div>`).join("");
+
+  const rows = list => `<div class="mini-list">${list.map(p => `
+    <a class="mini-row" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}">
+      <span>${escapeHtml(p.title)}</span>
+      <span class="meta">${escapeHtml(p.location || "")} · ${escapeHtml(postedCell(p).text)}</span>
+    </a>`).join("")}</div>`;
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(data.display_name)}</h2>
+    <div class="sub">${escapeHtml(data.category || "Uncategorized")} · ${data.open_count} open ${data.open_count === 1 ? "role" : "roles"}</div>
+    ${banner}
+    ${data.name_variants.length > 1
+      ? `<div class="banner">Also appears as ${data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ")} — merged into one page.</div>`
+      : ""}
+    <div class="section-title">${open.length} open ${open.length === 1 ? "posting" : "postings"}</div>
+    ${open.length ? rows(open) : `<div class="empty">No open postings right now.</div>`}
+    <div class="section-title">Where these come from</div>
+    ${via}
+    ${other.length ? `<div class="section-title">${other.length} closed or duplicate</div>${rows(other)}` : ""}`;
+}
+
+// --- source page --------------------------------------------------------
+
+async function renderSourcePage(id) {
+  showDetailLoading();
+  const data = await getJson(`/source/${encodeURIComponent(id)}`);
+  if (data.error) return showDetailError(data.error);
+  const s = data.source;
+
+  // A DIRECT board is not a separate thing from the company it belongs
+  // to -- same name, same postings, and the only extra it carried was
+  // scrape health, which now lives on the company page. Two pages for one
+  // real-world entity is what made "source" and "company" read as
+  // synonyms. So: forward, replacing history so Back still reaches the
+  // feed rather than bouncing between the two.
+  // An AGGREGATOR keeps its own page, because there the source genuinely
+  // IS a different entity from the employers it carries.
+  if (!data.is_aggregator && data.company_key) {
+    return navigateTo("company", data.company_key, { replace: true });
+  }
+
+  const companies = data.companies.length ? `
+    <div class="section-title">Employers carried by this source (${data.stats.companies})</div>
+    <div class="chip-row">${data.companies.slice(0, 120).map(c => `
+      <a class="chip" href="${entityHref("company", c.company_key)}" data-route="company" data-value="${escapeHtml(c.company_key)}">
+        ${escapeHtml(c.company)} <span class="n">${c.n}</span>
+      </a>`).join("")}</div>` : "";
+
+  const r = data.latest_run;
+  const run = r ? `<span class="meta"> · last run ${
+    r.ok ? `ok (${r.fetched_count} fetched, ${r.internship_count} relevant)`
+         : `<b class="bad">failed</b> — ${escapeHtml(String(r.error || "").slice(0, 90))}`
+  } ${escapeHtml(timeAgo(r.started_at))}</span>` : "";
+
+  const openRows = data.postings.length ? `
+    <div class="section-title">
+      ${data.stats.open} open ${data.stats.open === 1 ? "posting" : "postings"}${
+        data.postings_truncated ? ` <span class="meta">— showing the ${data.postings.length} most recent</span>` : ""}
+    </div>
+    <div class="mini-list">${data.postings.map(p => `
+      <a class="mini-row" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}">
+        <span>${escapeHtml(p.title)}</span>
+        <span class="meta">${escapeHtml(p.company || "")}${p.location ? ` · ${escapeHtml(p.location)}` : ""} · ${escapeHtml(postedCell(p).text)}</span>
+      </a>`).join("")}</div>`
+    : `<div class="empty">No open postings right now.</div>`;
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(s.company)}</h2>
+    <div class="sub">
+      Aggregator source · ${entityLink("ats", s.ats, s.ats)} ·
+      <span class="status-cell status-${escapeHtml(s.status)}">${escapeHtml(s.status)}</span>
+      ${run}
+    </div>
+    <div class="banner"><b>This source is not a company.</b> It carries postings from ${data.stats.companies} different employers, so its listings belong to those companies rather than to the board itself.</div>
+    ${openRows}
+    ${companies}
+    <div class="kv">
+      <div><span class="k">Ever seen</span><span class="v">${data.stats.total}</span></div>
+      <div><span class="k">Scrape interval</span><span class="v">${Math.round((s.scrape_interval_seconds || 0) / 60)} min</span></div>
+      <div><span class="k">Consecutive failures</span><span class="v">${s.consecutive_failures}</span></div>
+      <div><span class="k">Last scraped</span><span class="v">${escapeHtml(timeAgo(s.last_scraped_at))}</span></div>
+      <div><span class="k">Added by</span><span class="v">${escapeHtml(s.added_by || "—")}</span></div>
+    </div>`;
+}
+
+// --- ats page -----------------------------------------------------------
+
+const ATS_NOTES = {
+  workday: "Its job-search endpoint carries no description, so descriptions are fetched per posting. Dates arrive as prose (\"Posted 30+ Days Ago\"), which is a bound rather than a measurement.",
+  greenhouse: "Full description ships inside the list response. Dates are ISO-8601.",
+  lever: "Full description ships inside the list response. Dates arrive as epoch milliseconds.",
+  muse: "An aggregator: one source carrying many employers, with the company named per job rather than per source.",
+  jsonld: "Generic harvester reading schema.org JobPosting markup off a company's own sitemap.",
+  oracle_recruiting: "Oracle Recruiting Cloud. Descriptions are composed from several separate fields.",
+};
+
+async function renderAtsPage(name) {
+  showDetailLoading();
+  const data = await getJson(`/ats/${encodeURIComponent(name)}`);
+  if (data.error) return showDetailError(data.error);
+
+  detailEl().innerHTML = `
+    ${crumb("Back to feed")}
+    <h2>${escapeHtml(data.ats)}</h2>
+    <div class="sub">Applicant tracking platform</div>
+    ${ATS_NOTES[data.ats] ? `<div class="banner">${escapeHtml(ATS_NOTES[data.ats])}</div>` : ""}
+    <div class="kv">
+      <div><span class="k">Sources</span><span class="v">${data.source_stats.sources} (${data.source_stats.active} active)</span></div>
+      <div><span class="k">Open postings</span><span class="v">${data.posting_stats.open_postings}</span></div>
+      <div><span class="k">Employers</span><span class="v">${data.posting_stats.companies}</span></div>
+      <div><span class="k">With description</span><span class="v">${data.posting_stats.with_description}</span></div>
+    </div>
+    <div class="section-title">Sources on this platform</div>
+    <div class="mini-list">${data.sources.map(s => `
+      <a class="mini-row" href="${entityHref("source", s.id)}" data-route="source" data-value="${s.id}">
+        <span>${escapeHtml(s.company)}</span>
+        <span class="meta">${escapeHtml(s.status)} · ${escapeHtml(timeAgo(s.last_scraped_at))}</span>
+      </a>`).join("")}</div>`;
+}
+
+// --- router -------------------------------------------------------------
+
+function activeDetailRoute() {
+  const p = new URLSearchParams(location.search);
+  for (const kind of DETAIL_ROUTES) {
+    const value = p.get(kind);
+    if (value) return { kind, value };
+  }
+  return null;
+}
+
+function route() {
+  const detail = activeDetailRoute();
+  document.getElementById("tab-detail").hidden = !detail;
+  document.getElementById("tab-feed").hidden = !!detail;
+  if (!detail) return;
+  ({ posting: renderPostingPage, company: renderCompanyPage,
+     source: renderSourcePage, ats: renderAtsPage })[detail.kind](detail.value);
+}
+
+addEventListener("popstate", route);
+
+// --- boot ---------------------------------------------------------------
+
+// Feeds the real sticky-header height to CSS so the sticky <thead> parks
+// exactly beneath it at any viewport width.
+const headerEl = document.querySelector("header");
+function measureHeader() {
+  document.documentElement.style.setProperty("--header-h", `${Math.round(headerEl.getBoundingClientRect().height)}px`);
+}
+measureHeader();
+if (window.ResizeObserver) new ResizeObserver(measureHeader).observe(headerEl);
+else addEventListener("resize", debounce(measureHeader, 100));
+
+if (initialParams.get("preset") !== null &&
+    [...presetSelect.options].some(o => o.value === initialParams.get("preset"))) {
+  presetSelect.value = initialParams.get("preset");
+}
+if (initialParams.get("q")) document.getElementById("search").value = initialParams.get("q");
+if (initialParams.get("location")) document.getElementById("feed-location").value = initialParams.get("location");
+// The only two controls whose options/wiring are static HTML rather
+// than server-populated -- the age pill group and the view lens -- so
+// both can be wired and restored-from-URL immediately rather than
+// waiting on loadFeedCategories.
+wirePillGroup("feed-age");
+if (initialParams.get("age") && document.querySelector(`#feed-age .pill-btn[data-value="${CSS.escape(initialParams.get("age"))}"]`)) {
+  setPillValue("feed-age", initialParams.get("age"), { silent: true });
+}
+wireLensGroup("feed-view");
+const initialView = initialParams.get("view");
+if (initialView && document.querySelector(`#feed-view .pill-btn[data-value="${CSS.escape(initialView)}"]`)) {
+  setPillValue("feed-view", initialView, { silent: true });
+}
+// candidate-status's and source-status's options are static HTML, so
+// restoring them now works immediately. source-category/source-ats/
+// candidate-ats's options come from a fetch that hasn't run yet --
+// there's nothing to select against -- so those three are applied
+// after their respective load function populates the list.
+if (initialParams.get("candidate_status")) document.getElementById("candidate-status").value = initialParams.get("candidate_status");
+if (initialParams.get("source_status")) document.getElementById("source-status").value = initialParams.get("source_status");
+const pendingSourceCategory = initialParams.get("source_category") || "";
+const pendingSourceAts = initialParams.get("source_ats") || "";
+let pendingCandidateAts = initialParams.get("candidate_ats") || "";
+// Applies the restored (or default) view's section/panel visibility
+// and placeholder before anything fetches, so the first paint already
+// matches the URL instead of flashing Postings first.
+(function syncInitialView() {
+  const view = pillValue("feed-view");
+  document.querySelectorAll("#filters-aside .filter-section[data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== "all" && el.dataset.view !== view;
+  });
+  document.querySelectorAll(".feed-main > [data-view]").forEach(el => {
+    el.hidden = el.dataset.view !== view;
+  });
+  updateSearchPlaceholder(view);
+})();
+
+// Categories load first so a deep link's ?category is already applied to
+// the very first feed request, rather than being fetched, then filtered
+// again a moment later.
+async function bootFeed() {
+  await initEdgeData();
+  await loadFeedCategories();
+  updateFiltersUi();
+  await loadFeed();
+}
+
+if (activeDetailRoute()) {
+  // Deep link straight to an entity page. The feed still loads behind it
+  // so leaving the page is instant rather than a second round trip.
+  bootFeed();
+  route();
+} else {
+  bootFeed();
+  ensureViewLoaded(pillValue("feed-view"));
+}
+</script>
+
+</body>
+</html>
