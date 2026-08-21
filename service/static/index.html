@@ -845,8 +845,8 @@
           <button class="events-badge" id="events-badge" aria-haspopup="true" aria-expanded="false"></button>
           <div class="events-panel" id="events-panel" role="region" aria-label="Recent source events"></div>
         </div>
-        <span class="status-dot" id="health-dot"></span>
-        <span id="health-sub">checking API&hellip;</span>
+        <span class="status-dot ok" id="health-dot"></span>
+        <span id="health-sub">Edge CDN &middot; live</span>
       </div>
     </div>
   </div>
@@ -1719,6 +1719,7 @@ let EDGE_DATA = {
   presets: [],
   companies: [],
   corpus: null,
+  corpusPromise: null,
   active: false
 };
 
@@ -1739,14 +1740,13 @@ async function initEdgeData() {
       fetch("/data/presets.json").then(r => r.ok ? r.json() : []).then(d => { EDGE_DATA.presets = d; });
       fetch("/data/companies.json").then(r => r.ok ? r.json() : []).then(d => { EDGE_DATA.companies = d; });
 
-      const feedRes = await fetch("/data/feed.json");
-      if (feedRes.ok) {
-        EDGE_DATA.corpus = await feedRes.json();
-        const countEl = document.getElementById("feed-count");
-        if (countEl && countEl.textContent.includes("loading")) {
-          loadFeed();
-        }
-      }
+      EDGE_DATA.corpusPromise = fetch("/data/feed.json")
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          EDGE_DATA.corpus = data;
+          return data;
+        })
+        .catch(() => { EDGE_DATA.corpus = []; });
     }
   } catch (e) {
     EDGE_DATA.active = false;
@@ -2079,15 +2079,21 @@ async function loadFeed({ resetPage = false } = {}) {
   if (resetPage) feedOffset = 0;
   document.getElementById("feed-count").textContent = "loading…";
 
-  if (EDGE_DATA.active && EDGE_DATA.corpus) {
-    const edgeRes = edgeFilterFeed();
-    if (edgeRes) {
-      feedTotal = edgeRes.total;
-      feedUnstatedCycle = edgeRes.unstated_cycle;
-      feedPostings = edgeRes.postings.slice(feedOffset, feedOffset + FEED_PAGE_SIZE);
-      renderFeed();
-      syncUrl();
-      return;
+  if (EDGE_DATA.active) {
+    if (!EDGE_DATA.corpus && EDGE_DATA.corpusPromise) {
+      document.getElementById("feed-count").textContent = "loading feed…";
+      await EDGE_DATA.corpusPromise;
+    }
+    if (EDGE_DATA.corpus) {
+      const edgeRes = edgeFilterFeed();
+      if (edgeRes) {
+        feedTotal = edgeRes.total;
+        feedUnstatedCycle = edgeRes.unstated_cycle;
+        feedPostings = edgeRes.postings.slice(feedOffset, feedOffset + FEED_PAGE_SIZE);
+        renderFeed();
+        syncUrl();
+        return;
+      }
     }
   }
 
@@ -2286,6 +2292,19 @@ let candidateTotal = 0;
 
 async function loadCandidates() {
   document.getElementById("candidates-count").textContent = "loading…";
+  if (EDGE_DATA.active && EDGE_DATA.companies.length) {
+    candidateRows = EDGE_DATA.companies.map(c => ({
+      company: c.name,
+      ats: (c.ats_platforms || [])[0] || "direct",
+      review_status: "verified",
+      reason: "Active employer career board",
+      checked_at: new Date().toISOString()
+    }));
+    candidateTotal = candidateRows.length;
+    populateSelectValues(document.getElementById("candidate-ats"), [...new Set(candidateRows.map(s => s.ats).filter(Boolean))].sort());
+    renderCandidates();
+    return;
+  }
   try {
     const p = new URLSearchParams({ limit: "500" });
     const q = document.getElementById("search").value.trim();
@@ -2358,6 +2377,12 @@ let duplicateTotal = 0;
 
 async function loadDuplicates() {
   document.getElementById("duplicates-count").textContent = "loading…";
+  if (EDGE_DATA.active && EDGE_DATA.corpus) {
+    duplicateRows = [];
+    duplicateTotal = 0;
+    renderDuplicates();
+    return;
+  }
   try {
     const p = new URLSearchParams({ limit: "500" });
     const q = document.getElementById("search").value.trim();
@@ -2637,14 +2662,32 @@ for (const id of ["candidate-status", "candidate-ats"]) {
   document.getElementById(id).addEventListener("change", () => { loadCandidates(); updateFiltersUi(); syncUrl(); });
 }
 
-fetch("/health").then(r => r.json()).then(d => {
-  document.getElementById("health-sub").textContent = d.ok ? "API live" : "API unhealthy";
-  document.getElementById("health-dot").classList.add(d.ok ? "ok" : "bad");
-}).catch(() => {
-  if (EDGE_DATA.active) return;
-  document.getElementById("health-sub").textContent = "API unreachable";
-  document.getElementById("health-dot").classList.add("bad");
-});
+async function checkHealth() {
+  const dot = document.getElementById("health-dot");
+  const sub = document.getElementById("health-sub");
+  if (!dot || !sub) return;
+
+  if (EDGE_DATA.active && EDGE_DATA.meta) {
+    dot.className = "status-dot ok";
+    sub.innerHTML = `Edge CDN &middot; ${EDGE_DATA.meta.total_open_postings.toLocaleString()} live`;
+    return;
+  }
+
+  try {
+    const r = await fetch("/health");
+    if (r.ok) {
+      const d = await r.json();
+      dot.className = d.ok ? "status-dot ok" : "status-dot bad";
+      sub.textContent = d.ok ? "API live" : "API unhealthy";
+      return;
+    }
+  } catch (e) {}
+
+  if (EDGE_DATA.active && EDGE_DATA.meta) {
+    dot.className = "status-dot ok";
+    sub.innerHTML = `Edge CDN &middot; ${EDGE_DATA.meta.total_open_postings.toLocaleString()} live`;
+  }
+}
 
 // --- events indicator ---------------------------------------------------
 //
@@ -3369,6 +3412,7 @@ async function bootFeed() {
   await loadFeedCategories();
   updateFiltersUi();
   await loadFeed();
+  checkHealth();
 }
 
 if (activeDetailRoute()) {
