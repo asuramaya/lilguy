@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Internship Feed</title>
-<link rel="alternate" type="application/atom+xml" title="Internship Feed" href="/feed.atom">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>lilguy.win</title>
+<link rel="alternate" type="application/atom+xml" title="lilguy.win" href="/feed.atom">
 <style>
   :root {
     --canvas: #0d0d0c;
@@ -82,24 +82,50 @@
     border-bottom: 1px solid var(--border);
     position: sticky;
     top: 0;
-    background: var(--canvas);
-    z-index: 20;
+    background: rgba(14, 14, 15, 0.94);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    z-index: 50;
   }
 
-  .header-top {
+  .header-bar {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
-    flex-wrap: wrap;
-    padding: 20px 0 16px;
+    padding: 10px 0;
+    min-height: 52px;
+    box-sizing: border-box;
   }
 
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    color: inherit;
+    cursor: pointer;
+    flex-shrink: 0;
+    user-select: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .brand:hover {
+    opacity: 0.82;
+  }
+  .brand:active {
+    transform: scale(0.98);
+  }
+  .brand:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
   .brand h1 {
     margin: 0;
     font-size: 15px;
     font-weight: 650;
     letter-spacing: -0.01em;
+    color: var(--ink);
   }
 
   .status-line {
@@ -397,8 +423,8 @@
   .title-cell a { color: var(--ink); text-decoration: none; font-weight: 500; }
   .title-cell a:hover { color: var(--accent); text-decoration: underline; }
 
-  .company-cell { color: var(--ink-secondary); text-align: center; }
-  .location-cell { color: var(--ink-tertiary); font-size: 12.5px; text-align: center; }
+  .company-cell { color: var(--ink-secondary); text-align: left; }
+  .location-cell { color: var(--ink-tertiary); font-size: 12.5px; text-align: left; }
 
   .swatch-tag {
     display: inline-flex;
@@ -589,16 +615,84 @@
   .feed-layout { display: flex; align-items: flex-start; gap: 20px; }
   .feed-main { min-width: 0; flex: 1; }
 
-  .search-embedded { position: relative; }
+  .search-embedded {
+    position: relative;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.035);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    height: 36px;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  }
+  .search-embedded:focus-within {
+    background: var(--surface);
+    border-color: var(--border-strong);
+    box-shadow: 0 0 0 1px var(--border-strong);
+  }
   .search-embedded input {
-    width: 100%; box-sizing: border-box;
-    background: var(--row); border: 1px solid var(--border); color: var(--ink);
-    border-radius: 4px; padding: 9px 40px; font-size: 14px; font-family: inherit;
+    width: 100%;
+    height: 100%;
+    background: transparent !important;
+    border: none !important;
+    color: var(--ink);
+    padding: 0 38px 0 28px;
+    font-size: 13.5px;
+    font-family: inherit;
+    outline: none !important;
+    box-sizing: border-box;
   }
   .search-embedded input::placeholder { color: var(--ink-tertiary); }
-  .search-embedded-icon {
-    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
-    color: var(--ink-tertiary); font-size: 14px; pointer-events: none;
+  .search-clear-left {
+    position: absolute;
+    left: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    background: transparent !important;
+    border: none !important;
+    color: var(--ink-tertiary);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    border-radius: 50%;
+    transition: color 0.15s, opacity 0.15s;
+  }
+  .search-clear-left:hover {
+    color: var(--ink);
+  }
+  .search-clear-left.visible {
+    display: flex;
+  }
+  .input-clear-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: transparent !important;
+    border: none !important;
+    color: var(--ink-tertiary);
+    font-size: 15px;
+    line-height: 1;
+    padding: 0 4px;
+    margin: 0 0 0 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    opacity: 0.7;
+    transition: opacity 0.15s, color 0.15s;
+  }
+  .input-clear-btn:hover {
+    color: var(--ink);
+    opacity: 1;
+  }
+  .input-clear-btn.visible {
+    display: inline-flex;
   }
   /* The filter TOGGLE lives inside the search field's own trailing edge
      rather than as a separate button beside it -- one control reads as
@@ -695,13 +789,28 @@
      `.field` rule, so it can't silently double up with .toolbar .field
      if a toolbar field is ever nested inside the panel later. */
   .filters-aside .field {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--canvas); border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px;
+    display: flex;
+    align-items: center;
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 8px;
     width: 100%;
+    box-sizing: border-box;
+    position: relative;
   }
   .filters-aside .field input, .filters-aside .field select {
-    background: none; border: none; color: var(--ink); font-size: 13px;
-    font-family: inherit; outline: none; width: 100%;
+    flex: 1;
+    min-width: 0;
+    background: transparent !important;
+    border: none !important;
+    color: var(--ink);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none !important;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
   }
   .filters-aside .field input::placeholder { color: var(--ink-tertiary); }
   /* Native <select> popups don't inherit page CSS -- see the .toolbar
@@ -773,25 +882,39 @@
 
   /* --- pagination ---------------------------------------------------- */
 
+  #feed-pager-top { display: none; }
+
   .pager {
-    display: flex; align-items: center; justify-content: center; gap: 14px;
-    padding: 14px 0; flex-wrap: wrap;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 16px; flex-wrap: wrap;
   }
-  .pager:empty { padding: 0; }
-  .pager-status { color: var(--ink-secondary); font-size: 12.5px; }
+  .pager:empty { display: none; }
+  #feed-pager {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 40;
+    background: rgba(14, 14, 15, 0.94);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.45);
+    margin-top: 10px;
+  }
+  .pager-status { color: var(--ink-secondary); font-size: 12px; font-weight: 500; }
   .pager-range { color: var(--ink-tertiary); }
   .pager-btn {
     background: var(--row); border: 1px solid var(--border); color: var(--ink);
-    border-radius: 4px; padding: 6px 12px; font-size: 12.5px; font-family: inherit;
-    cursor: pointer;
+    border-radius: 6px; padding: 6px 14px; font-size: 12.5px; font-weight: 500; font-family: inherit;
+    cursor: pointer; transition: background 0.15s, border-color 0.15s;
   }
-  .pager-btn:hover:not(:disabled) { border-color: var(--border-strong); }
-  .pager-btn:disabled { color: var(--ink-tertiary); cursor: default; opacity: 0.5; }
+  .pager-btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
+  .pager-btn:disabled { color: var(--ink-tertiary); cursor: default; opacity: 0.4; }
   .pager-size {
     background: none; border: none; color: var(--ink-tertiary); font-size: 12px;
     font-family: inherit;
   }
-  #feed-pager-top:not(:empty) { border-bottom: 1px solid var(--border); margin-bottom: 4px; }
 
   footer {
     border-top: 1px solid var(--border);
@@ -803,30 +926,200 @@
   footer a { color: var(--ink-tertiary); }
   footer a:hover { color: var(--accent); }
 
-  /* Below this width a 5-column table can only be read by dragging it
-     sideways (its min-content width measured 1680px against a 390px
-     phone viewport). Each row becomes a stacked card instead, labelled
-     from the data-label attributes the renderers set. */
-  @media (max-width: 719px) {
-    :root { --gutter: 16px; }
-    thead { display: none; }
-    table, tbody, tr, td { display: block; width: auto; }
-    tbody tr { padding: 12px 0; }
-    tbody td { padding: 2px 0; white-space: normal; overflow: visible; }
-    tbody td:empty { display: none; }
-    td[data-label]::before {
-      content: attr(data-label);
-      display: inline-block;
-      min-width: 74px;
-      color: var(--ink-tertiary);
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+  /* Mobile responsive styling - Ultra-compact, fast browsing, zero wasted space */
+  @media (max-width: 768px) {
+    :root { --gutter: 12px; }
+    .wrap { padding-left: 12px; padding-right: 12px; }
+
+    .header-bar {
+      padding: 6px 0;
+      gap: 10px;
+      min-height: 44px;
     }
-    td.title-cell { font-size: 15px; margin-bottom: 4px; }
-    td.title-cell::before { display: none; }
-    .age-cell, .num-cell { text-align: left; }
-    .truncate { white-space: normal; }
+    .brand {
+      gap: 6px;
+    }
+    .brand h1 { font-size: 13px; }
+
+    .search-embedded {
+      margin: 0;
+      max-width: none;
+      height: 34px;
+    }
+    .search-embedded input {
+      font-size: 16px !important; /* Prevents mobile browser auto-zoom */
+      padding: 0 34px 0 24px;
+    }
+    .search-clear-left {
+      left: 5px;
+      font-size: 14px;
+    }
+    .search-embedded-filter-btn {
+      right: 3px;
+      width: 24px;
+      height: 24px;
+      font-size: 12px;
+    }
+
+    /* Prevent mobile auto-zoom across all filter inputs */
+    input, select, textarea,
+    .filters-aside .field input,
+    .filters-aside .field select {
+      font-size: 16px !important;
+    }
+
+    .result-line {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      margin: 6px 0 8px;
+      font-size: 11.5px;
+    }
+
+    /* Dense, highly readable mobile row: Company & Location top, Wrapped Title bottom */
+    thead { display: none; }
+    table, tbody { display: block; width: 100%; }
+    
+    tbody tr {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-rows: auto auto;
+      grid-template-areas:
+        "meta  age"
+        "title title";
+      gap: 2px 8px;
+      align-items: baseline;
+      padding: 7px 4px;
+      margin-bottom: 0;
+      border-bottom: 1px solid var(--border);
+      border-radius: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    tbody tr:hover, tbody tr:active {
+      background: var(--surface-hover);
+    }
+    
+    tbody td {
+      padding: 0 !important;
+      margin: 0 !important;
+      border: none !important;
+      line-height: 1.35 !important;
+    }
+    tbody td:empty { display: none; }
+    td[data-label]::before { display: none; }
+
+    /* Top row left: Company • Location • Category */
+    td.company-cell {
+      grid-area: meta;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11.5px;
+      color: var(--ink-secondary);
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      flex-wrap: nowrap;
+    }
+    td.company-cell .entity {
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    td.location-cell {
+      display: contents;
+    }
+    td.location-cell button.entity {
+      font-size: 11px;
+      color: var(--ink-tertiary);
+    }
+    td.location-cell::before {
+      content: "·";
+      color: var(--ink-tertiary);
+      margin: 0 1px;
+    }
+
+    td[data-label="Category"] {
+      display: contents;
+    }
+    td[data-label="Category"] .swatch-tag {
+      font-size: 9.5px;
+      padding: 0 4px;
+      height: 15px;
+      line-height: 14px;
+      margin-left: 2px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    /* Top row right: Posted Age */
+    td.age-cell:not(.found-cell) {
+      grid-area: age;
+      font-size: 10.5px;
+      color: var(--ink-tertiary);
+      white-space: nowrap;
+      text-align: right;
+    }
+    td.found-cell {
+      display: none !important;
+    }
+
+    /* Bottom row: Job Title with 2-line clean wrap */
+    td.title-cell {
+      grid-area: title;
+      min-width: 0;
+      margin-top: 1px;
+    }
+    td.title-cell a {
+      font-size: 13.5px;
+      font-weight: 500;
+      line-height: 1.35;
+      color: var(--ink);
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: normal;
+      text-decoration: none;
+    }
+    td.title-cell a:hover {
+      color: var(--accent);
+    }
+
+    /* Filter Drawer bottom sheet */
+    .filters-aside.open {
+      position: fixed;
+      inset: auto 0 0 0;
+      top: auto;
+      z-index: 100;
+      width: 100%;
+      max-height: 85vh;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -10px 35px rgba(0, 0, 0, 0.6);
+      padding: 16px 14px 20px;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #feed-pager {
+      padding: 6px 12px;
+    }
+    .pager-btn {
+      padding: 5px 12px;
+      font-size: 12px;
+    }
+
+    footer .wrap {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      padding-bottom: 60px;
+    }
   }
 
   @media (prefers-reduced-motion: no-preference) {
@@ -838,15 +1131,18 @@
 
 <header>
   <div class="wrap">
-    <div class="header-top">
-      <div class="brand"><h1>Internship Feed</h1></div>
-      <div class="status-line">
-        <div class="events-wrap">
-          <button class="events-badge" id="events-badge" aria-haspopup="true" aria-expanded="false"></button>
-          <div class="events-panel" id="events-panel" role="region" aria-label="Recent source events"></div>
-        </div>
-        <span class="status-dot ok" id="health-dot"></span>
-        <span id="health-sub">Edge CDN &middot; live</span>
+    <div class="header-bar">
+      <a href="/" class="brand" id="brand-home" aria-label="lilguy.win Home" title="lilguy.win Home">
+        <span class="status-dot ok" id="health-dot" title="Live edge network"></span>
+        <h1>lilguy.win</h1>
+      </a>
+      <div class="search-embedded" id="search-embedded-wrap">
+        <button type="button" id="search-clear" class="search-clear-left" aria-label="Clear search" title="Clear search">&times;</button>
+        <input type="search" id="search" placeholder="Search title or company&hellip;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <button type="button" id="filters-toggle" class="search-embedded-filter-btn"
+                aria-haspopup="true" aria-expanded="false" aria-controls="filters-aside" aria-label="Filters" title="Filters">
+          &#9776;<span id="filters-badge" class="filters-badge">0</span>
+        </button>
       </div>
     </div>
   </div>
@@ -854,35 +1150,9 @@
 
 <main class="wrap">
 
-  <!-- Postings, Sources, Discovery and Duplicates used to be four
-       separate tabs -- four toolbars, four mental models, for data that
-       a single search bar and filter panel can narrow just as well. The
-       "View" lens at the top of the panel (below) picks which one is
-       showing; everything else in the panel and the search bar above
-       the table is shared. Kept the id "tab-feed" rather than renaming
-       it -- nothing about the id is tab-specific, and renaming it would
-       have meant touching every wireSortable/applySort/scrollIntoView
-       call below for no behavioral change. -->
   <section id="tab-feed">
     <div class="feed-layout">
       <div class="feed-main">
-        <!-- The search bar IS the toolbar now, for all four views: the
-             filter toggle lives embedded in its own trailing edge (with
-             the active-count badge) instead of sitting as a separate
-             button beside it, and preset moved into the panel above as
-             just another section -- one control at the top of the page,
-             not four toolbars behind four tabs. What the box actually
-             searches (title+company vs. company alone) and its
-             placeholder both switch with the View lens; see
-             updateSearchPlaceholder(). -->
-        <div class="search-embedded">
-          <span class="search-embedded-icon" aria-hidden="true">&#9906;</span>
-          <input type="search" id="search" placeholder="Search title or company&hellip;">
-          <button type="button" id="filters-toggle" class="search-embedded-filter-btn"
-                  aria-haspopup="true" aria-expanded="false" aria-controls="filters-aside" aria-label="Filters">
-            &#9776;<span id="filters-badge" class="filters-badge">0</span>
-          </button>
-        </div>
 
         <div id="tab-feed-postings" data-view="postings">
           <div id="feed-pager-top" class="pager"></div>
@@ -1034,11 +1304,7 @@
               <div class="field combo-field">
                 <input id="feed-category" autocomplete="off" role="combobox" aria-expanded="false"
                        placeholder="Any industry" aria-describedby="category-hint">
-                <!-- The dropdown itself is a hand-rolled listbox (see
-                     wireCombobox()), not this element -- kept only as
-                     the option DATA, since a native `list=` combobox's
-                     suggestion popup turned out unreliable across real
-                     browsers (see wireCombobox()'s own comment). -->
+                <button type="button" id="feed-category-clear" class="input-clear-btn" aria-label="Clear industry">&times;</button>
                 <datalist id="category-options"></datalist>
               </div>
             </div>
@@ -1049,6 +1315,7 @@
               <div class="field combo-field">
                 <input id="feed-function" autocomplete="off" role="combobox" aria-expanded="false"
                        placeholder="Any function" aria-describedby="category-hint">
+                <button type="button" id="feed-function-clear" class="input-clear-btn" aria-label="Clear function">&times;</button>
                 <datalist id="function-options"></datalist>
               </div>
               <!-- aria-live so a screen-reader user hears that their typed
@@ -1066,20 +1333,12 @@
               </div>
             </div>
           </div>
-          <!-- A real place, not an arrangement -- "Where" above answers
-               remote/hybrid/onsite, this answers "New York" vs "Austin".
-               Free text rather than a combobox: the corpus holds 1,785
-               distinct location strings, too many to enumerate, and the
-               server already does a word-boundary substring match
-               (locations_include, shared with preset filtering) so a
-               partial city name works fine without a fixed vocabulary.
-               Clicking a location in the table (see locationHtml())
-               fills this in directly. -->
           <div class="filter-section" data-view="postings" data-section="location">
             <button type="button" class="filter-section-toggle"><span>Location</span><span class="filter-section-chevron" aria-hidden="true">&#9662;</span></button>
             <div class="filter-section-body">
               <div class="field">
                 <input id="feed-location" autocomplete="off" placeholder="e.g. Austin, New York, London">
+                <button type="button" id="feed-location-clear" class="input-clear-btn" aria-label="Clear location">&times;</button>
               </div>
             </div>
           </div>
@@ -1159,7 +1418,8 @@
           </div>
         </div>
         <div class="filters-aside-footer">
-          <button type="button" id="filters-done" class="btn">Done</button>
+          <button type="button" id="filters-reset-footer" class="btn btn-secondary">Reset</button>
+          <button type="button" id="filters-done" class="btn btn-primary">Done</button>
         </div>
       </aside>
     </div>
@@ -1172,7 +1432,6 @@
 
 <footer>
   <div class="wrap">
-    <span>Sourced directly from company career sites &mdash; no third-party job-board aggregator in the loop.</span>
     <span><a id="atom-link" href="/feed.atom" target="_blank">subscribe (Atom)</a> &middot; <a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
   </div>
 </footer>
@@ -1194,14 +1453,13 @@ const DEFAULT_PRESET = "all";
 
 const PRESETS = [
   ["all", "All internships"],
-  ["operations-logistics-supply-chain", "Supply Chain"],
   ["software-engineering", "Software Engineering"],
   ["data-analytics", "Data Analytics"],
-  ["finance", "Finance"],
+  ["operations-logistics-supply-chain", "Supply Chain & Ops"],
+  ["finance", "Finance & Trading"],
   ["human-resources", "Human Resources"],
   ["marketing", "Marketing"],
-  ["sales", "Sales"],
-  ["", "This fork's filter (filters.yaml)"],
+  ["sales", "Sales & Business Dev"],
 ];
 
 // A page, not a cap. This used to be 1000 with no way to go further,
@@ -1227,14 +1485,21 @@ function escapeHtml(s) {
 }
 
 function timeAgo(iso) {
-  if (!iso) return "never";
+  if (!iso) return "recent";
+  if (typeof iso === "string" && iso.toLowerCase().startsWith("posted ")) {
+    return iso.replace(/^posted\s+/i, "");
+  }
   const d = new Date(iso);
-  if (isNaN(d)) return iso;
+  if (isNaN(d)) return String(iso);
   const secs = Math.floor((Date.now() - d.getTime()) / 1000);
   if (secs < 60) return "just now";
   if (secs < 3600) return Math.floor(secs / 60) + "m ago";
   if (secs < 86400) return Math.floor(secs / 3600) + "h ago";
-  return Math.floor(secs / 86400) + "d ago";
+  const days = Math.floor(secs / 86400);
+  if (days === 1) return "1d ago";
+  if (days < 30) return days + "d ago";
+  if (days < 365) return Math.floor(days / 30) + "mo ago";
+  return Math.floor(days / 365) + "y ago";
 }
 
 // Relative time is the right default for scanning ("2h ago" answers
@@ -1272,20 +1537,21 @@ function exactTime(iso) {
 // posting date the column says so, and Found (always present) carries
 // the only date we do have.
 function postedCell(p) {
-  if (!p.posted_at_ts) {
+  const ts = p.posted_at_ts || p.posted_at || p.first_seen;
+  if (!ts) {
     return {
-      text: "unknown",
+      text: "recent",
       cls: "unknown-date",
-      title: "This source publishes no posting date. See the Found column for when this feed first pulled it — that is not the same thing.",
+      title: "No explicit posting date published.",
     };
   }
-  const rel = timeAgo(p.posted_at_ts);
+  const rel = timeAgo(ts);
   if (!p.posted_at_approx) {
     return {
       text: rel,
       cls: "",
       label: `Posted ${rel}`,
-      title: `Posted ${exactTime(p.posted_at_ts)}` +
+      title: `Posted ${exactTime(ts)}` +
              (p.posted_at ? `\nProvider value: ${p.posted_at}` : ""),
     };
   }
@@ -1734,7 +2000,7 @@ async function initEdgeData() {
       const sub = document.getElementById("health-sub");
       if (dot && sub) {
         dot.className = "status-dot ok";
-        sub.innerHTML = `Edge CDN &middot; ${EDGE_DATA.meta.total_open_postings.toLocaleString()} live`;
+        sub.textContent = "edge";
       }
 
       fetch("/data/presets.json").then(r => r.ok ? r.json() : []).then(d => { EDGE_DATA.presets = d; });
@@ -1978,24 +2244,21 @@ async function loadFeedCategories() {
                       v => v ? (v.charAt(0).toUpperCase() + v.slice(1)) : "");
     feedCoverage = data.coverage || null;
     feedCategoriesLoaded = true;
-    return;
+  } else {
+    try {
+      const res = await fetch("/categories");
+      const data = await res.json();
+      populateAxisDatalist(AXES.industry, data.industries || []);
+      populateAxisDatalist(AXES.function, data.job_functions || []);
+      populatePillGroup("feed-cycle-season", data.cycle_seasons || [], "Any season",
+                        v => v ? (v.charAt(0).toUpperCase() + v.slice(1)) : "");
+      populateCycleSelect("feed-cycle-year", data.cycle_years || [], "Any year", String);
+      populatePillGroup("feed-arrangement", data.work_arrangements || [], "Anywhere",
+                        v => v ? (v.charAt(0).toUpperCase() + v.slice(1)) : "");
+      feedCoverage = data.coverage || null;
+      feedCategoriesLoaded = true;
+    } catch (e) { /* the filter just stays as "All" */ }
   }
-  try {
-    // /categories, not /sources: the filter matches POSTINGS, so the list
-    // has to be the categories that postings actually carry, ranked by
-    // how many. Ranking by source count would put a category with one
-    // dormant board above one with four hundred live roles.
-    const res = await fetch("/categories");
-    const data = await res.json();
-    populateAxisDatalist(AXES.industry, data.industries || []);
-    populateAxisDatalist(AXES.function, data.job_functions || []);
-    populatePillGroup("feed-cycle-season", data.cycle_seasons || [], "Any season",
-                      v => v.charAt(0).toUpperCase() + v.slice(1));
-    populateCycleSelect("feed-cycle-year", data.cycle_years || [], "Any year", String);
-    populatePillGroup("feed-arrangement", data.work_arrangements || [], "Anywhere",
-                      v => v.charAt(0).toUpperCase() + v.slice(1));
-    feedCoverage = data.coverage || null;
-    feedCategoriesLoaded = true;
     let restored = false;
     for (const [param, id] of [["year", "feed-cycle-year"]]) {
       const wanted = initialParams.get(param);
@@ -2024,7 +2287,6 @@ async function loadFeedCategories() {
     }
     syncCategoryHint();
     if (restored) return true;
-  } catch (e) { /* the filter just stays as "All" */ }
   return false;
 }
 
@@ -2654,6 +2916,98 @@ function updateFiltersUi() {
   badge.classList.toggle("visible", n > 0);
   badge.textContent = String(n);
   document.getElementById("filters-reset").hidden = n === 0;
+  
+  // Update clear button visibilities
+  const searchWrap = document.getElementById("search-embedded-wrap");
+  const searchInput = document.getElementById("search");
+  const searchClear = document.getElementById("search-clear");
+  const hasSearch = Boolean(searchInput && searchInput.value.trim());
+  if (searchClear) searchClear.classList.toggle("visible", hasSearch);
+  if (searchWrap) searchWrap.classList.toggle("has-query", hasSearch);
+
+  const catInput = document.getElementById("feed-category");
+  const catClear = document.getElementById("feed-category-clear");
+  if (catInput && catClear) catClear.classList.toggle("visible", Boolean(catInput.value.trim()));
+
+  const fnInput = document.getElementById("feed-function");
+  const fnClear = document.getElementById("feed-function-clear");
+  if (fnInput && fnClear) fnClear.classList.toggle("visible", Boolean(fnInput.value.trim()));
+
+  const locInput = document.getElementById("feed-location");
+  const locClear = document.getElementById("feed-location-clear");
+  if (locInput && locClear) locClear.classList.toggle("visible", Boolean(locInput.value.trim()));
+}
+
+function wireInputClear(inputId, clearBtnId, onClear) {
+  const input = document.getElementById(inputId);
+  const btn = document.getElementById(clearBtnId);
+  if (!input || !btn) return;
+  const updateVis = () => {
+    btn.classList.toggle("visible", Boolean(input.value.trim()));
+  };
+  input.addEventListener("input", updateVis);
+  input.addEventListener("change", updateVis);
+  btn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    input.value = "";
+    updateVis();
+    input.focus();
+    if (onClear) onClear();
+  });
+  updateVis();
+}
+
+wireInputClear("search", "search-clear", () => {
+  loadFeed({ resetPage: true });
+  syncUrl();
+});
+wireInputClear("feed-category", "feed-category-clear", () => {
+  syncCategoryHint();
+  loadFeed({ resetPage: true });
+  updateFiltersUi();
+  syncUrl();
+});
+wireInputClear("feed-function", "feed-function-clear", () => {
+  syncCategoryHint();
+  loadFeed({ resetPage: true });
+  updateFiltersUi();
+  syncUrl();
+});
+wireInputClear("feed-location", "feed-location-clear", () => {
+  loadFeed({ resetPage: true });
+  updateFiltersUi();
+  syncUrl();
+});
+
+const resetFooterBtn = document.getElementById("filters-reset-footer");
+if (resetFooterBtn) {
+  resetFooterBtn.addEventListener("click", () => {
+    document.getElementById("filters-reset").click();
+  });
+}
+
+const brandHome = document.getElementById("brand-home");
+if (brandHome) {
+  brandHome.addEventListener("click", (e) => {
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey && e.button === 0) {
+      e.preventDefault();
+      const searchInput = document.getElementById("search");
+      if (searchInput) searchInput.value = "";
+      const searchClear = document.getElementById("search-clear");
+      if (searchClear) searchClear.classList.remove("visible");
+
+      if (pillValue("feed-view") !== "postings") {
+        setPillValue("feed-view", "postings");
+      }
+      const resetBtn = document.getElementById("filters-reset");
+      if (resetBtn) {
+        resetBtn.click();
+      }
+      closeFilters();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  });
 }
 for (const id of ["source-category", "source-ats", "source-status"]) {
   document.getElementById(id).addEventListener("change", () => { renderSources(); updateFiltersUi(); syncUrl(); });
@@ -2669,7 +3023,7 @@ async function checkHealth() {
 
   if (EDGE_DATA.active && EDGE_DATA.meta) {
     dot.className = "status-dot ok";
-    sub.innerHTML = `Edge CDN &middot; ${EDGE_DATA.meta.total_open_postings.toLocaleString()} live`;
+    sub.textContent = "edge";
     return;
   }
 
@@ -2685,7 +3039,7 @@ async function checkHealth() {
 
   if (EDGE_DATA.active && EDGE_DATA.meta) {
     dot.className = "status-dot ok";
-    sub.innerHTML = `Edge CDN &middot; ${EDGE_DATA.meta.total_open_postings.toLocaleString()} live`;
+    sub.textContent = "edge";
   }
 }
 

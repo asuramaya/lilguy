@@ -18,14 +18,18 @@ if [ -f "/.dockerenv" ] || [ -f "/srv/internships/.env" ]; then
   python3 service/edge_export.py --out-dir "${OUT_DIR}"
 else
   # Running locally
-  if command -v python3 >/dev/null 2>&1; then
-    python3 service/edge_export.py --out-dir "${OUT_DIR}" || {
-      echo "--> Trying via ssh to hd-agent to export database..."
-      ssh hd-agent "cd /srv/internships && docker compose run --rm -v /srv/internships:/srv/internships -w /srv/internships api python service/edge_export.py --out-dir /srv/internships/dist"
-      echo "--> Syncing dist from hd-agent..."
-      rsync -avz hd-agent:/srv/internships/dist/ "${OUT_DIR}/"
-    }
+  PY_BIN="python3"
+  if [ -x ".venv-test/bin/python" ]; then
+    PY_BIN=".venv-test/bin/python"
+  elif [ -x ".venv/bin/python" ]; then
+    PY_BIN=".venv/bin/python"
   fi
+  $PY_BIN service/edge_export.py --out-dir "${OUT_DIR}" || {
+    echo "--> Trying via ssh to hd-agent to export database..."
+    ssh hd-agent "cd /srv/internships && docker compose run --rm -v /srv/internships:/srv/internships -w /srv/internships api python service/edge_export.py --out-dir /srv/internships/dist"
+    echo "--> Syncing dist from hd-agent..."
+    rsync -avz hd-agent:/srv/internships/dist/ "${OUT_DIR}/"
+  }
 fi
 
 if [ "$SKIP_DEPLOY" = "--skip-deploy" ]; then

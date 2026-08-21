@@ -15,6 +15,10 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool

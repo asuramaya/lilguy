@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT / "service"))
 import yaml
 from atom import render_atom
 from db import cursor
+from standardize import standardize_posting, standardize_company_name
 
 STATIC_DIR = ROOT / "service" / "static"
 PRESETS_DIR = ROOT / "presets"
@@ -40,14 +41,13 @@ DEFAULT_FILTERS_FILE = ROOT / "filters.yaml"
 
 def safe_filename(posting_id: str) -> str:
     """Encode posting ID into a filesystem-safe and URL-safe filename stem."""
-    # Use MD5 hex hash for ultra-safe, collision-free, short filename
     return hashlib.sha256(posting_id.encode("utf-8")).hexdigest()[:20]
 
 
 def load_all_presets() -> list[dict]:
     """Parse all preset YAML files and default filters.yaml into JSON-ready dicts."""
     presets = []
-    
+
     # 1. Default preset
     if DEFAULT_FILTERS_FILE.exists():
         with open(DEFAULT_FILTERS_FILE, "r", encoding="utf-8") as f:
@@ -86,27 +86,45 @@ def load_all_presets() -> list[dict]:
 
 
 def fetch_open_postings() -> list[dict]:
-    """Fetch all open postings with metadata for client-side search."""
-    with cursor() as cur:
-        cur.execute("""
-            SELECT id, company, company_key, title, location, url, ats,
-                   category, job_function, work_arrangement,
-                   cycle_season, cycle_year, posted_at, posted_at_ts,
-                   posted_at_approx, first_seen, description_snippet,
-                   dedup_key
-            FROM postings
-            WHERE status = 'open'
-            ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC, id
-        """)
-        rows = cur.fetchall()
+    """Fetch all open postings with metadata for client-side search, applying standardization."""
+    raw_postings = []
+    try:
+        with cursor() as cur:
+            cur.execute("""
+                SELECT id, company, company_key, title, location, url, ats,
+                       category, job_function, work_arrangement,
+                       cycle_season, cycle_year, posted_at, posted_at_ts,
+                       posted_at_approx, first_seen, description_snippet,
+                       dedup_key
+                FROM postings
+                WHERE status = 'open'
+                ORDER BY posted_at_ts DESC NULLS LAST, first_seen DESC, id
+            """)
+            rows = cur.fetchall()
+            raw_postings = [dict(r) for r in rows]
+    except Exception as e:
+        print(f"    [Postgres notice] Could not query database ({e}). Checking local files...")
+
+    if len(raw_postings) < 100:
+        all_file = ROOT / "data" / "all_postings.json"
+        if all_file.exists():
+            print(f"    [Postgres dev/test mode detected ({len(raw_postings)} rows)] Loading full dataset from {all_file}...")
+            with open(all_file, "r", encoding="utf-8") as f:
+                raw_postings = json.load(f)
 
     postings = []
-    for r in rows:
-        d = dict(r)
-        # Convert datetimes to ISO strings
-        for k in ("posted_at_ts", "first_seen"):
+    for r in raw_postings:
+        d = standardize_posting(r)
+        # Convert datetimes to ISO strings and ensure posted_at_ts fallback
+        for k in ("posted_at_ts", "first_seen", "last_seen", "closed_at"):
             if isinstance(d.get(k), datetime):
                 d[k] = d[k].isoformat()
+        if not d.get("posted_at_ts"):
+            d["posted_at_ts"] = d.get("posted_at") or d.get("first_seen")
+        # Strip full description from index feed to keep bundle fast & lightweight
+        d.pop("description", None)
+        if d.get("description_snippet") and len(d["description_snippet"]) > 280:
+            d["description_snippet"] = d["description_snippet"][:280] + "…"
         # Add description hash link for on-demand fetch
         d["desc_id"] = safe_filename(d["id"])
         postings.append(d)
@@ -116,27 +134,44 @@ def fetch_open_postings() -> list[dict]:
 def fetch_descriptions(posting_ids: list[str]) -> dict[str, dict]:
     """Fetch full descriptions and related context for postings."""
     desc_map = {}
-    with cursor() as cur:
-        cur.execute("""
-            SELECT id, company, title, location, url, ats, posted_at,
-                   description, company_key, dedup_key
-            FROM postings
-            WHERE status = 'open' AND description IS NOT NULL AND description <> ''
-        """)
-        rows = cur.fetchall()
-        for r in rows:
-            desc_map[r["id"]] = {
-                "id": r["id"],
-                "company": r["company"],
-                "title": r["title"],
-                "location": r["location"],
-                "url": r["url"],
-                "ats": r["ats"],
-                "posted_at": r["posted_at"],
-                "description": r["description"],
-                "company_key": r["company_key"],
-                "dedup_key": r["dedup_key"]
-            }
+    try:
+        with cursor() as cur:
+            cur.execute("""
+                SELECT id, company, title, location, url, ats, posted_at,
+                       description, company_key, dedup_key
+                FROM postings
+                WHERE status = 'open' AND description IS NOT NULL AND description <> ''
+            """)
+            rows = cur.fetchall()
+            for r in rows:
+                desc_map[r["id"]] = {
+                    "id": r["id"],
+                    "company": standardize_company_name(r["company"]),
+                    "title": r["title"],
+                    "location": r["location"],
+                    "url": r["url"],
+                    "ats": r["ats"],
+                    "posted_at": r["posted_at"],
+                    "description": r["description"],
+                    "company_key": r["company_key"],
+                    "dedup_key": r["dedup_key"]
+                }
+    except Exception:
+        pass
+
+    # Merge with existing files in dist/data/descriptions if DB didn't have all descriptions
+    existing_desc_dir = ROOT / "dist" / "data" / "descriptions"
+    if existing_desc_dir.exists():
+        for f in existing_desc_dir.glob("*.json"):
+            try:
+                with open(f, "r", encoding="utf-8") as df:
+                    data = json.load(df)
+                    pid = data.get("id")
+                    if pid and pid not in desc_map:
+                        data["company"] = standardize_company_name(data.get("company", ""))
+                        desc_map[pid] = data
+            except Exception:
+                pass
     return desc_map
 
 
@@ -149,6 +184,7 @@ def build_metadata(postings: list[dict]) -> dict:
     cycle_seasons = {}
     cycle_years = {}
     ats_breakdown = {}
+    locations = {}
 
     for p in postings:
         c = p.get("company")
@@ -156,7 +192,7 @@ def build_metadata(postings: list[dict]) -> dict:
             companies[c] = companies.get(c, 0) + 1
 
         cat = p.get("category")
-        if cat:
+        if cat and cat != "Uncategorized":
             categories[cat] = categories.get(cat, 0) + 1
 
         fn = p.get("job_function")
@@ -179,6 +215,10 @@ def build_metadata(postings: list[dict]) -> dict:
         if ats:
             ats_breakdown[ats] = ats_breakdown.get(ats, 0) + 1
 
+        loc = p.get("location")
+        if loc and loc != "Not Specified":
+            locations[loc] = locations.get(loc, 0) + 1
+
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total_open_postings": len(postings),
@@ -188,7 +228,8 @@ def build_metadata(postings: list[dict]) -> dict:
         "work_arrangements": dict(sorted(work_arrangements.items(), key=lambda x: x[1], reverse=True)),
         "cycle_seasons": dict(sorted(cycle_seasons.items(), key=lambda x: x[1], reverse=True)),
         "cycle_years": dict(sorted(cycle_years.items(), key=lambda x: x[1], reverse=True)),
-        "ats_breakdown": dict(sorted(ats_breakdown.items(), key=lambda x: x[1], reverse=True))
+        "ats_breakdown": dict(sorted(ats_breakdown.items(), key=lambda x: x[1], reverse=True)),
+        "top_locations": dict(sorted(locations.items(), key=lambda x: x[1], reverse=True)[:30])
     }
 
 
@@ -196,13 +237,14 @@ def build_companies_directory(postings: list[dict]) -> list[dict]:
     """Build company index with posting counts and ATS platforms."""
     company_map = {}
     for p in postings:
-        ck = p.get("company_key") or p.get("company", "").lower()
-        if not ck:
+        c_name = p.get("company", "").strip()
+        ck = p.get("company_key") or c_name.lower()
+        if not c_name or not ck:
             continue
         if ck not in company_map:
             company_map[ck] = {
                 "key": ck,
-                "name": p.get("company"),
+                "name": c_name,
                 "postings_count": 0,
                 "ats_platforms": set(),
                 "categories": set(),
@@ -212,9 +254,9 @@ def build_companies_directory(postings: list[dict]) -> list[dict]:
         comp["postings_count"] += 1
         if p.get("ats"):
             comp["ats_platforms"].add(p["ats"])
-        if p.get("category"):
+        if p.get("category") and p.get("category") != "Uncategorized":
             comp["categories"].add(p["category"])
-        if p.get("location"):
+        if p.get("location") and p.get("location") != "Not Specified":
             comp["locations"].add(p["location"])
 
     # Convert sets to sorted lists
@@ -232,6 +274,7 @@ def build_companies_directory(postings: list[dict]) -> list[dict]:
 
 
 def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
+    """Main export routine."""
     out_dir = Path(out_dir)
     data_dir = out_dir / "data"
     desc_dir = data_dir / "descriptions"
@@ -243,18 +286,14 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
                 shutil.copy2(item, out_dir / item.name)
             elif item.is_dir() and item.name not in ("__pycache__",):
                 shutil.copytree(item, out_dir / item.name, dirs_exist_ok=True)
-    """Main export routine."""
-    out_dir = Path(out_dir)
-    data_dir = out_dir / "data"
-    desc_dir = data_dir / "descriptions"
 
     data_dir.mkdir(parents=True, exist_ok=True)
     if include_descriptions:
         desc_dir.mkdir(parents=True, exist_ok=True)
 
-    print("==> Fetching open postings from Postgres...")
+    print("==> Fetching & standardizing open postings...")
     postings = fetch_open_postings()
-    print(f"    Found {len(postings)} open postings.")
+    print(f"    Processed {len(postings)} open postings.")
 
     print("==> Computing metadata and facets...")
     meta = build_metadata(postings)
@@ -297,58 +336,69 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
         for p in postings:
             pid = p["id"]
             if pid in desc_map:
-                fname = desc_dir / f"{safe_filename(pid)}.json"
-                with open(fname, "w", encoding="utf-8") as f:
+                desc_file = desc_dir / f"{p['desc_id']}.json"
+                with open(desc_file, "w", encoding="utf-8") as f:
                     json.dump(desc_map[pid], f, ensure_ascii=False)
                 written_desc += 1
-        print(f"    Wrote {written_desc} description JSON files into {desc_dir}")
+        print(f"    Wrote/updated {written_desc} description JSON files in {desc_dir}")
 
-    # 6. Render Atom feed
-    print("==> Rendering Atom syndication feed...")
-    atom_xml = render_atom(
-        postings[:500],
-        title="Lilguy - Open Internship Feed",
-        self_url="https://lilguy.win/feed.atom",
-        feed_slug="all"
-    )
+    # 6. Generate Atom Feed
     atom_file = out_dir / "feed.atom"
-    with open(atom_file, "w", encoding="utf-8") as f:
-        f.write(atom_xml)
-    print(f"    Wrote {atom_file}")
+    try:
+        atom_xml = render_atom(
+            postings[:50],
+            title="lilguy · Internships & Early Career Roles",
+            self_url="https://lilguy.win/feed.atom",
+            feed_slug="global"
+        )
+        with open(atom_file, "w", encoding="utf-8") as f:
+            f.write(atom_xml)
+        print(f"    Wrote {atom_file}")
+    except Exception as e:
+        print(f"    [Warning] Atom generation failed: {e}")
 
-    # 7. Write Cloudflare Pages headers & redirects
+    # 7. Cloudflare headers & redirects
     headers_file = out_dir / "_headers"
-    headers_content = """# Global Security & Caching Headers
-/*
-  X-Frame-Options: SAMEORIGIN
-  X-Content-Type-Options: nosniff
-  Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: document-domain=()
-
-# Static Assets
-/assets/*
-  Cache-Control: public, max-age=31536000, immutable
-
-# API & Data JSON Feeds
-/data/*
-  Cache-Control: public, max-age=60, s-maxage=300
-  Access-Control-Allow-Origin: *
-  Access-Control-Allow-Methods: GET, OPTIONS
-
-/feed.atom
-  Cache-Control: public, max-age=300, s-maxage=600
-  Content-Type: application/atom+xml; charset=utf-8
-  Access-Control-Allow-Origin: *
-"""
     with open(headers_file, "w", encoding="utf-8") as f:
-        f.write(headers_content)
-    print(f"    Wrote {headers_file}")
+        f.write("""# Cache rules for static assets and data shards
+/data/feed.json
+  Cache-Control: public, max-age=60, s-maxage=60
+/data/meta.json
+  Cache-Control: public, max-age=60, s-maxage=60
+/data/presets.json
+  Cache-Control: public, max-age=3600, s-maxage=3600
+/data/companies.json
+  Cache-Control: public, max-age=3600, s-maxage=3600
+/data/descriptions/*
+  Cache-Control: public, max-age=86400, s-maxage=86400
+
+# Security headers
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+""")
+
+    redirects_file = out_dir / "_redirects"
+    with open(redirects_file, "w", encoding="utf-8") as f:
+        f.write("""# SPA fallback routing
+/p/*  /index.html  200
+/c/*  /index.html  200
+/health  /data/meta.json  200
+/api/feed  /data/feed.json  200
+/api/meta  /data/meta.json  200
+/api/presets  /data/presets.json  200
+/api/companies  /data/companies.json  200
+""")
+
+    print(f"\n==> Edge export complete! Bundle ready at {out_dir}")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Export edge data bundle for lilguy.win")
-    parser.add_argument("--out-dir", default=str(ROOT / "dist"), help="Output directory for edge bundle")
-    parser.add_argument("--skip-descriptions", action="store_true", help="Skip writing individual description files")
+    parser = argparse.ArgumentParser(description="Export Postgres data to static edge CDN bundle")
+    parser.add_argument("--out-dir", default=str(ROOT / "dist"), help="Output directory (default: dist)")
+    parser.add_argument("--skip-descriptions", action="store_true", help="Skip individual description shards")
     args = parser.parse_args()
 
     export_edge_bundle(Path(args.out_dir), include_descriptions=not args.skip_descriptions)
