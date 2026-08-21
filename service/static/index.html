@@ -3499,7 +3499,7 @@ function renderFeed() {
         `</td></tr>`;
     }
     return divider + `
-    <tr>`;
+    <tr>
       <td class="title-cell" data-label="Title"><a class="clamp-2" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</a></td>
       <td class="company-cell" data-label="Company" title="${escapeHtml(p.company)}"><span class="clamp-2">${entityLink("company", p.company_key, p.company)}</span></td>
       <td class="location-cell" data-label="Location" title="${escapeHtml(p.location || "")}"><span class="clamp-2">${locationHtml(p.location)}</span></td>
