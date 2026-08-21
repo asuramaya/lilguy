@@ -405,6 +405,10 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
     headers_file = out_dir / "_headers"
     with open(headers_file, "w", encoding="utf-8") as f:
         f.write("""# Cache rules for static assets and data shards
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+/
+  Cache-Control: public, max-age=0, must-revalidate
 /data/feed.json
   Cache-Control: public, max-age=60, s-maxage=60
 /data/meta.json
