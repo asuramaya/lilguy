@@ -3,7 +3,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: internships
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lilguypassword}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set -- is /srv/internships/.env present?}
       POSTGRES_DB: internships
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -14,7 +14,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -32,14 +31,19 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:-lilguypassword}@postgres:5432/internships
-    command: ["python3", "service/migrate_sources_yaml.py"]
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:?missing .env}@postgres:5432/internships
+    command: python service/migrate_sources_yaml.py
     restart: "no"
     deploy:
       resources:
         limits:
           cpus: "1.0"
           memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   scheduler:
     build: .
@@ -47,10 +51,28 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:-lilguypassword}@postgres:5432/internships
-      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
-      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
-    command: ["scheduler"]
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:?missing .env}@postgres:5432/internships
+    command: python service/scheduler.py
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  discovery:
+    build: .
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:?missing .env}@postgres:5432/internships
+    command: python service/discovery.py
     restart: unless-stopped
     deploy:
       resources:
@@ -69,8 +91,8 @@ services:
       migrate:
         condition: service_completed_successfully
     environment:
-      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:-lilguypassword}@postgres:5432/internships
-    command: ["api"]
+      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:?missing .env}@postgres:5432/internships
+    command: uvicorn service.api:app --host 0.0.0.0 --port 8000
     ports:
       - "127.0.0.1:8000:8000"
     restart: unless-stopped
@@ -84,18 +106,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-
-  edge-sync:
-    build: .
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:-lilguypassword}@postgres:5432/internships
-      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:-}
-      CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
-    command: ["sync-once"]
-    restart: "no"
 
 volumes:
   pgdata:

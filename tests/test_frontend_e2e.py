@@ -54,8 +54,16 @@ def test_frontend_renders_in_headless_chromium():
 
 
 async def _run_frontend_headless_test():
-    chromium_bin = shutil.which("chromium") or shutil.which("google-chrome") or "/snap/bin/chromium"
-    if not os.path.exists(chromium_bin):
+    chromium_candidates = [
+        shutil.which("chromium"),
+        shutil.which("chromium-browser"),
+        shutil.which("google-chrome"),
+        shutil.which("google-chrome-stable"),
+        "/snap/bin/chromium",
+    ]
+    chromium_bin = next((c for c in chromium_candidates if c and os.path.exists(c)), None)
+    if not chromium_bin:
+        pytest.skip("Chromium / Chrome binary not available for headless E2E testing")
         pytest.skip("Chromium / Chrome binary not available for headless E2E testing")
 
     try:
