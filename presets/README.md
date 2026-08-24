@@ -8,8 +8,8 @@ being added here (not just written and assumed to work). Use one directly:
 python scraper/build_feed.py --filters presets/marketing.yaml --out MY_FEED.md
 ```
 
-Or copy one as a starting point and tune it further — these are meant to
-save you the first draft, not be the definitive word on any category.
+Or copy one as a starting point and tune it further. These save you the
+first draft, not settle the definitive word on any category.
 
 | Preset | What it's for |
 |---|---|
@@ -22,4 +22,4 @@ save you the first draft, not be the definitive word on any category.
 | `sales.yaml` | Sales development, BD, account management, customer success |
 
 Missing your interest? Copy the one closest to it, edit `keywords_any`,
-and consider opening a PR — see `../CONTRIBUTING.md`.
+and consider opening a PR: see `../CONTRIBUTING.md`.

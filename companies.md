@@ -1,14 +1,14 @@
-# Target Companies — Operations / Logistics / Supply Chain
+# Target Companies: Operations / Logistics / Supply Chain
 
 Large-to-mid sized, industrial/business-focused. Grouped by category because each
-category recruits on a different clock — see `timeline.md`.
+category recruits on a different clock (see `timeline.md`).
 
 Status legend for use once you start prospecting a specific one: `unresearched` →
 `researching` → `posted` (role is live) → `applied` → `interviewing` → `closed`.
 
 ## Retail & Distribution
-Fast-moving, high-volume, rolling postings — earliest in the calendar.
-- Amazon (Operations / Supply Chain intern programs — multiple tracks)
+Fast-moving, high-volume, rolling postings, earliest in the calendar.
+- Amazon (Operations / Supply Chain intern programs, multiple tracks)
 - Walmart (Supply Chain / Logistics internship)
 - Target (Supply Chain & Distribution internship)
 - Home Depot
@@ -21,7 +21,7 @@ Structured, cohort-based, well-known "rotational leadership" style programs.
 - Procter & Gamble (Supply Chain internship is one of the most established in the category)
 - Unilever
 - General Mills
-- Keurig Dr Pepper (Warehouse Operations Management intern — confirmed posting seen for Summer 2026)
+- Keurig Dr Pepper (Warehouse Operations Management intern: confirmed posting seen for Summer 2026)
 - Coca-Cola / Coca-Cola bottlers
 - Colgate-Palmolive
 - Kimberly-Clark
@@ -37,7 +37,7 @@ Operations-heavy, often paired with engineering internship pipelines.
 - Parker Hannifin
 - Illinois Tool Works (ITW)
 - Georgia-Pacific / Koch Industries
-- General Electric (GE) — structured operations/leadership track
+- General Electric (GE): structured operations/leadership track
 
 ## Logistics & Transportation Carriers
 - UPS
@@ -53,16 +53,17 @@ Operations-heavy, often paired with engineering internship pipelines.
 - General Motors
 - Toyota (North America manufacturing)
 - Boeing (supply chain/operations, not just engineering)
-- Lockheed Martin / RTX (defense industrial base — operations tracks exist alongside engineering)
+- Lockheed Martin / RTX (defense industrial base: operations tracks exist alongside engineering)
 
 ## Notes
-- Retail/logistics carriers tend to post earliest and keep rolling deadlines —
-  check these first and often.
+- Retail/logistics carriers tend to post earliest and keep rolling deadlines,
+  so check these first and often.
 - CPG and conglomerate "leadership program" style internships (PepsiCo, GE,
-  Unilever) are the most structured and the most competitive — they read like
+  Unilever) are the most structured and the most competitive. They read like
   a feeder into the full-time rotational program, so treat the internship
   application with that level of seriousness.
-- Local/regional mid-size industrials (not listed here — depends on region)
-  are often the highest-signal targets for a first internship: less applicant
-  volume, more direct mentorship, real responsibility. Worth building out a
-  region-specific list once a location preference is set.
+- Local/regional mid-size industrials (not listed here, since coverage
+  depends on region) are often the highest-signal targets for a first
+  internship: less applicant volume, more direct mentorship, real
+  responsibility. Worth building out a region-specific list once a location
+  preference is set.

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<title>lilguy.win — Fast Edge Internship Aggregator</title>
+<title>lilguy.win: Fast Edge Internship Aggregator</title>
 <meta name="description" content="Fast, zero-latency internship search engine aggregating 8,300+ open roles across 1,000+ top employers in tech, finance, consulting, healthcare, and engineering.">
 <meta name="keywords" content="internships, software engineering internships, summer 2026 internships, tech internships, finance internships, co-op, job search, student jobs">
 <meta name="theme-color" content="#0d0d0c">
@@ -12,14 +12,20 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://lilguy.win/">
 <meta property="og:site_name" content="lilguy.win">
-<meta property="og:title" content="lilguy.win — Fast Edge Internship Aggregator">
-<meta property="og:description" content="Search 8,300+ verified open internship roles across 1,000+ employers. Filter by cycle, workplace, function, and industry with sub-millisecond edge speed.">
+<meta property="og:title" content="lilguy.win: Fast Edge Internship Aggregator">
+<meta property="og:description" content="Search 8,300+ verified open internship roles across 1,000+ employers, filterable by cycle, workplace, function, and industry, at sub-millisecond edge speed.">
+<meta property="og:image" content="https://lilguy.win/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="lilguy.win: every open internship, in one fast feed.">
 
 <!-- Twitter -->
-<meta name="twitter:card" content="summary">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:url" content="https://lilguy.win/">
-<meta name="twitter:title" content="lilguy.win — Fast Edge Internship Aggregator">
-<meta name="twitter:description" content="Search 8,300+ verified open internship roles across 1,000+ employers with sub-millisecond edge speed.">
+<meta name="twitter:title" content="lilguy.win: Fast Edge Internship Aggregator">
+<meta name="twitter:description" content="Search 8,300+ verified open internship roles across 1,000+ employers at sub-millisecond edge speed.">
+<meta name="twitter:image" content="https://lilguy.win/og-image.png">
+<meta name="twitter:image:alt" content="lilguy.win: every open internship, in one fast feed.">
 
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23e8952a'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>">
 <link rel="alternate" type="application/atom+xml" title="lilguy.win" href="/feed.atom">
@@ -1391,7 +1397,7 @@
                 <th scope="col"><button class="sort-btn" data-sort="location">Location</button></th>
                 <th scope="col"><button class="sort-btn" data-sort="category">Category</button></th>
                 <th scope="col" class="num"><button class="sort-btn" data-sort="posted_at_ts" title="When the employer posted the job">Posted</button></th>
-                <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting — not the same as Posted">Found</button></th>
+                <th scope="col" class="num"><button class="sort-btn" data-sort="first_seen" title="When this feed first pulled the posting (not the same as Posted)">Found</button></th>
               </tr>
             </thead>
             <tbody id="feed-body"></tbody>
@@ -1780,8 +1786,8 @@ function postedCell(p) {
     cls: "approx-date",
     // Screen readers do not reliably announce title, and a bare "+" is
     // not something a reader can be expected to decode.
-    label: `Posted at least ${rel} — the source gives a bound, not a date`,
-    title: "The provider published a bounded age, not a date — this posting is " +
+    label: `Posted at least ${rel} (the source gives a bound, not a date)`,
+    title: "The provider published a bounded age, not a date; this posting is " +
            "AT LEAST this old and may be considerably older.\n" +
            `Not later than ${exactTime(p.posted_at_ts)}` +
            (p.posted_at ? `\nProvider value: ${p.posted_at}` : ""),
@@ -2059,12 +2065,12 @@ function syncCategoryHint() {
   const messages = [];
   for (const axis of [AXES.industry, AXES.function]) {
     const raw = document.getElementById(axis.input).value.trim();
-    if (raw && !axisValue(axis)) messages.push(`no ${axis.label} named “${raw}” — ignoring it`);
+    if (raw && !axisValue(axis)) messages.push(`no ${axis.label} named “${raw}”, ignoring it`);
   }
   if (!messages.length && feedCoverage) {
     const industry = feedCategoryValue(), fn = feedFunctionValue();
     if (industry && fn) {
-      messages.push("industry and function rarely coexist on one posting — expect few results");
+      messages.push("industry and function rarely coexist on one posting, so expect few results");
     } else if (industry) {
       messages.push(`industry is known for ${feedCoverage.with_industry.toLocaleString()} of ` +
                     `${feedCoverage.total.toLocaleString()} open postings`);
@@ -2590,7 +2596,7 @@ async function loadFeed({ resetPage = false } = {}) {
     syncUrl();
   } catch (e) {
     if (e.name === "AbortError") return;
-    document.getElementById("feed-body").innerHTML = emptyRow(6, "Couldn't reach the API — is the service running?");
+    document.getElementById("feed-body").innerHTML = emptyRow(6, "Couldn't reach the API. Is the service running?");
     document.getElementById("feed-count").textContent = "";
   }
 }
@@ -2652,7 +2658,7 @@ function renderFeed() {
     if (grouped && !dividerShown && !statesCycle(p)) {
       dividerShown = true;
       divider = `<tr class="group-divider"><td colspan="6">` +
-        `${feedUnstatedCycle} posting${feedUnstatedCycle === 1 ? "" : "s"} whose title states no cycle — ` +
+        `${feedUnstatedCycle} posting${feedUnstatedCycle === 1 ? "" : "s"} whose title states no cycle; ` +
         `these may or may not be the one you asked for` +
         `</td></tr>`;
     }
@@ -2717,7 +2723,7 @@ async function loadSources() {
     if (restoredFromUrl) updateFiltersUi();
     renderSources();
   } catch (e) {
-    document.getElementById("sources-body").innerHTML = emptyRow(7, "Couldn't reach the API — is the service running?");
+    document.getElementById("sources-body").innerHTML = emptyRow(7, "Couldn't reach the API. Is the service running?");
     document.getElementById("sources-count").textContent = "";
   }
 }
@@ -2809,7 +2815,7 @@ async function loadCandidates() {
     }
     renderCandidates();
   } catch (e) {
-    document.getElementById("candidates-body").innerHTML = emptyRow(5, "Couldn't reach the API — is the service running?");
+    document.getElementById("candidates-body").innerHTML = emptyRow(5, "Couldn't reach the API. Is the service running?");
     document.getElementById("candidates-count").textContent = "";
   }
 }
@@ -2867,7 +2873,7 @@ async function loadDuplicates() {
     duplicateTotal = data.total ?? duplicateRows.length;
     renderDuplicates();
   } catch (e) {
-    document.getElementById("duplicates-body").innerHTML = emptyRow(4, "Couldn't reach the API — is the service running?");
+    document.getElementById("duplicates-body").innerHTML = emptyRow(4, "Couldn't reach the API. Is the service running?");
     document.getElementById("duplicates-count").textContent = "";
   }
 }
@@ -2899,7 +2905,7 @@ function renderDuplicates() {
       </td>
       <td class="age-cell mono found-cell" data-label="Found" title="${escapeHtml(exactTime(d.first_seen))}">${escapeHtml(timeAgo(d.first_seen))}</td>
     </tr>
-  `).join("") : emptyRow(4, duplicateRows.length ? "No duplicates match that filter." : "No duplicates caught yet — either genuinely none, or the dedup sweep hasn't run since these sources were added.");
+  `).join("") : emptyRow(4, duplicateRows.length ? "No duplicates match that filter." : "No duplicates caught yet: either genuinely none, or the dedup sweep hasn't run since these sources were added.");
 }
 
 // --- view lens -------------------------------------------------------------
@@ -3680,7 +3686,7 @@ async function getJson(url) {
     const res = await fetch(url);
     return await res.json();
   } catch (e) {
-    return { error: "Couldn't load this — the live API isn't reachable from here." };
+    return { error: "Couldn't load this: the live API isn't reachable from here." };
   }
 }
 
@@ -3707,7 +3713,7 @@ async function renderPostingPage(id) {
     // The edge export only carries OPEN postings, so a miss here is
     // most often "this posting has since closed" rather than a bad
     // link -- say that rather than implying the link itself was wrong.
-    if (!p) return showDetailError("This posting is no longer open — it may have closed, or the link may be out of date.");
+    if (!p) return showDetailError("This posting is no longer open. It may have closed, or the link may be out of date.");
 
     // In Edge mode, fetch description shard if present
     let descText = p.description || "";
@@ -3769,7 +3775,7 @@ async function renderPostingPage(id) {
     ? `<div class="description-body">${escapeHtml(p.description)}</div>`
     : `<div class="description-missing">${p.description === ""
         ? "This employer publishes no full-text description for this posting."
-        : "Description not indexed yet — will be fetched on the next scrape of this source."}</div>`;
+        : "Description not indexed yet: will be fetched on the next scrape of this source."}</div>`;
 
   const alsoListedHtml = (alsoListed || []).length ? `
     <div class="section-title">Also listed via (${alsoListed.length})</div>
@@ -3866,7 +3872,7 @@ async function renderCompanyPage(key) {
   const looksUnresolved = data.display_name === data.display_name.toLowerCase()
                            && !data.display_name.includes(" ");
   const banner = looksUnresolved
-    ? `<div class="banner"><b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name — it hasn't been identified yet.</div>`
+    ? `<div class="banner"><b>Unresolved name.</b> This is the raw token from the job board's URL, not a verified company name; it hasn't been identified yet.</div>`
     : "";
 
   const via = data.reached_via.map(v => `
@@ -3881,7 +3887,7 @@ async function renderCompanyPage(key) {
         ${v.last_run_at
           ? ` · last run ${v.last_run_ok
               ? `ok (${v.fetched_count} fetched, ${v.internship_count} relevant)`
-              : `<b class="bad">failed</b> — ${escapeHtml(String(v.last_run_error || "").slice(0, 90))}`}`
+              : `<b class="bad">failed:</b> ${escapeHtml(String(v.last_run_error || "").slice(0, 90))}`}`
           : ""}
         ${v.consecutive_failures ? ` · <b class="bad">${v.consecutive_failures} consecutive failures</b>` : ""}
       </span>
@@ -3916,7 +3922,7 @@ async function renderCompanyPage(key) {
 
     ${banner}
     ${data.name_variants && data.name_variants.length > 1
-      ? `<div class="banner">Also appears as ${data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ")} — merged into one page.</div>`
+      ? `<div class="banner">Also appears as ${data.name_variants.filter(n => n !== data.display_name).map(escapeHtml).join(", ")}, merged into one page.</div>`
       : ""}
     <div class="section-title">${open.length} Open ${open.length === 1 ? "Posting" : "Postings"}</div>
     ${open.length ? rows(open) : `<div class="empty">No open postings right now.</div>`}
@@ -3954,13 +3960,13 @@ async function renderSourcePage(id) {
   const r = data.latest_run;
   const run = r ? `<span class="meta"> · last run ${
     r.ok ? `ok (${r.fetched_count} fetched, ${r.internship_count} relevant)`
-         : `<b class="bad">failed</b> — ${escapeHtml(String(r.error || "").slice(0, 90))}`
+         : `<b class="bad">failed:</b> ${escapeHtml(String(r.error || "").slice(0, 90))}`
   } ${escapeHtml(timeAgo(r.started_at))}</span>` : "";
 
   const openRows = data.postings.length ? `
     <div class="section-title">
       ${data.stats.open} open ${data.stats.open === 1 ? "posting" : "postings"}${
-        data.postings_truncated ? ` <span class="meta">— showing the ${data.postings.length} most recent</span>` : ""}
+        data.postings_truncated ? ` <span class="meta">(showing the ${data.postings.length} most recent)</span>` : ""}
     </div>
     <div class="mini-list">${data.postings.map(p => `
       <a class="mini-row" href="${entityHref("posting", p.id)}" data-route="posting" data-value="${escapeHtml(p.id)}">
