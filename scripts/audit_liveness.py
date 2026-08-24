@@ -96,6 +96,13 @@ def verify_posting_liveness(posting: dict, timeout: float = 6.0) -> dict:
             for phrase in GONE_PHRASES:
                 if phrase in text_lower:
                     return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": 200, "reason": f"phrase:{phrase}"}
+            # Greenhouse redirects a dead job to its board root with
+            # "?error=true" instead of ever returning a 404 -- see
+            # service/liveness.py's matching check for the sample that
+            # confirmed this (18/150 open Greenhouse postings, all with
+            # the job id dropped from the path; every other redirect kept it).
+            if r.history and "error=true" in r.url:
+                return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": 200, "reason": "redirect:error=true"}
             return {"id": pid, "company": company, "title": title, "status": "ALIVE", "code": 200, "reason": "ok"}
         
         return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": r.status_code, "reason": f"http_{r.status_code}"}

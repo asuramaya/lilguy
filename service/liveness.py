@@ -176,6 +176,24 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
                 resp_text = getattr(resp, "text", "") or ""
                 if status == 200 and any(phrase in resp_text.lower() for phrase in GONE_PHRASES):
                     status = 404
+                # A 404 status isn't the only way a removed posting answers.
+                # Measured live: Greenhouse redirects a dead job's specific
+                # URL to its board root with "?error=true" appended -- a
+                # 200, no gone-phrase in the (mostly empty, client-rendered)
+                # page text, "not found" signaled entirely by the redirect
+                # target instead of the status code. Sampled 150 open
+                # Greenhouse postings: 18 (12%) redirected this way, all of
+                # them landing on error=true with the job id dropped from
+                # the path; every OTHER redirect in that sample (a
+                # boards.greenhouse.io -> job-boards.greenhouse.io host
+                # migration, a trailing-slash cleanup, a bot-challenge
+                # interstitial) kept the job id in the final URL. Only
+                # trusting this one specific, structured marker -- not
+                # "any redirect" -- for the same reason the phrase list
+                # above is a fixed set of exact strings rather than a
+                # broader "does this look like an error page" guess.
+                elif status == 200 and resp.history and "error=true" in resp.url:
+                    status = 404
         except Exception:  # noqa: BLE001 - a network error is "did not find out"
             status = None
 

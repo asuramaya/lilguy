@@ -83,8 +83,11 @@ def _workday_posting(pid, url):
 
 
 class FakeResp:
-    def __init__(self, status_code):
+    def __init__(self, status_code, history=None, url=""):
         self.status_code = status_code
+        self.history = history or []
+        self.url = url
+        self.text = ""
 
 
 def _session(handler):
@@ -130,6 +133,33 @@ def test_a_network_error_never_closes_a_posting():
     out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(boom))
     assert out["closed"] == 0
     assert _row("maybe")["status"] == "open"
+
+
+def test_a_redirect_to_greenhouses_error_page_closes_the_posting():
+    # Measured live: Greenhouse never 404s a dead job's own URL -- it
+    # redirects (200, after following) to the board root with
+    # "?error=true" appended, job id dropped from the path entirely.
+    # Sampled 150 open Greenhouse postings this way: 18 (12%) were dead,
+    # every one landing on error=true, zero false positives.
+    _posting("dead-via-redirect", url="https://job-boards.greenhouse.io/acme/jobs/12345")
+    resp = FakeResp(200, history=[FakeResp(301)], url="https://job-boards.greenhouse.io/acme?error=true")
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: resp))
+    assert out["closed"] == 1
+    assert _row("dead-via-redirect")["status"] == "closed"
+
+
+def test_a_harmless_redirect_that_keeps_the_job_id_stays_open():
+    # The same sample had redirects that are NOT closures -- a
+    # boards.greenhouse.io -> job-boards.greenhouse.io host migration, a
+    # trailing-slash cleanup -- distinguished from a real closure only by
+    # whether error=true shows up in the final URL, never by "a redirect
+    # happened" alone.
+    _posting("moved-not-dead", url="https://boards.greenhouse.io/acme/jobs/12345?gh_jid=12345")
+    resp = FakeResp(200, history=[FakeResp(301)], url="https://job-boards.greenhouse.io/acme/jobs/12345?gh_jid=12345")
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: resp))
+    assert out["closed"] == 0
+    assert out["alive"] == 1
+    assert _row("moved-not-dead")["status"] == "open"
 
 
 def test_workday_cxs_404_closes_the_posting():
