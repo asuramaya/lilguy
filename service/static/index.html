@@ -252,6 +252,13 @@
   }
   .events-panel .event-kind.k-backup_restore_test { color: var(--ink-secondary); }
   .events-panel .event-kind.k-backup_restore_test::before { background: var(--ink-tertiary); }
+  /* Routine reporting from scripts/audit_liveness.py's daily cron run,
+     not an alert on its own -- the ALERT case (some ATS over the
+     discrepancy threshold) still shows in the detail text, same tier
+     as k-expired: nothing went wrong, this is the system checking its
+     own work. */
+  .events-panel .event-kind.k-liveness_audit { color: var(--ink-tertiary); }
+  .events-panel .event-kind.k-liveness_audit::before { background: var(--ink-tertiary); }
   .events-panel .event-detail { color: var(--ink-secondary); }
   .events-panel .event-time { color: var(--ink-tertiary); font-size: 11px; margin-top: 2px; }
 
@@ -3311,6 +3318,7 @@ async function loadEvents() {
     const KIND_LABEL = {
       promoted: "New source", disabled: "Source disabled",
       reinstated: "Source recovered", backup_restore_test: "Backup check",
+      liveness_audit: "Liveness audit",
     };
     const panel = document.getElementById("events-panel");
     panel.innerHTML = eventRows.length ? eventRows.map(e => `
