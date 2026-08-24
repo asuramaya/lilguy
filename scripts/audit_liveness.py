@@ -6,7 +6,10 @@ Checks whether postings are still active on their source ATS platforms:
     means closed; 403 is treated as UNCERTAIN (blocked), not closed -- measured
     live returning 403 for postings the source's own list fetch still confirms
     open, see service/liveness.py's WORKDAY_GONE_STATUSES comment.
-  - Greenhouse, Lever, Ashby, SmartRecruiters: Checks HTTP status and redirect destinations.
+  - SmartRecruiters: Queries its own api.smartrecruiters.com single-posting endpoint
+    for the explicit `active` boolean it carries, rather than trusting the rendered
+    job page (which stays a full 200 for a posting already confirmed closed).
+  - Greenhouse, Lever, Ashby: Checks HTTP status and redirect destinations.
   - Generic/Muse/JSON-LD: Inspects HTTP status codes and HTML closure markers.
 
 Usage:
@@ -53,6 +56,14 @@ def _workday_cxs_url(posting_id: str, url: str) -> str | None:
     return None
 
 
+def _smartrecruiters_api_url(posting_id: str) -> str | None:
+    parts = (posting_id or "").split(":", 2)
+    if len(parts) == 3 and parts[1] and parts[2]:
+        token, job_id = parts[1], parts[2]
+        return f"https://api.smartrecruiters.com/v1/companies/{token}/postings/{job_id}"
+    return None
+
+
 def verify_posting_liveness(posting: dict, timeout: float = 6.0) -> dict:
     """Verifies whether a single posting is live or closed."""
     pid = posting.get("id", "")
@@ -80,6 +91,33 @@ def verify_posting_liveness(posting: dict, timeout: float = 6.0) -> dict:
                     return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": 403, "reason": "cxs_403_blocked"}
                 elif r.status_code == 200:
                     return {"id": pid, "company": company, "title": title, "status": "ALIVE", "code": 200, "reason": "cxs_200"}
+                else:
+                    return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": r.status_code, "reason": f"http_{r.status_code}"}
+            except Exception as e:
+                return {"id": pid, "company": company, "title": title, "status": "ERROR", "code": -1, "reason": str(e)}
+
+    # SmartRecruiters API check -- its rendered job page stays a full 200
+    # (real title, real description) for a posting confirmed closed by
+    # the normal scheduler reconciliation; the same api.smartrecruiters.com
+    # API the connector already uses for listing carries an explicit
+    # `active` boolean on its single-posting detail endpoint.
+    if pid.startswith("smartrecruiters:"):
+        sr_url = _smartrecruiters_api_url(pid)
+        if sr_url:
+            try:
+                r = requests.get(sr_url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"}, timeout=timeout)
+                if r.status_code in (404, 410):
+                    return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": r.status_code, "reason": "sr_404"}
+                elif r.status_code == 200:
+                    try:
+                        active = r.json().get("active")
+                    except ValueError:
+                        return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": 200, "reason": "sr_unparseable"}
+                    if active is False:
+                        return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": 200, "reason": "sr_active_false"}
+                    elif active is True:
+                        return {"id": pid, "company": company, "title": title, "status": "ALIVE", "code": 200, "reason": "sr_active_true"}
+                    return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": 200, "reason": "sr_no_active_field"}
                 else:
                     return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": r.status_code, "reason": f"http_{r.status_code}"}
             except Exception as e:

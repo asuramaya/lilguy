@@ -89,6 +89,24 @@ def _workday_cxs_url(posting_id: str, url: str) -> str | None:
         return f"https://{tenant}.{wd_host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}{path}"
     return None
 
+
+# SmartRecruiters' public rendered job page is useless for liveness: it
+# keeps serving the full page (200, the real title, the real
+# description) for a posting confirmed closed 24h earlier by the normal
+# scheduler reconciliation -- checked live against a real specimen. But
+# scraper/connectors/smartrecruiters.py already reads a real API
+# (api.smartrecruiters.com), and that same API's single-posting detail
+# endpoint carries an explicit `active` boolean -- confirmed False on
+# that exact closed specimen, confirmed True on a decade-old posting
+# that (per that same field) really is still open. A 404 there means
+# the posting record itself is gone, not just closed.
+def _smartrecruiters_api_url(posting_id: str) -> str | None:
+    parts = (posting_id or "").split(":", 2)
+    if len(parts) == 3 and parts[1] and parts[2]:
+        token, job_id = parts[1], parts[2]
+        return f"https://api.smartrecruiters.com/v1/companies/{token}/postings/{job_id}"
+    return None
+
 # Re-check cadence for a posting that IS alive. Old listings are checked
 # again sooner because age is what correlates with death -- a posting
 # from 2024 that is somehow still live is exactly the kind that will
@@ -163,6 +181,8 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
             p_url = row.get("url") or ""
             is_workday = pid.startswith("workday:") or row.get("ats") == "workday"
             cxs_url = _workday_cxs_url(pid, p_url) if is_workday else None
+            is_smartrecruiters = pid.startswith("smartrecruiters:") or row.get("ats") == "smartrecruiters"
+            sr_url = _smartrecruiters_api_url(pid) if (is_smartrecruiters and not cxs_url) else None
 
             if cxs_url:
                 cxs_headers = {"User-Agent": UA["User-Agent"], "Accept": "application/json"}
@@ -170,6 +190,18 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
                 status = resp.status_code
                 if status in WORKDAY_GONE_STATUSES:
                     status = 404
+            elif sr_url:
+                resp = http.get(sr_url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"}, timeout=TIMEOUT)
+                status = resp.status_code
+                if status == 200:
+                    try:
+                        active = resp.json().get("active")
+                    except ValueError:
+                        active = None  # unparseable body -- did not find out, defer
+                    if active is False:
+                        status = 404
+                    elif active is not True:
+                        status = None  # unrecognized shape -- did not find out, defer
             else:
                 resp = http.get(p_url, headers=UA, timeout=TIMEOUT, allow_redirects=True)
                 status = resp.status_code

@@ -82,12 +82,31 @@ def _workday_posting(pid, url):
         )
 
 
+def _smartrecruiters_posting(pid, url):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_id, source_entry, company, title, location, url, ats,
+                                   category, status, posted_at_ts, first_seen, last_seen)
+            VALUES (%s, %s, 'Acme Careers', 'Acme', 'Ops Intern', 'Remote', %s, 'smartrecruiters',
+                    'Logistics', 'open', %s, now(), now())
+            """,
+            (pid, _source(), url, NOW - timedelta(days=10)),
+        )
+
+
 class FakeResp:
-    def __init__(self, status_code, history=None, url=""):
+    def __init__(self, status_code, history=None, url="", json_body=None):
         self.status_code = status_code
         self.history = history or []
         self.url = url
         self.text = ""
+        self._json_body = json_body
+
+    def json(self):
+        if self._json_body is None:
+            raise ValueError("no json body")
+        return self._json_body
 
 
 def _session(handler):
@@ -160,6 +179,51 @@ def test_a_harmless_redirect_that_keeps_the_job_id_stays_open():
     assert out["closed"] == 0
     assert out["alive"] == 1
     assert _row("moved-not-dead")["status"] == "open"
+
+
+def test_smartrecruiters_active_false_closes_the_posting():
+    # Measured live against a real specimen: the SmartRecruiters job page
+    # itself stays a full 200 (real title, real description) for a
+    # posting confirmed closed by the normal scheduler 24h earlier --
+    # but api.smartrecruiters.com's single-posting endpoint (the same
+    # API family the connector already uses to list postings) carries
+    # an explicit `active` boolean, confirmed False on that exact
+    # specimen.
+    pid = "smartrecruiters:Acme:744000140376349"
+    _smartrecruiters_posting(pid, "https://jobs.smartrecruiters.com/Acme/744000140376349")
+    resp = FakeResp(200, json_body={"active": False})
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: resp))
+    assert out["closed"] == 1
+    assert _row(pid)["status"] == "closed"
+
+
+def test_smartrecruiters_active_true_leaves_it_open():
+    pid = "smartrecruiters:Acme:744000140376349"
+    _smartrecruiters_posting(pid, "https://jobs.smartrecruiters.com/Acme/744000140376349")
+    resp = FakeResp(200, json_body={"active": True})
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: resp))
+    assert out["alive"] == 1
+    assert _row(pid)["status"] == "open"
+
+
+def test_smartrecruiters_404_closes_the_posting():
+    pid = "smartrecruiters:Acme:744000140376349"
+    _smartrecruiters_posting(pid, "https://jobs.smartrecruiters.com/Acme/744000140376349")
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: FakeResp(404)))
+    assert out["closed"] == 1
+    assert _row(pid)["status"] == "closed"
+
+
+def test_smartrecruiters_missing_active_field_defers_rather_than_closes():
+    # An unrecognized response shape is "we did not find out", never a
+    # guess in either direction -- same rule as every other deferral.
+    pid = "smartrecruiters:Acme:744000140376349"
+    _smartrecruiters_posting(pid, "https://jobs.smartrecruiters.com/Acme/744000140376349")
+    resp = FakeResp(200, json_body={"id": "744000140376349"})
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: resp))
+    assert out["closed"] == 0
+    assert out["deferred"] == 1
+    assert _row(pid)["status"] == "open"
 
 
 def test_workday_cxs_404_closes_the_posting():
