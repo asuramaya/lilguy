@@ -1,25 +1,40 @@
 #!/usr/bin/env python3
-"""Audit the liveness and validity of job postings in the corpus.
+"""Mechanically re-verify a live sample of the corpus, catch drift.
 
-Checks whether postings are still active on their source ATS platforms:
-  - Workday: Queries the per-posting CXS API endpoint (/wday/cxs/...). 404/410
-    means closed; 403 is treated as UNCERTAIN (blocked), not closed -- measured
-    live returning 403 for postings the source's own list fetch still confirms
-    open, see service/liveness.py's WORKDAY_GONE_STATUSES comment.
-  - SmartRecruiters: Queries its own api.smartrecruiters.com single-posting endpoint
-    for the explicit `active` boolean it carries, rather than trusting the rendered
-    job page (which stays a full 200 for a posting already confirmed closed).
-  - Greenhouse, Lever, Ashby: Checks HTTP status and redirect destinations.
-  - Generic/Muse/JSON-LD: Inspects HTTP status codes and HTML closure markers.
+Why this exists ALONGSIDE service/liveness.py's continuous sweep, not
+instead of it: that sweep already closes anything it recognizes as gone,
+every scheduler cycle, forever. What it can't do is notice when its OWN
+recognition logic has gone stale -- a platform changes its close signal,
+a newly-added ATS never gets a bespoke check, a regression slips into
+check_posting_status. Three real, distinct bugs shipped in one session
+this way (Workday treating a block as a closure, Greenhouse's dead jobs
+never 404ing at all, SmartRecruiters' rendered page staying a full 200
+long after the posting closed) -- each one found by a human/agent
+sitting down and sampling the corpus by hand. That doesn't scale and
+doesn't repeat itself. This does: same check_posting_status function
+service/liveness.py's sweep uses (imported, not re-implemented -- two
+copies of this logic drifting apart is exactly how Workday's bug shipped
+undetected as long as it did), run on a schedule against a live sample,
+reporting a per-ATS discrepancy rate as a trend a human can watch. High
+discrepancy rate on some ATS in that trend is the signal that a NEW
+bespoke check is needed there, the same way this session found three.
+
+Reads the LIVE corpus (Postgres via DATABASE_URL), not the git-committed
+data/all_postings.json snapshot -- auditing a fork's own copy of a
+several-days-old export finds none of this. --input FILE remains as an
+offline/test fallback only.
 
 Usage:
-  ./scripts/audit_liveness.py [--limit N] [--workers W] [--json] [--close-dead]
+  ./scripts/audit_liveness.py                       # sample + report, mechanical: also closes confirmed-dead
+  ./scripts/audit_liveness.py --no-close             # report only, touch nothing
+  ./scripts/audit_liveness.py --sample-size 300
+  ./scripts/audit_liveness.py --input data/all_postings.json --limit 50   # offline fallback
 """
 
 import argparse
 import json
-import re
 import sys
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -28,172 +43,164 @@ import requests
 ROOT_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(ROOT_DIR / "service"))
 
-UA = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/json",
-}
+from db import cursor  # noqa: E402
+from liveness import GONE_STATUSES, check_posting_status, close_dead_postings  # noqa: E402
 
-GONE_PHRASES = [
-    "page doesn't exist",
-    "page does not exist",
-    "job is no longer available",
-    "position is no longer available",
-    "job posting has expired",
-    "this posting has expired",
-    "no longer accepting applications",
-    "this job has been closed",
-    "this job is closed",
-]
+DEFAULT_SAMPLE_SIZE = 150
+# Above this discrepancy rate for an ATS, print an ALERT line -- the
+# same signal that would have flagged Greenhouse (12%) and Workday
+# (effectively 100% of its closures, all false) well before either was
+# found by hand.
+ALERT_THRESHOLD = 0.05
 
 
-def _workday_cxs_url(posting_id: str, url: str) -> str | None:
-    parts = (posting_id or "").split(":", 3)
-    if len(parts) == 4 and parts[3]:
-        tenant, site, path = parts[1], parts[2], parts[3]
-        m = re.search(r".(wdd+).myworkdayjobs.com", url or "")
-        wd_host = m.group(1) if m else "wd5"
-        return f"https://{tenant}.{wd_host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}{path}"
-    return None
+def _sample_from_db(sample_size: int) -> list[dict]:
+    """Oldest-open-first per ATS, same bias as liveness.py's own claim
+    query and the same reason: that is where the dead ones cluster.
+    Stratified across every ATS the corpus actually has, not just the
+    biggest one, so a small platform's drift is never invisible just
+    because it is outnumbered.
+    """
+    with cursor() as cur:
+        cur.execute("SELECT DISTINCT ats FROM postings WHERE status = 'open' AND ats IS NOT NULL")
+        all_ats = [r["ats"] for r in cur.fetchall()]
+
+        rows = []
+        for ats in all_ats:
+            cur.execute(
+                """
+                SELECT id, url, company, title, ats, posted_at_ts
+                FROM postings
+                WHERE status = 'open' AND ats = %s AND url IS NOT NULL AND url <> ''
+                ORDER BY posted_at_ts ASC NULLS LAST, id
+                LIMIT %s
+                """,
+                (ats, sample_size),
+            )
+            rows.extend(cur.fetchall())
+        return rows
 
 
-def _smartrecruiters_api_url(posting_id: str) -> str | None:
-    parts = (posting_id or "").split(":", 2)
-    if len(parts) == 3 and parts[1] and parts[2]:
-        token, job_id = parts[1], parts[2]
-        return f"https://api.smartrecruiters.com/v1/companies/{token}/postings/{job_id}"
-    return None
+def _sample_from_file(path: Path, limit: int) -> list[dict]:
+    with open(path, encoding="utf-8") as f:
+        postings = json.load(f)
+    return postings[:limit] if limit > 0 else postings
 
 
-def verify_posting_liveness(posting: dict, timeout: float = 6.0) -> dict:
-    """Verifies whether a single posting is live or closed."""
-    pid = posting.get("id", "")
-    url = posting.get("url", "")
-    company = posting.get("company", "")
-    title = posting.get("title", "")
-    ats = posting.get("ats") or ""
+def run_audit(rows: list[dict], http=None, workers: int = 16) -> dict:
+    """The testable core: re-check every row, tally per-ATS results.
 
-    if not url:
-        return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": 0, "reason": "empty_url"}
+    `http` defaults to the `requests` module itself, not a shared
+    Session -- module-level requests.get() opens its own connection per
+    call, which is what makes this safe to fan out across a
+    ThreadPoolExecutor without any of Session's cross-thread caveats.
+    Tests inject a fake with the same `.get(url, **kw)` shape instead.
 
-    # Workday CXS API check
-    if pid.startswith("workday:") or "myworkdayjobs.com" in url:
-        cxs_url = _workday_cxs_url(pid, url)
-        if cxs_url:
-            try:
-                r = requests.get(cxs_url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"}, timeout=timeout)
-                if r.status_code in (404, 410):
-                    return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": r.status_code, "reason": "cxs_404"}
-                elif r.status_code == 403:
-                    # Measured live: Workday's CXS detail endpoint 403s on
-                    # postings the source's own list fetch still confirms
-                    # open (see service/liveness.py's WORKDAY_GONE_STATUSES
-                    # comment) -- a block, not a closure.
-                    return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": 403, "reason": "cxs_403_blocked"}
-                elif r.status_code == 200:
-                    return {"id": pid, "company": company, "title": title, "status": "ALIVE", "code": 200, "reason": "cxs_200"}
-                else:
-                    return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": r.status_code, "reason": f"http_{r.status_code}"}
-            except Exception as e:
-                return {"id": pid, "company": company, "title": title, "status": "ERROR", "code": -1, "reason": str(e)}
+    Returns {"per_ats": {ats: {checked, dead, alive, uncertain}},
+             "dead_rows": [(id, company, status), ...]} -- never
+    touches the database itself; that split is what makes this callable
+    from a test with a scratch Postgres and a fake session, and from
+    main() with the real live corpus and real network calls, without
+    either path duplicating the other's logic.
+    """
+    http = http or requests
+    per_ats = defaultdict(lambda: {"checked": 0, "dead": 0, "alive": 0, "uncertain": 0})
+    dead_rows = []
 
-    # SmartRecruiters API check -- its rendered job page stays a full 200
-    # (real title, real description) for a posting confirmed closed by
-    # the normal scheduler reconciliation; the same api.smartrecruiters.com
-    # API the connector already uses for listing carries an explicit
-    # `active` boolean on its single-posting detail endpoint.
-    if pid.startswith("smartrecruiters:"):
-        sr_url = _smartrecruiters_api_url(pid)
-        if sr_url:
-            try:
-                r = requests.get(sr_url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"}, timeout=timeout)
-                if r.status_code in (404, 410):
-                    return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": r.status_code, "reason": "sr_404"}
-                elif r.status_code == 200:
-                    try:
-                        active = r.json().get("active")
-                    except ValueError:
-                        return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": 200, "reason": "sr_unparseable"}
-                    if active is False:
-                        return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": 200, "reason": "sr_active_false"}
-                    elif active is True:
-                        return {"id": pid, "company": company, "title": title, "status": "ALIVE", "code": 200, "reason": "sr_active_true"}
-                    return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": 200, "reason": "sr_no_active_field"}
-                else:
-                    return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": r.status_code, "reason": f"http_{r.status_code}"}
-            except Exception as e:
-                return {"id": pid, "company": company, "title": title, "status": "ERROR", "code": -1, "reason": str(e)}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(check_posting_status, row, http): row for row in rows}
+        for future in as_completed(futures):
+            row = futures[future]
+            ats = row.get("ats") or "unknown"
+            status = future.result()
+            bucket = per_ats[ats]
+            bucket["checked"] += 1
+            if status in GONE_STATUSES:
+                bucket["dead"] += 1
+                dead_rows.append((row["id"], row["company"], status))
+            elif status == 200:
+                bucket["alive"] += 1
+            else:
+                bucket["uncertain"] += 1
 
-    # Standard URL check
-    try:
-        r = requests.get(url, headers=UA, timeout=timeout, allow_redirects=True)
-        if r.status_code in (404, 410):
-            return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": r.status_code, "reason": f"http_{r.status_code}"}
-        
-        text_lower = (r.text or "").lower()
-        if r.status_code == 200:
-            for phrase in GONE_PHRASES:
-                if phrase in text_lower:
-                    return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": 200, "reason": f"phrase:{phrase}"}
-            # Greenhouse redirects a dead job to its board root with
-            # "?error=true" instead of ever returning a 404 -- see
-            # service/liveness.py's matching check for the sample that
-            # confirmed this (18/150 open Greenhouse postings, all with
-            # the job id dropped from the path; every other redirect kept it).
-            if r.history and "error=true" in r.url:
-                return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": 200, "reason": "redirect:error=true"}
-            return {"id": pid, "company": company, "title": title, "status": "ALIVE", "code": 200, "reason": "ok"}
-        
-        return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": r.status_code, "reason": f"http_{r.status_code}"}
-    except Exception as e:
-        return {"id": pid, "company": company, "title": title, "status": "ERROR", "code": -1, "reason": str(e)}
+    return {"per_ats": dict(per_ats), "dead_rows": dead_rows}
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Audit posting liveness")
-    parser.add_argument("--limit", type=int, default=50, help="Number of postings to check (default: 50)")
-    parser.add_argument("--workers", type=int, default=12, help="Concurrency worker threads (default: 12)")
-    parser.add_argument("--input", type=str, default="data/all_postings.json", help="Path to input postings JSON")
+    parser = argparse.ArgumentParser(description="Mechanically re-verify a live sample of the corpus")
+    parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE,
+                         help=f"Postings to sample PER ATS from the live DB (default: {DEFAULT_SAMPLE_SIZE})")
+    parser.add_argument("--workers", type=int, default=16, help="Concurrency worker threads (default: 16)")
+    parser.add_argument("--input", type=str, default=None,
+                         help="Offline fallback: read from this JSON file instead of the live DB")
+    parser.add_argument("--limit", type=int, default=50, help="Row cap, --input mode only (default: 50)")
+    parser.add_argument("--no-close", action="store_true",
+                         help="Report only -- do not close confirmed-dead postings")
+    parser.add_argument("--json", action="store_true", help="Print the summary as JSON instead of a table")
     args = parser.parse_args()
 
-    input_path = ROOT_DIR / args.input
-    if not input_path.exists():
-        print(f"Error: {input_path} not found")
-        sys.exit(1)
+    offline = args.input is not None
+    if offline:
+        input_path = ROOT_DIR / args.input
+        if not input_path.exists():
+            print(f"Error: {input_path} not found")
+            sys.exit(1)
+        rows = _sample_from_file(input_path, args.limit)
+    else:
+        rows = _sample_from_db(args.sample_size)
 
-    with open(input_path, encoding="utf-8") as f:
-        postings = json.load(f)
+    if not rows:
+        print("Nothing open to sample.")
+        return
 
-    subset = postings[:args.limit] if args.limit > 0 else postings
-    print(f"Auditing liveness for {len(subset)} postings with {args.workers} concurrent workers...")
+    print(f"Re-verifying {len(rows)} open postings across "
+          f"{len(set(r.get('ats') for r in rows))} ATS platform(s), {args.workers} workers...")
 
-    results = []
-    alive = closed = uncertain = error = 0
+    result = run_audit(rows, workers=args.workers)
+    per_ats, dead_rows = result["per_ats"], result["dead_rows"]
 
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {executor.submit(verify_posting_liveness, p): p for p in subset}
-        for future in as_completed(futures):
-            res = future.result()
-            results.append(res)
-            status = res["status"]
-            if status == "ALIVE":
-                alive += 1
-            elif status == "CLOSED":
-                closed += 1
-            elif status == "UNCERTAIN":
-                uncertain += 1
-            else:
-                error += 1
+    total_checked = sum(b["checked"] for b in per_ats.values())
+    total_dead = sum(b["dead"] for b in per_ats.values())
+    overall_rate = total_dead / total_checked if total_checked else 0
 
-            badge = f"[{status:6}]"
-            print(f"{badge} {str(res['code']):4} | {res['company'][:22]:22} | {res['title'][:40]:40} ({res['reason']})")
+    if args.json:
+        print(json.dumps({"checked": total_checked, "dead": total_dead, "per_ats": per_ats}, indent=2))
+    else:
+        print("\n" + "=" * 72)
+        print(f"{'ATS':20} {'checked':>8} {'dead':>6} {'rate':>7}   alert")
+        for ats in sorted(per_ats, key=lambda a: -per_ats[a]["dead"] / max(per_ats[a]["checked"], 1)):
+            b = per_ats[ats]
+            rate = b["dead"] / b["checked"] if b["checked"] else 0
+            alert = "  <-- ALERT" if rate > ALERT_THRESHOLD else ""
+            print(f"{ats:20} {b['checked']:8} {b['dead']:6} {rate*100:6.1f}%{alert}")
+        print("=" * 72)
+        print(f"TOTAL: {total_checked} checked, {total_dead} confirmed dead ({overall_rate*100:.1f}%)")
 
-    print("\n" + "=" * 60)
-    print(f"AUDIT SUMMARY (Checked: {len(subset)}):")
-    print(f"  Live:      {alive} ({alive / len(subset) * 100:.1f}%)")
-    print(f"  Closed:    {closed} ({closed / len(subset) * 100:.1f}%)")
-    print(f"  Uncertain: {uncertain}")
-    print(f"  Error:     {error}")
-    print("=" * 60)
+    if offline:
+        # An --input run against a static export has no live DB row to
+        # close -- reporting only, same as always.
+        return
+
+    if dead_rows and not args.no_close:
+        close_dead_postings(dead_rows)
+        print(f"\nClosed {len(dead_rows)} confirmed-dead postings.")
+
+    alert_ats = [ats for ats, b in per_ats.items()
+                 if b["checked"] and b["dead"] / b["checked"] > ALERT_THRESHOLD]
+    with cursor() as cur:
+        detail = (f"Sampled {total_checked} open postings across {len(per_ats)} ATS platform(s): "
+                  f"{total_dead} confirmed dead ({overall_rate*100:.1f}%)"
+                  f"{', closed' if dead_rows and not args.no_close else ''}."
+                  + (f" ALERT (>{ALERT_THRESHOLD*100:.0f}% dead): {', '.join(alert_ats)}." if alert_ats else ""))
+        cur.execute(
+            "INSERT INTO events (kind, company, detail) VALUES ('liveness_audit', NULL, %s)",
+            (detail,),
+        )
+
+    if alert_ats:
+        print(f"\nALERT: {', '.join(alert_ats)} exceeded the {ALERT_THRESHOLD*100:.0f}% discrepancy "
+              f"threshold -- may need a bespoke check like Workday/Greenhouse/SmartRecruiters got.")
+        sys.exit(2)
 
 
 if __name__ == "__main__":

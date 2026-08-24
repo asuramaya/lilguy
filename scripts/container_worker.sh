@@ -27,7 +27,7 @@ case "${MODE}" in
   sync-once)
     echo "==> Running one-shot sync & edge build..."
     python3 service/standardize.py
-    python3 scripts/audit_liveness.py --limit 100 --workers 16 || true
+    python3 scripts/audit_liveness.py --sample-size 100 --workers 16 || true
     python3 service/edge_export.py
     echo "==> One-shot sync complete!"
     ;;
@@ -38,10 +38,10 @@ case "${MODE}" in
     ;;
 
   audit)
-    LIMIT="${2:-200}"
+    SAMPLE_SIZE="${2:-200}"
     WORKERS="${3:-20}"
-    echo "==> Running liveness audit (limit: ${LIMIT}, workers: ${WORKERS})..."
-    exec python3 scripts/audit_liveness.py --limit "${LIMIT}" --workers "${WORKERS}"
+    echo "==> Running mechanical liveness audit (sample-size: ${SAMPLE_SIZE} per ATS, workers: ${WORKERS})..."
+    exec python3 scripts/audit_liveness.py --sample-size "${SAMPLE_SIZE}" --workers "${WORKERS}"
     ;;
 
   *)

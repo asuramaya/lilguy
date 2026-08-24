@@ -154,6 +154,74 @@ def _claim_batch(limit: int) -> list[dict]:
         return cur.fetchall()
 
 
+def check_posting_status(row: dict, http: requests.Session) -> int | None:
+    """The one place every liveness check lives -- run_liveness_sweep (the
+    continuous closer, every scheduler cycle) and scripts/audit_liveness.py
+    (the read-only drift monitor) both call this SAME function rather than
+    each keeping its own copy. Duplicated logic is how this project ended
+    up fixing the same Workday/Greenhouse/SmartRecruiters bugs twice in one
+    session -- once in the sweep, once in the CLI -- before this refactor.
+
+    Returns 404 for "gone" (the caller decides what counts as gone via
+    GONE_STATUSES; a genuine 410 also passes through unchanged), 200 for
+    "confirmed alive", or None for "did not find out" -- never raises;
+    the caller decides what a network error means.
+    """
+    try:
+        pid = row.get("id") or ""
+        p_url = row.get("url") or ""
+        is_workday = pid.startswith("workday:") or row.get("ats") == "workday"
+        cxs_url = _workday_cxs_url(pid, p_url) if is_workday else None
+        is_smartrecruiters = pid.startswith("smartrecruiters:") or row.get("ats") == "smartrecruiters"
+        sr_url = _smartrecruiters_api_url(pid) if (is_smartrecruiters and not cxs_url) else None
+
+        if cxs_url:
+            cxs_headers = {"User-Agent": UA["User-Agent"], "Accept": "application/json"}
+            resp = http.get(cxs_url, headers=cxs_headers, timeout=TIMEOUT)
+            status = resp.status_code
+            if status in WORKDAY_GONE_STATUSES:
+                status = 404
+        elif sr_url:
+            resp = http.get(sr_url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"}, timeout=TIMEOUT)
+            status = resp.status_code
+            if status == 200:
+                try:
+                    active = resp.json().get("active")
+                except ValueError:
+                    active = None  # unparseable body -- did not find out, defer
+                if active is False:
+                    status = 404
+                elif active is not True:
+                    status = None  # unrecognized shape -- did not find out, defer
+        else:
+            resp = http.get(p_url, headers=UA, timeout=TIMEOUT, allow_redirects=True)
+            status = resp.status_code
+            resp_text = getattr(resp, "text", "") or ""
+            if status == 200 and any(phrase in resp_text.lower() for phrase in GONE_PHRASES):
+                status = 404
+            # A 404 status isn't the only way a removed posting answers.
+            # Measured live: Greenhouse redirects a dead job's specific
+            # URL to its board root with "?error=true" appended -- a
+            # 200, no gone-phrase in the (mostly empty, client-rendered)
+            # page text, "not found" signaled entirely by the redirect
+            # target instead of the status code. Sampled 150 open
+            # Greenhouse postings: 18 (12%) redirected this way, all of
+            # them landing on error=true with the job id dropped from
+            # the path; every OTHER redirect in that sample (a
+            # boards.greenhouse.io -> job-boards.greenhouse.io host
+            # migration, a trailing-slash cleanup, a bot-challenge
+            # interstitial) kept the job id in the final URL. Only
+            # trusting this one specific, structured marker -- not
+            # "any redirect" -- for the same reason the phrase list
+            # above is a fixed set of exact strings rather than a
+            # broader "does this look like an error page" guess.
+            elif status == 200 and resp.history and "error=true" in resp.url:
+                status = 404
+        return status
+    except Exception:  # noqa: BLE001 - a network error is "did not find out"
+        return None
+
+
 def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
                        session: requests.Session = None) -> dict:
     """Never raises: one unreachable host must not stop the scheduler."""
@@ -169,65 +237,7 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
     to_close, to_mark_alive, to_defer = [], [], []
 
     for i, row in enumerate(rows):
-        # The try wraps ONLY the request. It originally wrapped the
-        # database writes too, which meant a schema problem (the events
-        # CHECK constraint rejecting 'expired') surfaced as a network
-        # deferral -- the sweep cheerfully reported "deferred" while the
-        # real fault was local and would never have resolved itself. A
-        # catch-all around code that talks to two different systems can
-        # only ever tell you about the one you guessed at.
-        try:
-            pid = row.get("id") or ""
-            p_url = row.get("url") or ""
-            is_workday = pid.startswith("workday:") or row.get("ats") == "workday"
-            cxs_url = _workday_cxs_url(pid, p_url) if is_workday else None
-            is_smartrecruiters = pid.startswith("smartrecruiters:") or row.get("ats") == "smartrecruiters"
-            sr_url = _smartrecruiters_api_url(pid) if (is_smartrecruiters and not cxs_url) else None
-
-            if cxs_url:
-                cxs_headers = {"User-Agent": UA["User-Agent"], "Accept": "application/json"}
-                resp = http.get(cxs_url, headers=cxs_headers, timeout=TIMEOUT)
-                status = resp.status_code
-                if status in WORKDAY_GONE_STATUSES:
-                    status = 404
-            elif sr_url:
-                resp = http.get(sr_url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"}, timeout=TIMEOUT)
-                status = resp.status_code
-                if status == 200:
-                    try:
-                        active = resp.json().get("active")
-                    except ValueError:
-                        active = None  # unparseable body -- did not find out, defer
-                    if active is False:
-                        status = 404
-                    elif active is not True:
-                        status = None  # unrecognized shape -- did not find out, defer
-            else:
-                resp = http.get(p_url, headers=UA, timeout=TIMEOUT, allow_redirects=True)
-                status = resp.status_code
-                resp_text = getattr(resp, "text", "") or ""
-                if status == 200 and any(phrase in resp_text.lower() for phrase in GONE_PHRASES):
-                    status = 404
-                # A 404 status isn't the only way a removed posting answers.
-                # Measured live: Greenhouse redirects a dead job's specific
-                # URL to its board root with "?error=true" appended -- a
-                # 200, no gone-phrase in the (mostly empty, client-rendered)
-                # page text, "not found" signaled entirely by the redirect
-                # target instead of the status code. Sampled 150 open
-                # Greenhouse postings: 18 (12%) redirected this way, all of
-                # them landing on error=true with the job id dropped from
-                # the path; every OTHER redirect in that sample (a
-                # boards.greenhouse.io -> job-boards.greenhouse.io host
-                # migration, a trailing-slash cleanup, a bot-challenge
-                # interstitial) kept the job id in the final URL. Only
-                # trusting this one specific, structured marker -- not
-                # "any redirect" -- for the same reason the phrase list
-                # above is a fixed set of exact strings rather than a
-                # broader "does this look like an error page" guess.
-                elif status == 200 and resp.history and "error=true" in resp.url:
-                    status = 404
-        except Exception:  # noqa: BLE001 - a network error is "did not find out"
-            status = None
+        status = check_posting_status(row, http)
 
         if status in GONE_STATUSES:
             to_close.append((row["id"], row["company"], status))
@@ -244,6 +254,17 @@ def run_liveness_sweep(limit: int = 20, pace: float = PACE_SECONDS,
 
     _record(to_close, to_mark_alive, to_defer)
     return {"checked": len(rows), "closed": closed, "alive": alive, "deferred": deferred}
+
+
+def close_dead_postings(dead: list[tuple[str, str, int]]) -> None:
+    """Public entry to the same close path _record uses, for a caller
+    (scripts/audit_liveness.py) that only ever closes -- it samples a
+    slice of the corpus per run rather than working through the full
+    claim queue, so it has no business resetting every open posting's
+    liveness_next_check_at the way a real sweep's to_mark_alive/to_defer
+    passes do.
+    """
+    _record(dead, [], [])
 
 
 def _record(to_close: list, to_mark_alive: list, to_defer: list) -> None:

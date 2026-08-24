@@ -538,6 +538,49 @@ restoring a real backup and querying it, not by trusting that `pg_dump`
 exiting 0 meant the data was sound. Don't skip the restore-test script in
 practice just because the nightly dump "worked."
 
+## Auditing liveness itself
+
+`service/liveness.py`'s sweep closes anything it recognizes as gone,
+every scheduler cycle, forever -- but it has no way to notice when its
+OWN recognition logic has gone stale. Three real, distinct bugs shipped
+this way in one session: Workday's per-job CXS endpoint 403ing on
+demonstrably open postings (treated as gone), Greenhouse never 404ing a
+dead job at all (a 200 redirect to `?error=true` instead), and
+SmartRecruiters' rendered job page staying a full 200 long after the
+posting closed (its own API's `active` field was the only real signal).
+Each was found by a human/agent sitting down and sampling the corpus by
+hand -- not something that repeats itself on its own.
+
+`scripts/audit_liveness.py` is the mechanical version of that same
+process: it re-checks a live sample of open postings (stratified per
+ATS, oldest-first -- same bias as `liveness.py`'s own claim query, same
+reason) against `check_posting_status`, the SAME function the sweep
+itself uses (imported, not re-implemented -- two copies of this logic
+drifting apart is exactly how the Workday bug shipped undetected as
+long as it did). It closes whatever it confirms dead, same as the
+sweep, and it writes one `liveness_audit` event per run reporting the
+per-ATS discrepancy rate. A rate above 5% for some platform is the
+signal that platform needs a bespoke check the way Workday, Greenhouse
+and SmartRecruiters got -- printed as an `ALERT` line and a non-zero
+exit code, not just a number nobody looks at.
+
+```
+scripts/audit_liveness.py                    # sample + report, closes confirmed-dead
+scripts/audit_liveness.py --no-close          # report only, touch nothing
+scripts/audit_liveness.py --sample-size 300   # bigger sample per ATS
+```
+
+Crontab on the deploy host:
+
+```
+30 3 * * *  cd /srv/internships && docker compose run --rm api python scripts/audit_liveness.py >> /var/log/internships-liveness-audit.log 2>&1
+```
+
+`--input data/all_postings.json` remains as an offline/read-only
+fallback for testing against the git-committed batch export instead of
+the live DB -- reporting only, since a static snapshot has no live row
+to close.
+
 ## Staying informed
 
 Considered and rejected: an email/webhook notifier that pushes on a new

@@ -380,7 +380,7 @@ ALTER TABLE postings ADD COLUMN IF NOT EXISTS work_arrangement TEXT NOT NULL DEF
 ALTER TABLE events DROP CONSTRAINT IF EXISTS events_kind_check;
 ALTER TABLE events ADD CONSTRAINT events_kind_check
     CHECK (kind IN ('promoted', 'disabled', 'reinstated', 'backup_restore_test',
-                    'expired', 'stalled'));
+                    'expired', 'stalled', 'liveness_audit'));
 
 -- Which generation of the ATS probe matrix judged this candidate.
 --
