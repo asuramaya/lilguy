@@ -3670,8 +3670,18 @@ function filterFeedByCompany(companyName) {
 }
 
 async function getJson(url) {
-  const res = await fetch(url);
-  return res.json();
+  // Never throws: a static-only deployment with no live API behind it
+  // has no route for endpoints like /posting/<id> at all, and answers
+  // with a 200 text/html copy of this same page (Cloudflare Pages' SPA
+  // fallback) rather than a 404 -- res.json() on that used to throw an
+  // uncaught SyntaxError, leaving the caller stuck on "loading…" with
+  // no visible error. Every caller already checks `data.error`.
+  try {
+    const res = await fetch(url);
+    return await res.json();
+  } catch (e) {
+    return { error: "Couldn't load this — the live API isn't reachable from here." };
+  }
 }
 
 function detailEl() { return document.getElementById("tab-detail"); }
@@ -3694,7 +3704,10 @@ async function renderPostingPage(id) {
 
   if (EDGE_DATA.active && EDGE_DATA.corpus) {
     p = EDGE_DATA.corpus.find(x => x.id === id);
-    if (!p) return showDetailError("No such posting in active feed");
+    // The edge export only carries OPEN postings, so a miss here is
+    // most often "this posting has since closed" rather than a bad
+    // link -- say that rather than implying the link itself was wrong.
+    if (!p) return showDetailError("This posting is no longer open — it may have closed, or the link may be out of date.");
 
     // In Edge mode, fetch description shard if present
     let descText = p.description || "";
@@ -4100,10 +4113,22 @@ async function bootFeed() {
 }
 
 if (activeDetailRoute()) {
-  // Deep link straight to an entity page. The feed still loads behind it
-  // so leaving the page is instant rather than a second round trip.
-  bootFeed();
-  route();
+  // EDGE_DATA has to resolve BEFORE route() runs. Calling route()
+  // straight after firing bootFeed() (not awaiting it) meant every
+  // deep-linked entity page ran with EDGE_DATA.active still at its
+  // initial `false` -- so on the static edge deployment (no live API
+  // behind it) render*Page() took the "call the API" branch anyway,
+  // hitting endpoints like /posting/<id> that don't exist there.
+  // Cloudflare's SPA fallback answers those with a 200 text/html copy
+  // of this same index.html rather than a real 404, so res.json() then
+  // threw a SyntaxError with nothing shown for it -- confirmed live,
+  // not hypothetical. The feed still loads in the background behind
+  // the detail page, so leaving it is still instant.
+  initEdgeData().then(() => {
+    route();
+    loadFeedCategories().then(() => { updateFiltersUi(); loadFeed(); });
+  });
+  checkHealth();
 } else {
   bootFeed();
   ensureViewLoaded(pillValue("feed-view"));

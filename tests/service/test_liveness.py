@@ -69,6 +69,19 @@ def _row(pid):
         return cur.fetchone()
 
 
+def _workday_posting(pid, url):
+    with db.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO postings (id, source_id, source_entry, company, title, location, url, ats,
+                                   category, status, posted_at_ts, first_seen, last_seen)
+            VALUES (%s, %s, 'Acme Careers', 'Acme', 'Ops Intern', 'Remote', %s, 'workday',
+                    'Logistics', 'open', %s, now(), now())
+            """,
+            (pid, _source(), url, NOW - timedelta(days=10)),
+        )
+
+
 class FakeResp:
     def __init__(self, status_code):
         self.status_code = status_code
@@ -117,6 +130,29 @@ def test_a_network_error_never_closes_a_posting():
     out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(boom))
     assert out["closed"] == 0
     assert _row("maybe")["status"] == "open"
+
+
+def test_workday_cxs_404_closes_the_posting():
+    pid = "workday:acme:Acme_Careers:/job/some-role_R123"
+    _workday_posting(pid, "https://acme.wd1.myworkdayjobs.com/Acme_Careers/job/some-role_R123")
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: FakeResp(404)))
+    assert out["closed"] == 1
+    assert _row(pid)["status"] == "closed"
+
+
+def test_workday_cxs_403_defers_rather_than_closes():
+    # Measured live against a real tenant: Workday's per-posting CXS
+    # endpoint 403s on postings the source's own list fetch still
+    # confirms open -- at scale this closed and reopened the same
+    # postings over 100k times in a week (CVS Health, Enterprise
+    # Mobility, TikTok). A 403 here is "we got blocked", not "it's
+    # gone" -- same rule as every other non-Workday source.
+    pid = "workday:acme:Acme_Careers:/job/some-role_R123"
+    _workday_posting(pid, "https://acme.wd1.myworkdayjobs.com/Acme_Careers/job/some-role_R123")
+    out = liveness.run_liveness_sweep(limit=5, pace=0, session=_session(lambda u: FakeResp(403)))
+    assert out["closed"] == 0
+    assert out["deferred"] == 1
+    assert _row(pid)["status"] == "open"
 
 
 def test_oldest_postings_are_checked_first():

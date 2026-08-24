@@ -55,7 +55,19 @@ UA = {
 }
 
 GONE_STATUSES = (404, 410)
-WORKDAY_GONE_STATUSES = (403, 404, 410)
+# NOT (403, 404, 410) despite how that reads -- measured live, Workday's
+# per-job CXS detail endpoint 403s on demonstrably still-open postings
+# (confirmed by hand against a live tenant, and at scale: CVS Health,
+# Enterprise Mobility and TikTok's Workday postings alone racked up
+# 100k+ "expired" events between them in a week, while the scheduler's
+# own next successful fetch of the SAME source kept re-listing those
+# exact postings and reopening them -- liveness closing what the
+# scheduler's normal fetch confirms is still there, over and over). The
+# CXS detail endpoint appears to apply tighter bot-defense than the
+# list endpoint scheduler.py already fetches successfully, so a 403
+# here is "we got blocked", not "the job is gone" -- rule 1 in this
+# file's own docstring, which the tuple below had silently violated.
+WORKDAY_GONE_STATUSES = (404, 410)
 GONE_PHRASES = (
     "page doesn't exist",
     "page does not exist",

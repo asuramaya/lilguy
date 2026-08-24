@@ -2,7 +2,10 @@
 """Audit the liveness and validity of job postings in the corpus.
 
 Checks whether postings are still active on their source ATS platforms:
-  - Workday: Queries the per-posting CXS API endpoint (/wday/cxs/...) which returns 404/403 for closed jobs.
+  - Workday: Queries the per-posting CXS API endpoint (/wday/cxs/...). 404/410
+    means closed; 403 is treated as UNCERTAIN (blocked), not closed -- measured
+    live returning 403 for postings the source's own list fetch still confirms
+    open, see service/liveness.py's WORKDAY_GONE_STATUSES comment.
   - Greenhouse, Lever, Ashby, SmartRecruiters: Checks HTTP status and redirect destinations.
   - Generic/Muse/JSON-LD: Inspects HTTP status codes and HTML closure markers.
 
@@ -67,8 +70,14 @@ def verify_posting_liveness(posting: dict, timeout: float = 6.0) -> dict:
         if cxs_url:
             try:
                 r = requests.get(cxs_url, headers={"User-Agent": UA["User-Agent"], "Accept": "application/json"}, timeout=timeout)
-                if r.status_code in (403, 404, 410):
+                if r.status_code in (404, 410):
                     return {"id": pid, "company": company, "title": title, "status": "CLOSED", "code": r.status_code, "reason": "cxs_404"}
+                elif r.status_code == 403:
+                    # Measured live: Workday's CXS detail endpoint 403s on
+                    # postings the source's own list fetch still confirms
+                    # open (see service/liveness.py's WORKDAY_GONE_STATUSES
+                    # comment) -- a block, not a closure.
+                    return {"id": pid, "company": company, "title": title, "status": "UNCERTAIN", "code": 403, "reason": "cxs_403_blocked"}
                 elif r.status_code == 200:
                     return {"id": pid, "company": company, "title": title, "status": "ALIVE", "code": 200, "reason": "cxs_200"}
                 else:
