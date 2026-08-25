@@ -54,6 +54,7 @@ from source_sync import run_source_sync_sweep  # noqa: E402
 from cycle import parse_cycle  # noqa: E402
 from empty_boards import run_empty_board_sweep  # noqa: E402
 from work_arrangement import from_location  # noqa: E402
+from standardize import clean_display_title, standardize_location  # noqa: E402
 from liveness import run_liveness_sweep  # noqa: E402
 from stall import check_for_stall  # noqa: E402
 from smartrecruiters_descriptions import fetch_missing_descriptions as fetch_sr_descriptions  # noqa: E402
@@ -151,6 +152,15 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
 
     new_count = 0
     for p in postings:
+        # Computed from the RAW connector strings, not the cleaned display
+        # versions below -- dedup_key is a fingerprint every existing row's
+        # dedup_key was also computed against, so changing its inputs would
+        # silently stop matching the historical corpus (a new scrape of an
+        # already-seen posting would look like a fresh one). cycle/work
+        # arrangement detection is likewise proven against raw ATS text;
+        # cleaning strips requisition codes and casing, neither of which
+        # those keyword matchers depend on, so there's no upside to
+        # switching their input and a real (if small) risk in doing so.
         dedup_key = compute_dedup_key(p.company, p.title, p.location)
         company_key = compute_company_key(p.company)
         # Anchored on seen_at, not now(), so the stored value means the
@@ -162,6 +172,17 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
         # employer answering directly. The location string is the
         # fallback, not an override.
         arrangement = p.work_arrangement or from_location(p.location)
+        # display_title/display_location are what actually gets stored as
+        # `title`/`location` -- service/standardize.py's cleaning was only
+        # ever wired into the Cloudflare edge export and a one-off seed
+        # script, never into this live ingest path, so the production DB
+        # stored raw ATS strings ("CA-QC-LONGUEUIL-J01 ~ ...", requisition
+        # codes glued onto titles) forever and the frontend had to grow its
+        # own separate, weaker regex cleaning to compensate at render time.
+        # Falls back to the raw value if cleaning ever empties a title
+        # outright (e.g. one that was pure requisition code).
+        display_title = clean_display_title(p.title) or p.title
+        display_location = standardize_location(p.location)
         cur.execute(
             """
             INSERT INTO postings (id, source_id, source_entry, company, title, location, url,
@@ -243,7 +264,7 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
                 last_seen = EXCLUDED.last_seen
             """,
             (
-                p.id, source_id, source_entry, p.company, p.title, p.location, p.url,
+                p.id, source_id, source_entry, p.company, display_title, display_location, p.url,
                 p.source, p.category, p.job_function, cycle_season, cycle_year,
                 arrangement, p.posted_at, posted_ts, posted_approx,
                 p.description_snippet,

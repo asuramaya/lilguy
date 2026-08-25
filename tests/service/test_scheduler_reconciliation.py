@@ -261,6 +261,49 @@ def test_a_company_rename_does_not_orphan_the_closure_check(monkeypatch):
         assert cur.fetchone()["status"] == "closed"
 
 
+def test_title_and_location_are_stored_standardized_not_raw(monkeypatch):
+    # Regression: service/standardize.py's cleaning (clean_display_title,
+    # standardize_location) existed and was fully tested, but was only
+    # ever wired into the Cloudflare edge export and a one-off seed
+    # script -- never into this live ingest path. The production DB
+    # stored raw ATS strings ("CA-QC-LONGUEUIL-J01 ~ 1000 Blvd ...",
+    # requisition codes glued onto titles) forever, and the frontend grew
+    # its own separate, weaker regex cleaning at render time to
+    # compensate.
+    source_id = _insert_source("Acme")
+    row = {"id": source_id, "company": "Acme", "ats": "greenhouse", "config": {}, "status": "active",
+           "consecutive_failures": 0, "last_scraped_at": None}
+    p = fake_posting("gh:acme:messy", "Acme", "Supply Chain Intern - JR12345")
+    p.location = "CA-QC-LONGUEUIL-J01 ~ 1000 Rue Test"
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: [p]))
+    scheduler.run_one(row)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT title, location FROM postings WHERE id = 'gh:acme:messy'")
+        r = cur.fetchone()
+    assert r["title"] == "Supply Chain Intern"
+    assert r["location"] == "Longueuil, QC"
+
+
+def test_dedup_key_is_computed_from_the_raw_title_not_the_cleaned_one(monkeypatch):
+    # dedup_key is a fingerprint every existing row's dedup_key was ALSO
+    # computed against -- switching its inputs to the newly-cleaned title/
+    # location would silently stop matching the historical corpus (a
+    # re-scrape of an already-seen posting would look brand new).
+    source_id = _insert_source("Acme")
+    row = {"id": source_id, "company": "Acme", "ats": "greenhouse", "config": {}, "status": "active",
+           "consecutive_failures": 0, "last_scraped_at": None}
+    p = fake_posting("gh:acme:messy2", "Acme", "SUPPLY CHAIN INTERN R1022058")
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: [p]))
+    scheduler.run_one(row)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT dedup_key FROM postings WHERE id = 'gh:acme:messy2'")
+        stored_key = cur.fetchone()["dedup_key"]
+    from dedup import compute_dedup_key
+    assert stored_key == compute_dedup_key("Acme", "SUPPLY CHAIN INTERN R1022058", "Remote")
+
+
 def _fake_posting_with_date(id_, posted_at):
     return Posting(id=id_, company="Acme", title="Supply Chain Intern", location="Remote",
                    url=f"https://x/{id_}", source="greenhouse", category="Test",
