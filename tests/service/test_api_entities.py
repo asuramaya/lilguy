@@ -412,9 +412,61 @@ def test_candidates_paging_never_repeats_or_skips():
                 "INSERT INTO discovery_candidates (company, review_status, checked_at) "
                 "VALUES (%s, 'no_match', now())", (f"tied{i}",))
     seen = []
-    for offset in (0, 2, 4):
-        seen += [c["company"] for c in api.candidates(limit=2, offset=offset)["candidates"]]
+    cursor_str = None
+    for _ in range(3):
+        page = api.candidates(limit=2, cursor_str=cursor_str)
+        seen += [c["company"] for c in page["candidates"]]
+        cursor_str = page["next_cursor"]
     assert len(set(seen)) == 6, "paging repeated or skipped rows across tied checked_at"
+
+
+def test_candidates_cursor_paging_survives_a_concurrent_insert():
+    # The bug OFFSET has and a keyset cursor doesn't: a row inserted
+    # between two page fetches shifts every OFFSET-based position after
+    # it, so whichever row used to sit at the new page's boundary either
+    # repeats or gets skipped. A cursor anchors on the last row actually
+    # seen, so it's unaffected no matter what lands in between.
+    with db.cursor() as cur:
+        for i in range(4):
+            cur.execute(
+                "INSERT INTO discovery_candidates (company, review_status, checked_at) "
+                "VALUES (%s, 'no_match', now() - make_interval(hours => %s))", (f"co{i}", i))
+    first = api.candidates(limit=2)
+    assert [c["company"] for c in first["candidates"]] == ["co0", "co1"]
+
+    # A new candidate lands with the newest checked_at -- would have
+    # shifted an OFFSET=2 fetch by one row.
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO discovery_candidates (company, review_status, checked_at) "
+            "VALUES ('brand_new', 'no_match', now() + interval '1 hour')")
+
+    second = api.candidates(limit=2, cursor_str=first["next_cursor"])
+    assert [c["company"] for c in second["candidates"]] == ["co2", "co3"]
+
+
+def test_candidates_cursor_walks_the_null_checked_at_group_before_the_rest():
+    # checked_at sorts NULLS FIRST -- an unchecked candidate is what a
+    # reader most wants to see. The cursor predicate has to notice it's
+    # still inside that NULL group (matching by id alone) before it can
+    # switch to comparing (checked_at, id) tuples for the rest.
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO discovery_candidates (company, review_status) VALUES ('unchecked_a', 'no_match')")
+        cur.execute("INSERT INTO discovery_candidates (company, review_status) VALUES ('unchecked_b', 'no_match')")
+        cur.execute(
+            "INSERT INTO discovery_candidates (company, review_status, checked_at) "
+            "VALUES ('checked_c', 'no_match', now())")
+
+    seen = []
+    cursor_str = None
+    for _ in range(3):
+        page = api.candidates(limit=1, cursor_str=cursor_str)
+        seen += [c["company"] for c in page["candidates"]]
+        cursor_str = page["next_cursor"]
+        if not cursor_str:
+            break
+    assert seen == ["unchecked_b", "unchecked_a", "checked_c"], \
+        "NULL checked_at rows must be fully walked before the non-NULL group starts"
 
 
 def test_candidates_filter_server_side_not_in_the_browser():
@@ -455,6 +507,23 @@ def test_duplicates_search_covers_everything_not_just_the_page():
     found = api.duplicates(q="globex")
     assert found["total"] == 1
     assert [d["id"] for d in found["duplicates"]] == ["needle"]
+
+
+def test_duplicates_cursor_paging_survives_a_concurrent_insert():
+    sid = _source("Acme")
+    for i in range(4):
+        _posting(f"dup{i}", "Acme", sid, status="duplicate")
+    first = api.duplicates(limit=2)
+    assert first["next_cursor"] is not None
+    seen_ids = {d["id"] for d in first["duplicates"]}
+
+    # A new duplicate lands mid-page-walk -- would have shifted an
+    # OFFSET=2 fetch by one row.
+    _posting("brand_new_dup", "Acme", sid, status="duplicate")
+
+    second = api.duplicates(limit=2, cursor_str=first["next_cursor"])
+    seen_ids |= {d["id"] for d in second["duplicates"]}
+    assert seen_ids == {"dup0", "dup1", "dup2", "dup3"}, "concurrent insert shifted the page"
 
 
 def test_posting_siblings_are_stable_when_dates_tie():

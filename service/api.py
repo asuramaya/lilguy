@@ -11,6 +11,8 @@ here exactly as-is rather than reimplemented against SQL.
 
 Run with: uvicorn service.api:app --host 0.0.0.0 --port 8000
 """
+import base64
+import json
 import sys
 import time
 from datetime import datetime, timezone
@@ -377,6 +379,14 @@ def feed(
 # ---------------------------------------------------------------------
 # Entity endpoints.
 #
+def _encode_cursor(fields: dict) -> str:
+    return base64.urlsafe_b64encode(json.dumps(fields, default=str).encode()).decode()
+
+
+def _decode_cursor(cursor_str: str) -> dict:
+    return json.loads(base64.urlsafe_b64decode(cursor_str.encode()).decode())
+
+
 # COMPANY, SOURCE and ATS are three different things and this project
 # had been using one word ("source") for all of them. They're separated
 # here because they answer different questions and, for aggregators,
@@ -755,7 +765,7 @@ def events(limit: int = Query(50, le=500)):
 def duplicates(
     q: Annotated[Optional[str], Query(description="Substring match on company or title")] = None,
     limit: Annotated[int, Query(le=5000)] = 500,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    cursor_str: Annotated[Optional[str], Query(alias="cursor")] = None,
 ):
     """Audit view over what dedup.py's sweep actually caught -- deliberately
     NOT run through user_filter.py's domain matching like /feed is, since
@@ -768,16 +778,34 @@ def duplicates(
     filter them in the browser while 1,425 existed, labelling the result
     "of 500" -- so a duplicate at position 900 was, as far as a reader
     could tell, not there at all. Same bug the feed had, one tab over.
+
+    Paged with a keyset cursor, not OFFSET -- OFFSET counts rows from the
+    start of the result set on every call, so a row the dedup sweep
+    inserts or reclassifies between two page fetches shifts every row
+    after it, silently skipping or repeating rows for whoever is paging
+    through page 2+. A cursor anchors on the last row actually seen
+    (first_seen, id) instead of a position, so it's immune to that no
+    matter what the sweep does concurrently. first_seen is NOT NULL, so
+    no NULLS FIRST complication here (contrast /candidates' checked_at).
     """
     where = ["d.status = 'duplicate'"]
     params: list = []
     if q and q.strip():
         where.append("(d.company ILIKE %s OR d.title ILIKE %s)")
         params += [f"%{q.strip()}%"] * 2
+    # The cursor bound isn't part of "how many total match" -- only the
+    # search/status filters are -- so it's kept out of count_clause
+    # entirely rather than sliced back out of a shared params list.
+    count_clause = " AND ".join(where)
+    count_params = list(params)
+    if cursor_str:
+        after = _decode_cursor(cursor_str)
+        where.append("(d.first_seen, d.id) < (%s, %s)")
+        params += [after["first_seen"], after["id"]]
     clause = " AND ".join(where)
 
     with cursor() as cur:
-        cur.execute(f"SELECT count(*) AS n FROM postings d WHERE {clause}", params)
+        cur.execute(f"SELECT count(*) AS n FROM postings d WHERE {count_clause}", count_params)
         total = cur.fetchone()["n"]
         cur.execute(
             f"""
@@ -787,15 +815,20 @@ def duplicates(
             FROM postings d
             LEFT JOIN postings c ON c.id = d.duplicate_of
             WHERE {clause}
-            ORDER BY d.first_seen DESC, d.id
-            LIMIT %s OFFSET %s
+            ORDER BY d.first_seen DESC, d.id DESC
+            LIMIT %s
             """,
-            [*params, limit, offset],
+            [*params, limit],
         )
         rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
 
+    next_cursor = (
+        _encode_cursor({"first_seen": rows[-1]["first_seen"], "id": rows[-1]["id"]})
+        if len(rows) == limit
+        else None
+    )
     return {"duplicates": rows, "total": total, "count": len(rows),
-            "limit": limit, "offset": offset}
+            "limit": limit, "next_cursor": next_cursor}
 
 
 @app.get("/candidates")
@@ -804,7 +837,7 @@ def candidates(
     review_status: Annotated[Optional[str], Query(description="unchecked, no_match, rejected, promoted")] = None,
     ats: Annotated[Optional[str], Query(description="Exact match on the guessed ATS platform")] = None,
     limit: Annotated[int, Query(le=1000)] = 200,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    cursor_str: Annotated[Optional[str], Query(alias="cursor")] = None,
 ):
     """Paged, filtered server-side, and WITHOUT the evidence blob.
 
@@ -819,6 +852,18 @@ def candidates(
     narrowing happens here rather than in the browser -- filtering a
     page and calling it the corpus is the bug this and the duplicates
     tab both had.
+
+    Paged with a keyset cursor, not OFFSET -- same reasoning as
+    /duplicates, except Common Crawl reseeding this table daily makes
+    the underlying churn constant rather than occasional, so OFFSET's
+    "counts from the start every time" behavior would be wrong close to
+    100% of the time a caller pages past page 1. checked_at sorts NULLS
+    FIRST (an unchecked candidate is what a reader most wants to see),
+    so the cursor predicate has to walk the NULL group by id first, then
+    switch to the (checked_at, id) tuple once past it -- collapsing that
+    into one ordinary tuple comparison would silently drop the NULL rows
+    or reorder them, since SQL tuple comparison has no NULLS FIRST
+    concept of its own.
     """
     where = ["TRUE"]
     params: list = []
@@ -831,20 +876,37 @@ def candidates(
     if q and q.strip():
         where.append("company ILIKE %s")
         params.append(f"%{q.strip()}%")
+    count_clause = " AND ".join(where)
+    count_params = list(params)
+    if cursor_str:
+        after = _decode_cursor(cursor_str)
+        after_checked_at, after_id = after["checked_at"], after["id"]
+        # NULLS FIRST means the NULL group sorts entirely before every
+        # non-NULL row -- so "resuming from a NULL-group cursor" means
+        # BOTH finishing that group (by id) AND then taking every
+        # non-NULL row unconditionally, not just continuing the tuple
+        # comparison (which would wrongly exclude the whole non-NULL
+        # group forever once the cursor itself is NULL).
+        if after_checked_at is None:
+            where.append("((checked_at IS NULL AND id < %s) OR checked_at IS NOT NULL)")
+            params.append(after_id)
+        else:
+            where.append("(checked_at IS NOT NULL AND (checked_at, id) < (%s, %s))")
+            params += [after_checked_at, after_id]
     clause = " AND ".join(where)
 
     with cursor() as cur:
-        cur.execute(f"SELECT count(*) AS n FROM discovery_candidates WHERE {clause}", params)
+        cur.execute(f"SELECT count(*) AS n FROM discovery_candidates WHERE {count_clause}", count_params)
         total = cur.fetchone()["n"]
         cur.execute(
             # `id` is the tiebreaker: checked_at alone is not a total
             # ordering, and paging a non-total sort repeats and skips
             # rows. Same lesson as the feed's paging.
-            f"SELECT company, ats, review_status, evidence->>'reason' AS reason, "
+            f"SELECT id, company, ats, review_status, evidence->>'reason' AS reason, "
             f"       checked_at, next_check_at "
             f"FROM discovery_candidates WHERE {clause} "
-            "ORDER BY checked_at DESC NULLS FIRST, id DESC LIMIT %s OFFSET %s",
-            [*params, limit, offset],
+            "ORDER BY checked_at DESC NULLS FIRST, id DESC LIMIT %s",
+            [*params, limit],
         )
         rows = [_row_to_filter_dict(r) for r in cur.fetchall()]
         # The FULL set of ATS guesses, not just what's on this page --
@@ -855,8 +917,17 @@ def candidates(
         )
         ats_options = [r["ats"] for r in cur.fetchall()]
 
+    last_checked_at = rows[-1]["checked_at"] if rows else None
+    next_cursor = (
+        _encode_cursor({
+            "checked_at": last_checked_at.isoformat() if isinstance(last_checked_at, datetime) else None,
+            "id": rows[-1]["id"],
+        })
+        if len(rows) == limit
+        else None
+    )
     return {"candidates": rows, "total": total, "count": len(rows),
-            "limit": limit, "offset": offset, "ats_options": ats_options}
+            "limit": limit, "next_cursor": next_cursor, "ats_options": ats_options}
 
 
 # Set on every response, including the static page.
