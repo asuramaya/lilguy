@@ -60,6 +60,7 @@ from stall import check_for_stall  # noqa: E402
 from smartrecruiters_descriptions import fetch_missing_descriptions as fetch_sr_descriptions  # noqa: E402
 from workday_descriptions import fetch_missing_descriptions  # noqa: E402
 import company_resolution  # noqa: E402
+import category_resolution  # noqa: E402
 
 MAX_WORKERS = 6
 POLL_INTERVAL_SECONDS = 30
@@ -74,6 +75,11 @@ WORKDAY_DESCRIPTION_BATCH = 10
 # is exactly the kind of request the description backfill's own pacing
 # philosophy applies to.
 COMPANY_RESOLUTION_BATCH = 5
+# Bigger than COMPANY_RESOLUTION_BATCH is fine here -- unlike that sweep,
+# this one makes zero outbound requests (title/snippet are already in
+# Postgres from the scrape that already happened), so there's no live
+# third-party traffic to keep to a trickle.
+CATEGORY_RESOLUTION_BATCH = 20
 
 # Deliberately small. This makes real requests to real employers' sites
 # purely to ask "is this still there", so it must stay a background
@@ -463,6 +469,26 @@ def run_forever(max_workers: int = MAX_WORKERS, poll_interval: int = POLL_INTERV
             if resolved["attempted"]:
                 print(f"  company name resolution: {resolved['fixed']} fixed, "
                       f"{resolved['skipped']} skipped", flush=True)
+
+            # ADDED 2026-08-25: pays down the 'Uncategorized' backlog
+            # mechanically, no LLM in this loop -- discovery.py seeds
+            # every new candidate with category="Uncategorized" and
+            # nothing filled it in afterward. Company-name matching alone
+            # (standardize.infer_category's own heuristics) resolved only
+            # 3.2% of the real backlog when measured live, because most
+            # of these companies are raw lowercase tenant slugs that
+            # defeat word-boundary regexes. Deriving job_function from
+            # each posting's TITLE first and feeding that into
+            # infer_category resolved 49.5% instead -- see
+            # category_resolution.py's own module docstring for the full
+            # measurement. Same majority-vote discipline as
+            # company_resolution.py: several of a source's postings have
+            # to agree before a category is trusted, or it stays
+            # unresolved for a later cycle rather than getting guessed at.
+            categorized = category_resolution.run(limit=CATEGORY_RESOLUTION_BATCH)
+            if categorized["attempted"]:
+                print(f"  category resolution: {categorized['fixed']} fixed, "
+                      f"{categorized['skipped']} skipped", flush=True)
 
             # Outside `if due:` for the same reason as descriptions: this
             # is not tied to any one source's schedule. It exists because
