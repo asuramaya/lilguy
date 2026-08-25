@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Internship Application Autofill
 // @namespace    internships-repo
-// @version      1.1.0
-// @description  Fills known-repetitive fields on Greenhouse/Lever/Workday application forms from a stored profile. Never submits — you always review before clicking Submit yourself.
+// @version      1.2.0
+// @description  Fills known-repetitive fields on Greenhouse/Lever/Ashby/Rippling/SmartRecruiters/Workday application forms from a stored profile. Never submits — you always review before clicking Submit yourself.
 // @match        https://job-boards.greenhouse.io/*
 // @match        https://boards.greenhouse.io/*
 // @match        https://jobs.lever.co/*
@@ -42,6 +42,16 @@
  * never uploads a resume without you having explicitly stored one first
  * via the menu command below. Read what got filled before you submit —
  * a filled field is a draft, not a verified answer.
+ *
+ * ASHBY / RIPPLING / SMARTRECRUITERS (added 2026-08-25, see README.md for
+ * the full live-DOM findings): Ashby and Rippling turned out to already
+ * work with plain label/placeholder matching once a real bug was fixed
+ * (fullName's pattern was anchored against labelTextFor's full joined
+ * signal, which can never match once anything else joins it — see
+ * MATCHERS below). SmartRecruiters is architecturally different: its
+ * fields are custom `<spl-*>` elements with the real `<input>` inside a
+ * shadow root, invisible to a plain querySelectorAll — see
+ * deepQueryAll()/fillSplHost() below.
  */
 
 (function () {
@@ -100,7 +110,16 @@
   const MATCHERS = [
     { key: "firstName", patterns: [/first\s*name/i] },
     { key: "lastName", patterns: [/last\s*name/i, /surname/i] },
-    { key: "fullName", patterns: [/full\s*name/i, /^name$/i] },
+    // \bname\b, not /^name$/i -- labelTextFor always appends el.name/el.id
+    // AFTER the label text into one joined signal string, so an anchored
+    // pattern can never match once anything else is appended (which is
+    // every field, on every platform). Confirmed live on Ashby: a bare
+    // "Name" field's signal is "name type here... _systemfield_name
+    // _systemfield_name", and /^name$/i tests the WHOLE string, not just
+    // the label part. Checked after firstName/lastName in MATCHERS order
+    // (matchKey returns the first match), so this can't steal a "First
+    // Name" field that already matched its own, more specific pattern.
+    { key: "fullName", patterns: [/full\s*name/i, /\bname\b/i] },
     { key: "email", patterns: [/e-?mail/i] },
     { key: "phone", patterns: [/phone/i, /mobile/i] },
     { key: "linkedin", patterns: [/linkedin/i] },
@@ -144,8 +163,14 @@
     if (wrappingLabel) parts.push(wrappingLabel.textContent);
     if (el.getAttribute("aria-label")) parts.push(el.getAttribute("aria-label"));
     if (el.placeholder) parts.push(el.placeholder);
-    if (el.name) parts.push(el.name);
-    if (el.id) parts.push(el.id);
+    // Split, not raw -- SmartRecruiters' own internal ids are exactly as
+    // stable and readable as Workday's data-automation-id (confirmed
+    // live: "first-name-input", "confirm-email-input", "linkedin-input"),
+    // but a raw hyphenated id joins "first" and "name" with a "-", not
+    // whitespace, so /first\s*name/i never matched it. Same fix applies
+    // to el.name for platforms that use one attribute for the other.
+    if (el.name) parts.push(splitIdWords(el.name));
+    if (el.id) parts.push(splitIdWords(el.id));
     const automationId = el.getAttribute("data-automation-id");
     if (automationId) parts.push(splitIdWords(automationId));
     // Greenhouse/Lever often put the visible label in a preceding sibling
@@ -187,6 +212,44 @@
     else el.value = value;
     el.dispatchEvent(new Event("input", { bubbles: true }));
     el.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  // SmartRecruiters' apply form (confirmed live on a real AECOM posting,
+  // 2026-08-24) doesn't render plain <input> elements at the top level at
+  // all -- every field is a custom element from its own "SPL" design
+  // system (<spl-input>, <spl-textarea>, ...) with the REAL <input> buried
+  // inside that element's shadow root. A plain
+  // document.querySelectorAll("input, textarea, select") sees none of
+  // them; it has to walk shadow roots explicitly.
+  // <spl-select>, <spl-phone-field>, <spl-autocomplete> deliberately left
+  // out -- they're dropdown-driven (click an option, not type a value),
+  // a different interaction model than a text `.value` assignment covers.
+  // Same call as the existing radio/checkbox skip below: don't guess.
+  const SPL_HOST_TAGS = ["SPL-INPUT", "SPL-TEXTAREA"];
+
+  function deepQueryAll(root, selector) {
+    const found = Array.from(root.querySelectorAll(selector));
+    for (const el of root.querySelectorAll("*")) {
+      if (el.shadowRoot) found.push(...deepQueryAll(el.shadowRoot, selector));
+    }
+    return found;
+  }
+
+  // The host custom element (<spl-input id="first-name-input">) carries
+  // the SAME id as the real <input> nested in its shadow root -- confirmed
+  // live -- and exposes its own working `value` property setter that
+  // updates both its internal shadow-DOM input AND the visible UI, so
+  // there's no need to reach past it into the shadow root at all. It is
+  // NOT an HTMLInputElement instance, though (confirmed live: `instanceof
+  // HTMLInputElement` is false), so setNativeValue's native-setter trick
+  // throws on it -- a plain assignment is both correct and necessary here.
+  function fillSplHost(el, value) {
+    if (!value) return false;
+    el.value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    markFilled(el);
+    return true;
   }
 
   function markFilled(el) {
@@ -260,6 +323,19 @@
       } else ok = fillTextLike(el, value);
 
       if (ok) filledCount++;
+    });
+
+    // SmartRecruiters' SPL custom elements never showed up in the
+    // querySelectorAll above -- they live inside shadow roots (see
+    // deepQueryAll's own comment). deepQueryAll(document, ...) intentionally
+    // starts a fresh, separate top-level walk rather than trying to fold
+    // this into the loop above, since these hosts need their own honeypot/
+    // fill logic (not an HTMLInputElement, no .type, its own write path).
+    deepQueryAll(document, SPL_HOST_TAGS.join(", ")).forEach((el) => {
+      if (el.disabled || isLikelyHoneypot(el)) return;
+      const key = matchKey(el);
+      if (!key || !(key in profile)) return;
+      if (fillSplHost(el, profile[key])) filledCount++;
     });
 
     maybeFillResume();

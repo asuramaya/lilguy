@@ -1,9 +1,10 @@
 # Application Autofill
 
-A browser userscript that fills the repetitive fields on Greenhouse and
-Lever application forms: name, contact info, school, major, GPA, address,
-work-authorization questions, all from a profile you fill in once. It never
-clicks Submit. You review every filled field and submit yourself.
+A browser userscript that fills the repetitive fields on Greenhouse, Lever,
+Ashby, Rippling, SmartRecruiters, and Workday application forms: name,
+contact info, school, major, GPA, address, work-authorization questions,
+all from a profile you fill in once. It never clicks Submit. You review
+every filled field and submit yourself.
 
 ## Why autofill and not auto-apply
 
@@ -47,7 +48,40 @@ aren't committed if you keep `profile.json` out of git (already covered by
 
 ## Coverage
 
-Works on Greenhouse, Lever, and Workday.
+Works on Greenhouse, Lever, Ashby, Rippling, SmartRecruiters, and Workday.
+
+**Ashby, Rippling, and SmartRecruiters (added 2026-08-25)** were previously
+listed in the script's `@match` list with zero actual field-mapping logic
+behind them -- a gap the earlier Workday/SmartRecruiters connector work
+created and never closed. Checked live against real application forms
+(Venti Technologies on Ashby, Rippling's own careers site, AECOM on
+SmartRecruiters) rather than assumed:
+
+- **Ashby and Rippling already worked** once one real bug was fixed: the
+  `fullName` pattern (`/^name$/i`) was anchored against the FULL joined
+  signal string (label text + placeholder + name + id, always appended by
+  `labelTextFor`), so it could never match once anything else joined in --
+  which is every field, on every platform. A bare "Name" field (Ashby) or
+  a form using `placeholder` text instead of `<label for>` (Rippling)
+  needed this fixed to `/\bname\b/i`. Separately, `el.id`/`el.name` are now
+  split into words the same way `data-automation-id` already was, since a
+  raw hyphenated id like `first-name-input` never matched `/first\s*name/i`
+  as one token (a hyphen isn't whitespace).
+- **SmartRecruiters needed real new logic.** Its apply form renders zero
+  plain `<input>` elements at the top level -- every field is a custom
+  element from its own "SPL" design system (`<spl-input>`, `<spl-textarea>`,
+  ...) with the real `<input>` buried inside that element's shadow root, so
+  a normal `document.querySelectorAll` sees nothing. Fixed with a
+  `deepQueryAll()` that walks shadow roots explicitly, matching on the SPL
+  host's own semantic, stable id (confirmed live: `first-name-input`,
+  `last-name-input`, `email-input`, `confirm-email-input`,
+  `linkedin-input`) and writing through the host's own working `.value`
+  setter, which updates both the shadow-nested input and the visible UI --
+  confirmed by screenshot, not just internal state. `<spl-select>`,
+  `<spl-phone-field>`, and `<spl-autocomplete>` are deliberately NOT
+  covered: they're dropdown-driven (click an option), a different
+  interaction model than a text `.value` assignment, same reasoning as the
+  existing radio/checkbox skip below.
 
 **Workday support (added 2026-08-15) came after two earlier blocked
 attempts.** The first had no browser access; the second hit a genuine
