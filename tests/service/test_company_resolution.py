@@ -132,13 +132,46 @@ def _company(source_id):
         return cur.fetchone()["company"]
 
 
-def test_a_source_whose_company_still_equals_its_tenant_gets_fixed():
+def test_a_source_gets_fixed_when_most_sampled_postings_agree():
     sid = _source("ms", "ms")
-    _open_posting(sid, "ms")
+    _open_posting(sid, "ms", path="/job/A/Intern_JR1")
+    _open_posting(sid, "ms", path="/job/B/Intern_JR2")
+    _open_posting(sid, "ms", path="/job/C/Intern_JR3")
     out = cr.run(limit=5, pace=0, session=_session(
         lambda url: FakeResp(200, {"hiringOrganization": {"name": "711 MS Smith Barney, LLC"}})))
     assert out["fixed"] == 1
     assert _company(sid) == "711 MS Smith Barney"
+
+
+def test_a_source_is_left_alone_when_postings_disagree_with_no_majority():
+    # Confirmed live 2026-08-18, the whole reason this sweep now votes
+    # instead of trusting one posting: a multinational's regional
+    # postings each report their OWN legal entity, not the parent
+    # company. Three names, none with a majority -- unresolved-but-
+    # honest beats resolved-but-wrong.
+    sid = _source("3m", "3m")
+    _open_posting(sid, "3m", path="/job/A/Intern_JR1")
+    _open_posting(sid, "3m", path="/job/B/Intern_JR2")
+    _open_posting(sid, "3m", path="/job/C/Intern_JR3")
+    names = iter(["CHN 3M Specialty Materials (Shanghai)", "COP AU Op Pty", "70032 Blackstone Europe LLP"])
+    out = cr.run(limit=5, pace=0, session=_session(
+        lambda url: FakeResp(200, {"hiringOrganization": {"name": next(names)}})))
+    assert out["fixed"] == 0
+    assert out["skipped"] == 1
+    assert _company(sid) == "3m"
+
+
+def test_a_source_with_fewer_than_min_samples_is_left_unresolved():
+    # A single agreeing answer is still just one posting's say-so -- the
+    # exact failure mode this redesign exists to avoid, so it isn't
+    # enough on its own even with no disagreement to weigh against it.
+    sid = _source("ms", "ms")
+    _open_posting(sid, "ms")
+    out = cr.run(limit=5, pace=0, session=_session(
+        lambda url: FakeResp(200, {"hiringOrganization": {"name": "711 MS Smith Barney, LLC"}})))
+    assert out["fixed"] == 0
+    assert out["skipped"] == 1
+    assert _company(sid) == "ms"
 
 
 def test_a_source_with_a_real_name_already_is_never_claimed():
@@ -162,10 +195,26 @@ def test_a_source_with_no_open_postings_is_skipped_not_crashed():
 
 def test_a_fixed_source_is_not_reclaimed_on_a_second_pass():
     sid = _source("ms", "ms")
-    _open_posting(sid, "ms")
+    _open_posting(sid, "ms", path="/job/A/Intern_JR1")
+    _open_posting(sid, "ms", path="/job/B/Intern_JR2")
     cr.run(limit=5, pace=0, session=_session(
         lambda url: FakeResp(200, {"hiringOrganization": {"name": "711 MS Smith Barney, LLC"}})))
     calls = []
     out = cr.run(limit=5, pace=0, session=_session(lambda url: calls.append(url) or FakeResp(200, {})))
     assert out["attempted"] == 0
     assert calls == []
+
+
+def test_a_few_failed_fetches_dont_prevent_a_majority_among_the_rest():
+    # A missing vote (network error, non-200, malformed body) shouldn't
+    # by itself sink an otherwise-clear majority among the postings that
+    # DID answer.
+    sid = _source("ms", "ms")
+    _open_posting(sid, "ms", path="/job/A/Intern_JR1")
+    _open_posting(sid, "ms", path="/job/B/Intern_JR2")
+    _open_posting(sid, "ms", path="/job/C/Intern_JR3")
+    responses = iter([FakeResp(200, {"hiringOrganization": {"name": "711 MS Smith Barney, LLC"}}),
+                       FakeResp(500), FakeResp(200, {"hiringOrganization": {"name": "711 MS Smith Barney, LLC"}})])
+    out = cr.run(limit=5, pace=0, session=_session(lambda url: next(responses)))
+    assert out["fixed"] == 1
+    assert _company(sid) == "711 MS Smith Barney"
