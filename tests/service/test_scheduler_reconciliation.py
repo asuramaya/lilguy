@@ -229,6 +229,38 @@ def test_recategorized_source_updates_existing_open_postings(monkeypatch):
         assert r["company"] == "Acme Corporation"
 
 
+def test_a_company_rename_does_not_orphan_the_closure_check(monkeypatch):
+    # Regression: confirmed live -- source_entry is written once at
+    # insert time and never corrected on later scrapes (unlike company,
+    # which the ON CONFLICT SET list does keep current). The closure
+    # UPDATE used to key on source_entry, so once a source's company
+    # display name was corrected (case, typo, rename), every existing
+    # posting's stale source_entry no longer matched the current
+    # source["company"] passed into every future call, and the posting
+    # became permanently unclosable even after its own source genuinely
+    # stopped returning it. Found live: 538 sources, 1539 open postings
+    # affected this way (pyka:92d3f17a caught red-handed: 404s directly,
+    # absent from Lever's own API, still 'open' in the DB).
+    source_id = _insert_source("pyka")
+    row = {"id": source_id, "company": "pyka", "ats": "greenhouse", "config": {}, "status": "active",
+           "consecutive_failures": 0, "last_scraped_at": None}
+
+    posting_id = "gh:pyka:1"
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse",
+                         lambda: SimpleNamespace(fetch=lambda cfg: [fake_posting(posting_id, "pyka", "Intern")]))
+    scheduler.run_one(row)
+
+    # The company display name gets corrected -- same source_id, new company string.
+    row = {**row, "company": "Pyka"}
+    monkeypatch.setitem(scheduler.CONNECTORS, "greenhouse", lambda: SimpleNamespace(fetch=lambda cfg: []))
+    result = scheduler.run_one(row)
+
+    assert result["closed"] == 1
+    with db.cursor() as cur:
+        cur.execute("SELECT status FROM postings WHERE id = %s", (posting_id,))
+        assert cur.fetchone()["status"] == "closed"
+
+
 def _fake_posting_with_date(id_, posted_at):
     return Posting(id=id_, company="Acme", title="Supply Chain Intern", location="Remote",
                    url=f"https://x/{id_}", source="greenhouse", category="Test",

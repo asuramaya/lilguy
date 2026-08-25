@@ -131,12 +131,21 @@ def _upsert_postings(cur, source_entry: str, source_id: int, postings: list, see
     # source stops returning it, same as an 'open' one would. Leaving
     # 'duplicate' out of this WHERE would strand it in that status
     # forever once its source drops it.
+    #
+    # Keyed on source_id, not source_entry -- source_entry is written
+    # once at insert time and never corrected, so a later company-name
+    # fix (case, typo, rename) orphans every existing posting's
+    # source_entry from the source's current company string forever.
+    # Confirmed live: 538 sources, 1539 open postings, permanently
+    # unclosable this way -- one (pyka) caught red-handed still showing
+    # 'open' for a posting that 404s directly and is absent from Lever's
+    # own live API. source_id is the stable FK; it never drifts.
     cur.execute(
         """
         UPDATE postings SET status = 'closed', closed_at = %s
-        WHERE source_entry = %s AND status IN ('open', 'duplicate') AND NOT (id = ANY(%s))
+        WHERE source_id = %s AND status IN ('open', 'duplicate') AND NOT (id = ANY(%s))
         """,
-        (seen_at, source_entry, fresh_ids or [""]),
+        (seen_at, source_id, fresh_ids or [""]),
     )
     closed = cur.rowcount
 
