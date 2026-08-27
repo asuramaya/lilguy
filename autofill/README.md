@@ -6,31 +6,28 @@ school, major, GPA, address, work-authorization questions, all from a
 profile you fill in once. It never clicks Submit. You review every
 filled field and submit yourself.
 
-Two ways to get it, same coverage:
+Needs [Tampermonkey](https://www.tampermonkey.net/) or Violentmonkey
+first (see Install below), then the profile is set once via a menu
+command and it also auto-attaches a stored resume.
 
-- **No install: [lilguy.win/autofill.html](https://lilguy.win/autofill.html)**
-  -- optionally import a PDF resume to pre-fill a form (parsed
-  client-side via pdf.js, never uploaded), review it, then download
-  `profile.json` and keep it on your own computer. Re-upload that same
-  file later to edit it. Drag the bookmarklet to your bookmarks bar;
-  clicking it on an application page opens a file picker, and choosing
-  `profile.json` fills the page on the spot. No extension, no
-  userscript manager, nothing saved to any server, account, or even
-  this browser.
+[lilguy.win/autofill.html](https://lilguy.win/autofill.html) is a
+companion page for building that profile: optionally import a PDF
+resume to pre-fill it (parsed client-side via pdf.js, never uploaded),
+review it, then download `profile.json` -- paste its contents into the
+userscript's "Set autofill profile" menu command. Nothing on that page
+is saved to a server or an account; it only ever produces a file for
+you to paste in yourself.
 
-  Picking the file fresh every time is deliberate. Two other designs
-  were tried and rejected live: baking the profile into the
-  bookmarklet's own URL leaks it in full if that link is ever shared;
-  reading it from this site's own `localStorage` via an iframe failed
-  because browser storage partitioning gives that iframe a different
-  storage bucket than the one a direct visit writes to. A file avoids
-  both. Source: `service/static/autofill.html` +
-  `service/static/autofill-loader.js` -- read them before trusting the
-  deployed version, since trusting the code is what this option asks
-  of you.
-- **This folder's userscript** (below) -- needs Tampermonkey/Violentmonkey
-  first, but the profile is set once via a menu command (not re-picked
-  per use) and it also auto-attaches a stored resume.
+An earlier version tried delivering this without Tampermonkey at all --
+a bookmarklet that filled the page directly. Dropped after two
+increasingly careful designs both failed live: baking the profile into
+the bookmarklet's own URL leaks it in full if that link is ever shared;
+reading it from this site's `localStorage` via an iframe failed because
+browser storage partitioning gives that iframe a different storage
+bucket than the one a direct visit writes to. Fixable in principle with
+a file-picker-per-use design, but that traded away the one-click appeal
+the bookmarklet existed for in the first place -- at that point it was
+simpler to keep one well-tested delivery path than maintain two.
 
 ## Why autofill and not auto-apply
 

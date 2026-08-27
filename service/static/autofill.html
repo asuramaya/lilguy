@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>lilguy autofill setup</title>
+<title>lilguy profile builder</title>
 <meta name="robots" content="noindex">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23e8952a'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>">
 <style>
@@ -21,6 +21,7 @@
   h1 { font-size: 22px; margin: 0 0 4px; }
   .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
   .brand svg { flex-shrink: 0; }
+  .brand a { color: inherit; text-decoration: none; display: flex; align-items: center; gap: 10px; }
   p.lede { color: var(--ink-secondary); margin: 0 0 28px; max-width: 54ch; }
   .card {
     background: var(--row); border: 1px solid var(--border); border-radius: 10px;
@@ -45,11 +46,6 @@
   button.ghost { background: transparent; color: var(--ink-tertiary); border: 1px solid var(--border); }
   #save-status, #resume-status { font-size: 13px; color: var(--ok); }
   #resume-status.err { color: #c85a42; }
-  .bookmarklet-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
-  a.bookmarklet-btn {
-    display: inline-block; background: var(--accent); color: #1a1208; font-weight: 700;
-    padding: 10px 18px; border-radius: 8px; text-decoration: none; cursor: grab;
-  }
   .note { font-size: 12.5px; color: var(--ink-tertiary); line-height: 1.6; }
   code { background: var(--canvas); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
   input[type="file"] { color: var(--ink-secondary); font-size: 13px; }
@@ -59,34 +55,38 @@
 
 <div class="wrap">
   <div class="brand">
-    <svg width="28" height="28" viewBox="0 0 24 24" fill="#e8952a"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-    <strong>lilguy</strong><span style="color:var(--ink-tertiary)">.win</span>
+    <a href="/">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#e8952a"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      <strong>lilguy</strong><span style="color:var(--ink-tertiary)">.win</span>
+    </a>
   </div>
-  <h1>Autofill, no extension required</h1>
+  <h1>Build your application profile</h1>
   <p class="lede">
-    Build a small <code>profile.json</code> file and keep it on your own
-    computer -- nothing here is saved to a server, an account, or even
-    this browser. Then drag the bookmarklet below to your bookmarks bar;
-    clicking it on any application page opens a file picker so you can
-    choose that file and fill the page instantly.
+    A <code>profile.json</code> of your name, contact info, and education
+    -- optionally guessed from a resume, always reviewed by you before it
+    leaves this page. Nothing here touches a server or an account; it's
+    just a file you download and keep. Use it with the
+    <a href="https://github.com/asuramaya/lilguy/tree/master/autofill" style="color:var(--ink-secondary)">autofill userscript</a>
+    to fill out repetitive application fields on Greenhouse, Lever,
+    Ashby, Rippling, SmartRecruiters, and Workday.
   </p>
 
   <div class="card">
-    <h2>0. Optional: start from a resume or an existing profile.json</h2>
+    <h2>Start from a resume or an existing profile.json</h2>
     <p class="note" style="margin-top:0">
       A PDF resume gets a best-effort guess at name, email, phone,
-      school, degree, and GPA -- parsed entirely in your browser via
-      <a href="https://mozilla.github.io/pdf.js/" target="_blank" style="color:var(--ink-secondary)">pdf.js</a>,
+      school, degree, and GPA, parsed entirely in your browser via
+      <a href="https://mozilla.github.io/pdf.js/" target="_blank" style="color:var(--ink-secondary)">pdf.js</a> --
       never uploaded anywhere. A <code>profile.json</code> you downloaded
-      before loads back in exactly as you left it, so you can edit it.
-      Review everything below either way.
+      before loads back in so you can edit it. Review everything below
+      either way.
     </p>
     <input type="file" id="resume-input" accept="application/pdf,.pdf,application/json,.json">
     <div id="resume-status" style="margin-top:8px;"></div>
   </div>
 
   <div class="card">
-    <h2>1. Your profile</h2>
+    <h2>Your profile</h2>
     <div class="grid2">
       <div class="field"><label>First name</label><input data-k="firstName"></div>
       <div class="field"><label>Last name</label><input data-k="lastName"></div>
@@ -138,31 +138,10 @@
     </div>
   </div>
 
-  <div class="card">
-    <h2>2. The bookmarklet</h2>
-    <p class="note" style="margin-top:0">
-      This link is the same for everyone &mdash; it carries no personal
-      data at all, so it's safe to bookmark, copy, or share. Clicking it
-      opens a small file picker right on the page; choosing your
-      <code>profile.json</code> fills the page immediately, and nothing
-      about it is remembered afterward -- you'll pick the file again next
-      time, on purpose, every time.
-    </p>
-    <div class="bookmarklet-row">
-      <a class="bookmarklet-btn" id="bookmarklet-link" href="#" onclick="return false;">⚡ lilguy autofill</a>
-      <span class="note">&larr; drag this to your bookmarks bar</span>
-    </div>
-    <p class="note">
-      On mobile, or if your browser blocks dragging: right-click (or
-      long-press) the link above and choose "bookmark link" / "add to
-      bookmarks."
-    </p>
-  </div>
-
   <p class="note">
-    Prefer a normal browser extension instead? See the
-    <a href="https://github.com/asuramaya/lilguy/tree/master/autofill" style="color:var(--ink-secondary)">Tampermonkey userscript version</a>
-    in the repo &mdash; same coverage, plus resume auto-attach, at the cost of installing a userscript manager first.
+    To use it: install <a href="https://www.tampermonkey.net/" target="_blank" style="color:var(--ink-secondary)">Tampermonkey</a>,
+    add the <a href="https://github.com/asuramaya/lilguy/blob/master/autofill/autofill.user.js" style="color:var(--ink-secondary)">autofill script</a>,
+    then paste this file's contents into its "Set autofill profile" menu command.
   </p>
 </div>
 
@@ -172,14 +151,6 @@
   const FIELD_KEYS = ["firstName","lastName","fullName","email","phone","linkedin","github","website",
     "school","degree","major","gpa","addressLine1","city","state","zip","country",
     "workAuthorized","needsSponsorship","gender","raceEthnicity","veteranStatus","disabilityStatus"];
-
-  // The loader script's own SHA-256 (hex) -- the bookmarklet refuses to
-  // eval the fetched file if this doesn't match, so a tampered or
-  // unexpectedly-changed autofill-loader.js fails loudly instead of
-  // silently running different code than what shipped with this page.
-  const LOADER_HASH = "45ef86ca772daa87a5a3e06f1f78025e732ad1abb9f1843cb0d045d48374121d";
-
-  const BOOKMARKLET_SRC = `(function(){var h="${LOADER_HASH}";fetch("https://lilguy.win/autofill-loader.js").then(function(r){return r.text()}).then(function(src){return crypto.subtle.digest("SHA-256",new TextEncoder().encode(src)).then(function(buf){var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");if(hex!==h){alert("lilguy autofill: the loader script did not match its expected checksum -- refusing to run. Please check lilguy.win/autofill.html for an updated bookmarklet.");return;}(0,eval)(src);})}).catch(function(e){alert("lilguy autofill failed to load: "+e.message)})})();`;
 
   function currentProfile() {
     const profile = {};
@@ -208,9 +179,6 @@
     document.querySelectorAll("[data-k]").forEach((el) => { el.value = ""; });
     document.querySelector('[data-k="country"]').value = "United States";
   });
-
-  const link = document.getElementById("bookmarklet-link");
-  link.href = "javascript:" + encodeURIComponent(BOOKMARKLET_SRC);
 
   // --- resume import (PDF only for now) -----------------------------
   // DOCX would need a hand-rolled ZIP reader (no browser-native way to
@@ -303,12 +271,10 @@
     // alone satisfies it), which is the single most common substring this
     // regex could hit given how many resumes list a Gmail address. Bare,
     // case-sensitive "MA"/"BS"/etc. essentially never collides with
-    // ordinary lowercase prose.
-    // No trailing \b on the dotted forms -- confirmed live: "M.S." is
-    // followed by a space, and \b never matches between two non-word
-    // characters (a period and a space are both non-word), so a trailing
-    // boundary silently killed the very match it was meant to make safer.
-    // The leading \b is enough to keep these off a false start mid-word.
+    // ordinary lowercase prose. No trailing \b on the dotted forms --
+    // \b never matches between two non-word characters, and "M.S." is
+    // followed by a space (both non-word), so a trailing boundary
+    // silently kills the very match it's meant to guard.
     const degreeMatch =
       fullText.match(/\b(Bachelor|Master|B\.S\.|M\.S\.|B\.A\.|M\.A\.|Ph\.D\.)[^\n]{0,70}/i) ||
       fullText.match(/\b(BS|MS|BA|MA|PhD|MEng|BEng|MBA|MFA|BFA|EdD|JD|MD)\b[^\n]{0,70}/);
