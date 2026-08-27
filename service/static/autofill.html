@@ -72,15 +72,16 @@
   </p>
 
   <div class="card">
-    <h2>0. Optional: start from your resume</h2>
+    <h2>0. Optional: start from a resume or an existing profile.json</h2>
     <p class="note" style="margin-top:0">
-      PDF only for now (parsed entirely in your browser via
-      <a href="https://mozilla.github.io/pdf.js/" target="_blank" style="color:var(--ink-secondary)">pdf.js</a> --
-      your resume is never uploaded anywhere). It's a best-effort guess at
-      name, email, phone, school, degree, and GPA -- review everything
-      below before downloading.
+      A PDF resume gets a best-effort guess at name, email, phone,
+      school, degree, and GPA -- parsed entirely in your browser via
+      <a href="https://mozilla.github.io/pdf.js/" target="_blank" style="color:var(--ink-secondary)">pdf.js</a>,
+      never uploaded anywhere. A <code>profile.json</code> you downloaded
+      before loads back in exactly as you left it, so you can edit it.
+      Review everything below either way.
     </p>
-    <input type="file" id="resume-input" accept="application/pdf,.pdf">
+    <input type="file" id="resume-input" accept="application/pdf,.pdf,application/json,.json">
     <div id="resume-status" style="margin-top:8px;"></div>
   </div>
 
@@ -176,7 +177,7 @@
   // eval the fetched file if this doesn't match, so a tampered or
   // unexpectedly-changed autofill-loader.js fails loudly instead of
   // silently running different code than what shipped with this page.
-  const LOADER_HASH = "fb263f486c1beb5470cc9524d71e0b75a2135e84365a57ead95e47101b2036c8";
+  const LOADER_HASH = "45ef86ca772daa87a5a3e06f1f78025e732ad1abb9f1843cb0d045d48374121d";
 
   const BOOKMARKLET_SRC = `(function(){var h="${LOADER_HASH}";fetch("https://lilguy.win/autofill-loader.js").then(function(r){return r.text()}).then(function(src){return crypto.subtle.digest("SHA-256",new TextEncoder().encode(src)).then(function(buf){var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");if(hex!==h){alert("lilguy autofill: the loader script did not match its expected checksum -- refusing to run. Please check lilguy.win/autofill.html for an updated bookmarklet.");return;}(0,eval)(src);})}).catch(function(e){alert("lilguy autofill failed to load: "+e.message)})})();`;
 
@@ -237,8 +238,19 @@
     }));
   }
 
+  // Generic section/document titles that are often the largest text on
+  // the page (letter-spaced banners, etc.) but are never a person's name
+  // -- confirmed live: a "R E S U M E" banner (from CSS letter-spacing,
+  // which pdf.js renders as individually-spaced glyphs) beat the real
+  // name for biggest-font-on-page and got returned as "the name."
+  const NON_NAME_WORDS = new Set(["resume", "cv", "curriculumvitae", "profile", "biodata"]);
+
   function guessName(firstPageLines) {
-    const candidates = firstPageLines.slice(0, 10).filter((l) => l.text && /^[A-Za-z .'-]{3,40}$/.test(l.text));
+    const candidates = firstPageLines.slice(0, 10).filter((l) => {
+      if (!l.text || !/^[A-Za-z .'-]{3,40}$/.test(l.text)) return false;
+      const collapsed = l.text.replace(/\s+/g, "").toLowerCase();
+      return !NON_NAME_WORDS.has(collapsed);
+    });
     if (!candidates.length) return null;
     candidates.sort((a, b) => b.height - a.height);
     return candidates[0].text;
@@ -246,7 +258,11 @@
 
   function extractFields(fullText, nameGuess) {
     const found = {};
-    const email = fullText.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+    // (?:\.[\w-]+)+ (one or more dot-segments), not a single \.[a-z]{2,}
+    // -- confirmed live: the single-segment version truncated a real
+    // multi-level domain ("oliver.bennett@uni.ac.uk" came back
+    // "oliver.bennett@uni.ac", silently dropping ".uk").
+    const email = fullText.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/i);
     if (email) found.email = email[0];
 
     const phone = fullText.match(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
@@ -279,7 +295,23 @@
     const schoolLine = fullText.split("\n").find((l) => /university|college|institute of technology/i.test(l));
     if (schoolLine) found.school = cutAt(schoolLine, STOP_MARKERS).slice(0, 80);
 
-    const degreeMatch = fullText.match(/(Bachelor|Master|B\.?S\.?|M\.?S\.?|B\.?A\.?|M\.?A\.?|Ph\.?D\.?)[^\n]{0,70}/i);
+    // Dotted/full-word forms first (word-bounded, safe case-insensitive --
+    // a literal period makes accidental matches vanishingly rare), then
+    // bare abbreviations as a fallback, deliberately CASE-SENSITIVE and
+    // still word-bounded -- confirmed live: a case-insensitive \bM\.?A\.?\b
+    // matches the bare "ma" inside "gmail.com" (both dots optional, "ma"
+    // alone satisfies it), which is the single most common substring this
+    // regex could hit given how many resumes list a Gmail address. Bare,
+    // case-sensitive "MA"/"BS"/etc. essentially never collides with
+    // ordinary lowercase prose.
+    // No trailing \b on the dotted forms -- confirmed live: "M.S." is
+    // followed by a space, and \b never matches between two non-word
+    // characters (a period and a space are both non-word), so a trailing
+    // boundary silently killed the very match it was meant to make safer.
+    // The leading \b is enough to keep these off a false start mid-word.
+    const degreeMatch =
+      fullText.match(/\b(Bachelor|Master|B\.S\.|M\.S\.|B\.A\.|M\.A\.|Ph\.D\.)[^\n]{0,70}/i) ||
+      fullText.match(/\b(BS|MS|BA|MA|PhD|MEng|BEng|MBA|MFA|BFA|EdD|JD|MD)\b[^\n]{0,70}/);
     if (degreeMatch) {
       const chunk = degreeMatch[0].trim();
       const split = chunk.match(/(.+?)\s+in\s+(.+)/i);
@@ -302,38 +334,79 @@
     return found;
   }
 
+  const MAX_IMPORT_BYTES = 20 * 1024 * 1024; // a resume is never legitimately bigger than this
+  const MAX_PDF_PAGES = 20; // a resume is never legitimately longer than this
+
+  function applyFound(found) {
+    const foundKeys = Object.keys(found).filter((key) => FIELD_KEYS.includes(key) && found[key]);
+    foundKeys.forEach((key) => {
+      const el = document.querySelector(`[data-k="${key}"]`);
+      if (el) el.value = found[key];
+    });
+    return foundKeys;
+  }
+
+  async function loadFromJson(file) {
+    const text = await file.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      throw new Error("that's not valid JSON");
+    }
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("expected a profile object, not " + (Array.isArray(parsed) ? "a list" : typeof parsed));
+    }
+    const foundKeys = applyFound(parsed);
+    return foundKeys.length
+      ? `Loaded ${foundKeys.length} field(s) from profile.json. Review everything below.`
+      : "That profile.json didn't have any recognized fields.";
+  }
+
+  async function loadFromPdf(file) {
+    const pdfjsLib = await import("/vendor/pdfjs/pdf.min.mjs");
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.mjs";
+    const buf = await file.arrayBuffer();
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+
+    const pageCount = Math.min(doc.numPages, MAX_PDF_PAGES);
+    let fullText = "";
+    let nameGuess = null;
+    for (let i = 1; i <= pageCount; i++) {
+      const page = await doc.getPage(i);
+      const content = await page.getTextContent();
+      const lines = reconstructLines(content.items);
+      if (i === 1) nameGuess = guessName(lines);
+      fullText += "\n" + lines.map((l) => l.text).join("\n");
+    }
+
+    if (!fullText.trim()) {
+      return "Couldn't find any text in that PDF -- if it's a scanned image, this can't read it. Fill the form in manually.";
+    }
+
+    const foundKeys = applyFound(extractFields(fullText, nameGuess));
+    return foundKeys.length
+      ? `Found ${foundKeys.length} field(s): ${foundKeys.join(", ")}. Review everything below.`
+      : "Couldn't find any recognizable fields -- fill the form in manually.";
+  }
+
   document.getElementById("resume-input").addEventListener("change", async (event) => {
     const file = event.target.files && event.target.files[0];
     const status = document.getElementById("resume-status");
     if (!file) return;
     status.className = "";
-    status.textContent = "Reading resume...";
+
+    if (file.size > MAX_IMPORT_BYTES) {
+      status.className = "err";
+      status.textContent = `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB -- too big to be a resume or a profile.json. Pick a different file.`;
+      event.target.value = "";
+      return;
+    }
+
+    const isJson = file.type === "application/json" || /\.json$/i.test(file.name);
+    status.textContent = isJson ? "Reading profile.json..." : "Reading resume...";
     try {
-      const pdfjsLib = await import("/vendor/pdfjs/pdf.min.mjs");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.mjs";
-      const buf = await file.arrayBuffer();
-      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
-
-      let fullText = "";
-      let nameGuess = null;
-      for (let i = 1; i <= doc.numPages; i++) {
-        const page = await doc.getPage(i);
-        const content = await page.getTextContent();
-        const lines = reconstructLines(content.items);
-        if (i === 1) nameGuess = guessName(lines);
-        fullText += "\n" + lines.map((l) => l.text).join("\n");
-      }
-
-      const found = extractFields(fullText, nameGuess);
-      const foundKeys = Object.keys(found);
-      foundKeys.forEach((key) => {
-        const el = document.querySelector(`[data-k="${key}"]`);
-        if (el) el.value = found[key];
-      });
-
-      status.textContent = foundKeys.length
-        ? `Found ${foundKeys.length} field(s): ${foundKeys.join(", ")}. Review everything below.`
-        : "Couldn't find any recognizable fields -- fill the form in manually.";
+      status.textContent = isJson ? await loadFromJson(file) : await loadFromPdf(file);
     } catch (err) {
       status.className = "err";
       status.textContent = "Couldn't read that file: " + err.message;

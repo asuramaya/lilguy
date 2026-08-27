@@ -1,40 +1,23 @@
 /*
  * lilguy autofill loader -- fetched fresh from lilguy.win by a tiny,
  * hash-pinned bookmarklet stub (see autofill.html) and run on whatever
- * application page you clicked it on.
+ * application page you clicked it on. No install needed, unlike
+ * autofill/autofill.user.js (which needs Tampermonkey first).
  *
- * WHY THIS EXISTS ALONGSIDE autofill/autofill.user.js: that version
- * needs Tampermonkey/Violentmonkey installed first, which is real
- * friction for someone who just wants to try this once.
+ * The profile lives nowhere but a file on your own computer, picked
+ * fresh via <input type="file"> every time you click this -- nothing in
+ * a URL, nothing in browser storage. Two earlier designs (profile baked
+ * into the bookmarklet URL; profile in lilguy.win's own localStorage,
+ * read via an iframe) were tried and rejected for real, live reasons --
+ * see autofill/README.md if you want that history. The cost of this
+ * design is real and permanent: you pick the file every time, since
+ * browsers won't remember it across page loads.
  *
- * WHERE THE PROFILE LIVES: nowhere but a file on your own computer,
- * picked fresh every time you click this. Two earlier designs were
- * tried and rejected, live:
- *   1. Baking the profile into the bookmarklet's own URL -- works, but
- *      the URL becomes a plaintext-adjacent copy of your name/email/
- *      GPA/address that leaks in full if you ever paste or share that
- *      specific link.
- *   2. A hidden iframe reading a saved profile from lilguy.win's own
- *      localStorage -- defeated by browser storage partitioning
- *      (Chrome, and Safari more strictly, give a same-origin iframe a
- *      DIFFERENT storage bucket depending on which site embeds it, so
- *      the profile saved by visiting lilguy.win directly was invisible
- *      from inside the iframe on a real ATS page -- confirmed live, not
- *      theoretical). The Storage Access API doesn't reliably fix this
- *      either: in current Chrome it reports access as granted while
- *      still not actually unlocking localStorage in that bucket.
- * A plain <input type="file"> sidesteps both: nothing to leak in a URL,
- * nothing in any storage bucket for a browser to partition. The cost is
- * real and permanent -- you pick the file every time, browsers won't
- * remember it across page loads (a deliberate security choice on their
- * part, not something to work around).
- *
- * This file is fetched over the network on every use rather than baked
- * into the bookmarklet, so a fix or new-platform update reaches anyone
- * using it without them re-dragging anything -- the bookmarklet stub
- * hash-checks this file's contents before running it, so a version
- * mismatch (intentional update, or a tampered/compromised file) fails
- * loudly instead of silently running different code than you audited.
+ * Fetched over the network on every use, rather than baked into the
+ * bookmarklet, so a fix reaches anyone using it without them re-dragging
+ * anything -- the bookmarklet hash-checks this file before running it,
+ * so a tampered or unexpectedly-changed copy fails loudly instead of
+ * silently running different code than you audited.
  *
  * SAFETY: identical invariant to the userscript version -- this fills
  * fields and stops. It never clicks Submit. Zero network calls of any
