@@ -9,16 +9,27 @@ filled field and submit yourself.
 Two ways to get it, same coverage:
 
 - **No install: [lilguy.win/autofill.html](https://lilguy.win/autofill.html)**
-  -- save your profile once in this browser, drag a bookmarklet to your
-  bookmarks bar, click it on any application page. No extension, no
-  userscript manager. Doesn't auto-attach a resume (see that page's own
-  docs for why, and the threat model behind how it's built). This is
+  -- optionally import a PDF resume to pre-fill the form (parsed
+  entirely client-side via pdf.js, never uploaded), review it, then
+  download a `profile.json` and keep it on your own computer. Drag a
+  bookmarklet to your bookmarks bar; clicking it on an application page
+  opens a plain file picker, and choosing that file fills the page on
+  the spot. No extension, no userscript manager, and nothing saved to
+  any server, account, or even this browser -- two earlier designs
+  (profile baked into the bookmarklet URL, profile in this site's own
+  localStorage read via an iframe) were tried and rejected live, the
+  first for leaking your data if the link is ever shared, the second
+  because browser storage partitioning makes that iframe's storage a
+  different bucket than the one you saved to directly. Picking the file
+  fresh every time is deliberate, not a missing feature: it's the one
+  approach that's neither a leak risk nor dependent on browser storage
+  behavior that keeps changing out from under it. This is
   `service/static/autofill.html` + `service/static/autofill-loader.js`
   in this repo -- read those before trusting the deployed version, since
   trusting the code is exactly what this option asks of you.
 - **This folder's userscript** (below) -- needs Tampermonkey/Violentmonkey
-  first, but also auto-attaches a stored resume and keeps working without
-  a network fetch on every use.
+  first, but the profile is set once via a menu command (not re-picked
+  per use) and it also auto-attaches a stored resume.
 
 ## Why autofill and not auto-apply
 

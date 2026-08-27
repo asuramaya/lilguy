@@ -14,29 +14,6 @@ export async function onRequest(context) {
   const { request, next, env } = context;
   const url = new URL(request.url);
 
-  // autofill.html is deliberately embedded in an iframe from arbitrary
-  // employer ATS domains (see autofill-loader.js) -- the sitewide
-  // `X-Frame-Options: DENY` in _headers would block that, and _headers
-  // has no way to unset a header a broader rule already set (only to
-  // add more), so it's stripped here instead, at the one path that
-  // needs it gone. Safety for that path comes from the in-iframe
-  // visible consent click, not from restricting who can frame it --
-  // the set of ATS domains is open-ended by design.
-  //
-  // Matches BOTH "/autofill.html" and "/autofill": Cloudflare Pages
-  // 308-redirects the former to the latter (its default clean-URL
-  // canonicalization) before this ever reaches a browser, so checking
-  // only the .html form left the header un-stripped on the page that
-  // actually loads -- confirmed live, the iframe rendered blank until
-  // both forms were covered here.
-  if (url.pathname === "/autofill.html" || url.pathname === "/autofill") {
-    const response = await next();
-    const headers = new Headers(response.headers);
-    headers.delete("X-Frame-Options");
-    headers.set("Content-Security-Policy", "frame-ancestors *");
-    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
-  }
-
   const postingId = url.searchParams.get("posting");
   const companyKey = url.searchParams.get("company");
   const category = url.searchParams.get("category");

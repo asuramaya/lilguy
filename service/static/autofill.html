@@ -36,14 +36,15 @@
   .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
   details summary { cursor: pointer; color: var(--ink-tertiary); font-size: 13px; margin: 8px 0; }
-  .actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
   button {
     font-family: inherit; font-size: 14px; font-weight: 600; border-radius: 7px;
     padding: 9px 16px; border: none; cursor: pointer;
   }
   button.primary { background: var(--accent); color: #1a1208; }
   button.ghost { background: transparent; color: var(--ink-tertiary); border: 1px solid var(--border); }
-  #save-status { font-size: 13px; color: var(--ok); }
+  #save-status, #resume-status { font-size: 13px; color: var(--ok); }
+  #resume-status.err { color: #c85a42; }
   .bookmarklet-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
   a.bookmarklet-btn {
     display: inline-block; background: var(--accent); color: #1a1208; font-weight: 700;
@@ -51,23 +52,37 @@
   }
   .note { font-size: 12.5px; color: var(--ink-tertiary); line-height: 1.6; }
   code { background: var(--canvas); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
+  input[type="file"] { color: var(--ink-secondary); font-size: 13px; }
 </style>
 </head>
 <body>
 
-<div class="wrap" id="setup-view">
+<div class="wrap">
   <div class="brand">
     <svg width="28" height="28" viewBox="0 0 24 24" fill="#e8952a"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
     <strong>lilguy</strong><span style="color:var(--ink-tertiary)">.win</span>
   </div>
   <h1>Autofill, no extension required</h1>
   <p class="lede">
-    Save your profile once, right here in this browser. It's stored in this
-    page's own local storage, never sent to any server, never leaves your
-    device. Then drag the bookmarklet below to your bookmarks bar and click
-    it on any Greenhouse, Lever, Ashby, Rippling, SmartRecruiters, or
-    Workday application page.
+    Build a small <code>profile.json</code> file and keep it on your own
+    computer -- nothing here is saved to a server, an account, or even
+    this browser. Then drag the bookmarklet below to your bookmarks bar;
+    clicking it on any application page opens a file picker so you can
+    choose that file and fill the page instantly.
   </p>
+
+  <div class="card">
+    <h2>0. Optional: start from your resume</h2>
+    <p class="note" style="margin-top:0">
+      PDF only for now (parsed entirely in your browser via
+      <a href="https://mozilla.github.io/pdf.js/" target="_blank" style="color:var(--ink-secondary)">pdf.js</a> --
+      your resume is never uploaded anywhere). It's a best-effort guess at
+      name, email, phone, school, degree, and GPA -- review everything
+      below before downloading.
+    </p>
+    <input type="file" id="resume-input" accept="application/pdf,.pdf">
+    <div id="resume-status" style="margin-top:8px;"></div>
+  </div>
 
   <div class="card">
     <h2>1. Your profile</h2>
@@ -116,8 +131,8 @@
     </details>
 
     <div class="actions">
-      <button class="primary" id="save-btn">Save profile to this browser</button>
-      <button class="ghost" id="clear-btn">Clear saved profile</button>
+      <button class="primary" id="download-btn">Download profile.json</button>
+      <button class="ghost" id="clear-btn">Clear form</button>
       <span id="save-status"></span>
     </div>
   </div>
@@ -126,9 +141,11 @@
     <h2>2. The bookmarklet</h2>
     <p class="note" style="margin-top:0">
       This link is the same for everyone &mdash; it carries no personal
-      data at all, so it's safe to bookmark, copy, or share. Your profile
-      only gets read at the moment you click it, on the page you're
-      actually applying on, after you confirm in a small popup.
+      data at all, so it's safe to bookmark, copy, or share. Clicking it
+      opens a small file picker right on the page; choosing your
+      <code>profile.json</code> fills the page immediately, and nothing
+      about it is remembered afterward -- you'll pick the file again next
+      time, on purpose, every time.
     </p>
     <div class="bookmarklet-row">
       <a class="bookmarklet-btn" id="bookmarklet-link" href="#" onclick="return false;">⚡ lilguy autofill</a>
@@ -151,7 +168,6 @@
 <script>
 (function () {
   "use strict";
-  const STORAGE_KEY = "lilguy-autofill-profile";
   const FIELD_KEYS = ["firstName","lastName","fullName","email","phone","linkedin","github","website",
     "school","degree","major","gpa","addressLine1","city","state","zip","country",
     "workAuthorized","needsSponsorship","gender","raceEthnicity","veteranStatus","disabilityStatus"];
@@ -160,113 +176,169 @@
   // eval the fetched file if this doesn't match, so a tampered or
   // unexpectedly-changed autofill-loader.js fails loudly instead of
   // silently running different code than what shipped with this page.
-  const LOADER_HASH = "1de18393669646d48faac5e5d7f1697c1d3ce94b5fec94a0e70f3d75c49b6ead";
+  const LOADER_HASH = "fb263f486c1beb5470cc9524d71e0b75a2135e84365a57ead95e47101b2036c8";
 
   const BOOKMARKLET_SRC = `(function(){var h="${LOADER_HASH}";fetch("https://lilguy.win/autofill-loader.js").then(function(r){return r.text()}).then(function(src){return crypto.subtle.digest("SHA-256",new TextEncoder().encode(src)).then(function(buf){var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");if(hex!==h){alert("lilguy autofill: the loader script did not match its expected checksum -- refusing to run. Please check lilguy.win/autofill.html for an updated bookmarklet.");return;}(0,eval)(src);})}).catch(function(e){alert("lilguy autofill failed to load: "+e.message)})})();`;
 
-  function isEmbedded() {
-    try { return window.self !== window.top; } catch (e) { return true; }
-  }
-
-  function setupStandaloneView() {
-    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+  function currentProfile() {
+    const profile = {};
     document.querySelectorAll("[data-k]").forEach((el) => {
-      if (saved[el.dataset.k]) el.value = saved[el.dataset.k];
+      if (el.value.trim()) profile[el.dataset.k] = el.value.trim();
     });
-
-    document.getElementById("save-btn").addEventListener("click", () => {
-      const profile = {};
-      document.querySelectorAll("[data-k]").forEach((el) => {
-        if (el.value.trim()) profile[el.dataset.k] = el.value.trim();
-      });
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
-      const status = document.getElementById("save-status");
-      status.textContent = "Saved to this browser.";
-      setTimeout(() => { status.textContent = ""; }, 3000);
-    });
-
-    document.getElementById("clear-btn").addEventListener("click", () => {
-      localStorage.removeItem(STORAGE_KEY);
-      document.querySelectorAll("[data-k]").forEach((el) => { el.value = ""; });
-      const status = document.getElementById("save-status");
-      status.textContent = "Cleared.";
-      setTimeout(() => { status.textContent = ""; }, 3000);
-    });
-
-    const link = document.getElementById("bookmarklet-link");
-    link.href = "javascript:" + encodeURIComponent(BOOKMARKLET_SRC);
+    return profile;
   }
 
-  function setupEmbeddedView() {
-    document.title = "lilguy autofill";
-    document.documentElement.style.background = "#0d0d0c";
-    document.body.style.cssText = "margin:0;background:#0d0d0c;";
-    document.body.innerHTML = `
-      <div id="embed-root" style="padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#f0ede4;background:#0d0d0c;box-sizing:border-box;min-height:100vh;">
-        <div id="embed-content"></div>
-      </div>`;
-    const root = document.getElementById("embed-content");
+  document.getElementById("download-btn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(currentProfile(), null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "profile.json";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    const status = document.getElementById("save-status");
+    status.textContent = "Downloaded. Keep it somewhere you can find it.";
+    setTimeout(() => { status.textContent = ""; }, 4000);
+  });
 
-    let requester = null; // {source, origin}
+  document.getElementById("clear-btn").addEventListener("click", () => {
+    document.querySelectorAll("[data-k]").forEach((el) => { el.value = ""; });
+    document.querySelector('[data-k="country"]').value = "United States";
+  });
 
-    function render(html) { root.innerHTML = html; }
+  const link = document.getElementById("bookmarklet-link");
+  link.href = "javascript:" + encodeURIComponent(BOOKMARKLET_SRC);
 
-    function renderNoProfile() {
-      render(`
-        <div style="font-size:13px;line-height:1.5;">
-          <strong style="color:#e8952a;">lilguy autofill</strong><br>
-          No saved profile yet on this browser.
-          <a href="https://lilguy.win/autofill.html" target="_blank" style="color:#e8952a;">Set one up</a>,
-          then try again.
-        </div>
-        <button id="close-btn" style="margin-top:10px;background:transparent;border:1px solid #2b2823;color:#8a8474;border-radius:6px;padding:6px 12px;cursor:pointer;">Close</button>
-      `);
-      document.getElementById("close-btn").addEventListener("click", () => {
-        if (requester) requester.source.postMessage({ type: "lilguy-autofill:cancelled" }, requester.origin);
-      });
-    }
+  // --- resume import (PDF only for now) -----------------------------
+  // DOCX would need a hand-rolled ZIP reader (no browser-native way to
+  // unzip); scoped out for a first version rather than shipping that
+  // half-built. Most resumes are shared as PDF anyway.
 
-    function renderConsent(profile, fromOrigin) {
-      let host = fromOrigin;
-      try { host = new URL(fromOrigin).hostname; } catch (e) {}
-      render(`
-        <div style="font-size:13px;line-height:1.5;">
-          <strong style="color:#e8952a;">lilguy autofill</strong><br>
-          Fill this page on <strong>${host}</strong> using your saved profile?
-        </div>
-        <div style="display:flex;gap:8px;margin-top:12px;">
-          <button id="fill-btn" style="background:#e8952a;color:#1a1208;font-weight:700;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;">Fill this page</button>
-          <button id="cancel-btn" style="background:transparent;border:1px solid #2b2823;color:#8a8474;border-radius:6px;padding:7px 14px;cursor:pointer;">Not now</button>
-        </div>
-      `);
-      document.getElementById("fill-btn").addEventListener("click", () => {
-        requester.source.postMessage({ type: "lilguy-autofill:profile", profile }, requester.origin);
-      });
-      document.getElementById("cancel-btn").addEventListener("click", () => {
-        requester.source.postMessage({ type: "lilguy-autofill:cancelled" }, requester.origin);
-      });
-    }
-
-    window.addEventListener("message", (event) => {
-      if (!event.data || event.data.type !== "lilguy-autofill:hello") return;
-      requester = { source: event.source, origin: event.origin };
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        requester.source.postMessage({ type: "lilguy-autofill:no-profile" }, requester.origin);
-        renderNoProfile();
-        return;
+  function reconstructLines(items) {
+    const lines = [];
+    let currentY = null;
+    let current = [];
+    for (const item of items) {
+      const y = item.transform[5];
+      if (currentY === null || Math.abs(y - currentY) > 3) {
+        if (current.length) lines.push(current);
+        current = [item];
+        currentY = y;
+      } else {
+        current.push(item);
       }
-      renderConsent(JSON.parse(raw), event.origin);
-    });
-
-    render(`<div style="font-size:13px;color:#8a8474;">Waiting for the page...</div>`);
+    }
+    if (current.length) lines.push(current);
+    return lines.map((line) => ({
+      text: line.map((it) => it.str).join("").trim(),
+      height: Math.max(...line.map((it) => it.height || 0)),
+    }));
   }
 
-  if (isEmbedded() || new URLSearchParams(location.search).get("embed") === "1") {
-    setupEmbeddedView();
-  } else {
-    setupStandaloneView();
+  function guessName(firstPageLines) {
+    const candidates = firstPageLines.slice(0, 10).filter((l) => l.text && /^[A-Za-z .'-]{3,40}$/.test(l.text));
+    if (!candidates.length) return null;
+    candidates.sort((a, b) => b.height - a.height);
+    return candidates[0].text;
   }
+
+  function extractFields(fullText, nameGuess) {
+    const found = {};
+    const email = fullText.match(/[\w.+-]+@[\w-]+\.[a-z]{2,}/i);
+    if (email) found.email = email[0];
+
+    const phone = fullText.match(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
+    if (phone) found.phone = phone[0].trim();
+
+    const linkedin = fullText.match(/linkedin\.com\/in\/[\w-]+/i);
+    if (linkedin) found.linkedin = "https://" + linkedin[0];
+
+    const github = fullText.match(/github\.com\/[\w-]+/i);
+    if (github) found.github = "https://" + github[0];
+
+    const gpa = fullText.match(/GPA[:\s]*([0-4]\.\d{1,2})/i);
+    if (gpa) found.gpa = gpa[1];
+
+    // Truncates at the earliest of several "this field ends here" markers
+    // -- a resume crams school/degree/major/GPA onto one line as often as
+    // not, and without this every one of those fields bleeds into the
+    // next (confirmed live: "major" came back "Computer Science, GPA:
+    // 3.85" before this existed).
+    function cutAt(text, markers) {
+      let end = text.length;
+      for (const m of markers) {
+        const idx = text.search(m);
+        if (idx !== -1 && idx < end) end = idx;
+      }
+      return text.slice(0, end).trim();
+    }
+    const STOP_MARKERS = [/\s*--\s*/, /,/, /\bGPA\b/i, /\n/];
+
+    const schoolLine = fullText.split("\n").find((l) => /university|college|institute of technology/i.test(l));
+    if (schoolLine) found.school = cutAt(schoolLine, STOP_MARKERS).slice(0, 80);
+
+    const degreeMatch = fullText.match(/(Bachelor|Master|B\.?S\.?|M\.?S\.?|B\.?A\.?|M\.?A\.?|Ph\.?D\.?)[^\n]{0,70}/i);
+    if (degreeMatch) {
+      const chunk = degreeMatch[0].trim();
+      const split = chunk.match(/(.+?)\s+in\s+(.+)/i);
+      if (split) {
+        found.degree = split[1].trim();
+        found.major = cutAt(split[2], STOP_MARKERS).slice(0, 60);
+      } else {
+        found.degree = cutAt(chunk, STOP_MARKERS).slice(0, 60);
+      }
+    }
+
+    if (nameGuess) {
+      found.fullName = nameGuess;
+      const parts = nameGuess.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        found.firstName = parts[0];
+        found.lastName = parts[parts.length - 1];
+      }
+    }
+    return found;
+  }
+
+  document.getElementById("resume-input").addEventListener("change", async (event) => {
+    const file = event.target.files && event.target.files[0];
+    const status = document.getElementById("resume-status");
+    if (!file) return;
+    status.className = "";
+    status.textContent = "Reading resume...";
+    try {
+      const pdfjsLib = await import("/vendor/pdfjs/pdf.min.mjs");
+      pdfjsLib.GlobalWorkerOptions.workerSrc = "/vendor/pdfjs/pdf.worker.min.mjs";
+      const buf = await file.arrayBuffer();
+      const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+
+      let fullText = "";
+      let nameGuess = null;
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        const lines = reconstructLines(content.items);
+        if (i === 1) nameGuess = guessName(lines);
+        fullText += "\n" + lines.map((l) => l.text).join("\n");
+      }
+
+      const found = extractFields(fullText, nameGuess);
+      const foundKeys = Object.keys(found);
+      foundKeys.forEach((key) => {
+        const el = document.querySelector(`[data-k="${key}"]`);
+        if (el) el.value = found[key];
+      });
+
+      status.textContent = foundKeys.length
+        ? `Found ${foundKeys.length} field(s): ${foundKeys.join(", ")}. Review everything below.`
+        : "Couldn't find any recognizable fields -- fill the form in manually.";
+    } catch (err) {
+      status.className = "err";
+      status.textContent = "Couldn't read that file: " + err.message;
+    }
+  });
 })();
 </script>
 

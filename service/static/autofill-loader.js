@@ -5,27 +5,29 @@
  *
  * WHY THIS EXISTS ALONGSIDE autofill/autofill.user.js: that version
  * needs Tampermonkey/Violentmonkey installed first, which is real
- * friction for someone who just wants to try this once. A bookmarklet
- * needs nothing installed -- but naively baking your profile into a
- * `javascript:` bookmark URL means your name/email/GPA/address sit in
- * plaintext-adjacent (base64 isn't encryption) form inside your
- * browser's bookmark store, which typically syncs to your browser
- * vendor's servers, and inside a string you might paste/share without
- * realizing what's in it. Neither of those is true of this design:
+ * friction for someone who just wants to try this once.
  *
- *   1. The bookmarklet itself carries ZERO personal data -- it's the
- *      same fixed stub for every single person, safe to share/tweet.
- *   2. Your actual profile lives in localStorage on lilguy.win's own
- *      origin (set once at lilguy.win/autofill.html), never in a URL,
- *      never sent to any server.
- *   3. Crossing the origin boundary (this page you're applying on ->
- *      lilguy.win, where the profile actually lives) happens over a
- *      postMessage handshake with an explicit target origin, and the
- *      profile is only ever released after a VISIBLE, IN-IFRAME CLICK
- *      -- see autofill.html's embedded mode. That last part specifically
- *      defeats a hostile site secretly iframing the same bridge page:
- *      a hidden/zero-size iframe can't receive a real click, so it can
- *      never get past the consent step to exfiltrate anything.
+ * WHERE THE PROFILE LIVES: nowhere but a file on your own computer,
+ * picked fresh every time you click this. Two earlier designs were
+ * tried and rejected, live:
+ *   1. Baking the profile into the bookmarklet's own URL -- works, but
+ *      the URL becomes a plaintext-adjacent copy of your name/email/
+ *      GPA/address that leaks in full if you ever paste or share that
+ *      specific link.
+ *   2. A hidden iframe reading a saved profile from lilguy.win's own
+ *      localStorage -- defeated by browser storage partitioning
+ *      (Chrome, and Safari more strictly, give a same-origin iframe a
+ *      DIFFERENT storage bucket depending on which site embeds it, so
+ *      the profile saved by visiting lilguy.win directly was invisible
+ *      from inside the iframe on a real ATS page -- confirmed live, not
+ *      theoretical). The Storage Access API doesn't reliably fix this
+ *      either: in current Chrome it reports access as granted while
+ *      still not actually unlocking localStorage in that bucket.
+ * A plain <input type="file"> sidesteps both: nothing to leak in a URL,
+ * nothing in any storage bucket for a browser to partition. The cost is
+ * real and permanent -- you pick the file every time, browsers won't
+ * remember it across page loads (a deliberate security choice on their
+ * part, not something to work around).
  *
  * This file is fetched over the network on every use rather than baked
  * into the bookmarklet, so a fix or new-platform update reaches anyone
@@ -35,21 +37,15 @@
  * loudly instead of silently running different code than you audited.
  *
  * SAFETY: identical invariant to the userscript version -- this fills
- * fields and stops. It never clicks Submit. Zero network calls other
- * than the postMessage handshake with lilguy.win itself; nothing here
- * ever contacts any third party.
+ * fields and stops. It never clicks Submit. Zero network calls of any
+ * kind once this file itself has loaded -- your chosen profile.json is
+ * read locally and never transmitted anywhere.
  */
 (function () {
   "use strict";
 
   if (window.__lilguyAutofillActive) return;
   window.__lilguyAutofillActive = true;
-
-  const BRIDGE_ORIGIN = "https://lilguy.win";
-  // Extensionless: Cloudflare Pages 308-redirects "/autofill.html" to
-  // "/autofill" by default, which just adds a hop -- going straight to
-  // the canonical form here skips it.
-  const BRIDGE_URL = BRIDGE_ORIGIN + "/autofill?embed=1";
 
   // --- field matching (ported from autofill/autofill.user.js -- keep
   // the two in sync by hand; they're separate delivery channels with
@@ -193,44 +189,57 @@
       if (fillSplHost(el, profile[key])) filledCount++;
     });
 
-    console.log(`[lilguy-autofill] filled ${filledCount} field(s). Review before submitting -- this never clicks Submit for you.`);
+    return filledCount;
   }
 
-  // --- cross-origin handshake -------------------------------------------
+  // --- UI: a small card this script creates directly on whatever page
+  // it's running on. No iframe, no cross-origin messaging, no network
+  // call of any kind from here on -- the file you pick never leaves
+  // this page's own memory. ---
 
-  const iframe = document.createElement("iframe");
-  iframe.src = BRIDGE_URL;
-  iframe.title = "lilguy autofill";
-  iframe.style.cssText =
-    "position:fixed;bottom:16px;right:16px;width:320px;height:180px;border:0;" +
-    "border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.45);z-index:2147483647;" +
-    "background:#0d0d0c;color-scheme:dark;";
-  document.body.appendChild(iframe);
-
-  function cleanup() {
-    window.removeEventListener("message", onMessage);
-    iframe.remove();
+  function buildCard() {
+    const card = document.createElement("div");
+    card.style.cssText =
+      "position:fixed;bottom:16px;right:16px;width:290px;padding:16px;" +
+      "background:#0d0d0c;color:#f0ede4;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.45);" +
+      "z-index:2147483647;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;" +
+      "font-size:13px;line-height:1.5;";
+    card.innerHTML = `
+      <div><strong style="color:#e8952a;">lilguy autofill</strong></div>
+      <div style="margin:8px 0 6px;color:#a39d8c;">Choose your profile.json:</div>
+      <input type="file" accept="application/json,.json" id="lilguy-file-input"
+        style="width:100%;font-size:12px;color:#a39d8c;box-sizing:border-box;">
+      <div id="lilguy-status" style="margin-top:8px;color:#8a8474;font-size:12px;"></div>
+      <button id="lilguy-close-btn"
+        style="margin-top:10px;background:transparent;border:1px solid #2b2823;color:#8a8474;border-radius:6px;padding:6px 12px;cursor:pointer;">
+        Close
+      </button>
+    `;
+    document.body.appendChild(card);
+    return card;
   }
 
-  function onMessage(event) {
-    // Trust ONLY messages that came from the iframe we ourselves created,
-    // pointed at lilguy.win -- nothing else this page does listens for or
-    // acts on a "lilguy-autofill:*" message from anywhere else.
-    if (event.origin !== BRIDGE_ORIGIN || event.source !== iframe.contentWindow) return;
-    const data = event.data || {};
-    if (data.type === "lilguy-autofill:profile") {
-      fillPage(data.profile || {});
-      cleanup();
-    } else if (data.type === "lilguy-autofill:cancelled") {
-      cleanup();
-    }
-    // "lilguy-autofill:no-profile" -- the bridge is already showing its
-    // own "set up your profile first" message inside the iframe; nothing
-    // for this page to do but leave it visible until the user closes it.
-  }
+  const card = buildCard();
+  const status = card.querySelector("#lilguy-status");
 
-  window.addEventListener("message", onMessage);
-  iframe.addEventListener("load", () => {
-    iframe.contentWindow.postMessage({ type: "lilguy-autofill:hello" }, BRIDGE_ORIGIN);
+  card.querySelector("#lilguy-file-input").addEventListener("change", (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let profile;
+      try {
+        profile = JSON.parse(reader.result);
+      } catch (err) {
+        status.textContent = "That wasn't a valid profile.json -- get one from lilguy.win/autofill.html.";
+        return;
+      }
+      const count = fillPage(profile);
+      status.textContent = `Filled ${count} field(s). Review before submitting.`;
+      setTimeout(() => card.remove(), 3000);
+    };
+    reader.readAsText(file);
   });
+
+  card.querySelector("#lilguy-close-btn").addEventListener("click", () => card.remove());
 })();
