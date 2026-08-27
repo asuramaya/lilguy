@@ -12,6 +12,11 @@
     --ink-secondary: #a39d8c; --ink-tertiary: #8a8474; --accent: #e8952a; --ok: #4a9b6e;
   }
   * { box-sizing: border-box; }
+  html { scrollbar-color: var(--border) var(--canvas); scrollbar-width: thin; }
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track { background: var(--canvas); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; border: 3px solid var(--canvas); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-tertiary); }
   body {
     margin: 0; background: var(--canvas); color: var(--ink);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -48,7 +53,23 @@
   #resume-status.err { color: #c85a42; }
   .note { font-size: 12.5px; color: var(--ink-tertiary); line-height: 1.6; }
   code { background: var(--canvas); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
-  input[type="file"] { color: var(--ink-secondary); font-size: 13px; }
+
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+  .dropzone {
+    display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center;
+    border: 2px dashed var(--border); border-radius: 8px; padding: 22px 16px;
+    cursor: pointer; color: var(--ink-tertiary); transition: border-color .15s ease, background .15s ease, color .15s ease;
+  }
+  .dropzone svg { color: var(--ink-tertiary); transition: color .15s ease; }
+  .dropzone:hover, .dropzone.dragover {
+    border-color: var(--accent); color: var(--ink-secondary); background: rgba(232, 149, 42, 0.06);
+  }
+  .dropzone:hover svg, .dropzone.dragover svg { color: var(--accent); }
+  .dropzone-title { font-size: 13.5px; color: var(--ink-secondary); }
+  .dropzone-hint { font-size: 12px; }
 </style>
 </head>
 <body>
@@ -62,26 +83,21 @@
   </div>
   <h1>Build your application profile</h1>
   <p class="lede">
-    A <code>profile.json</code> of your name, contact info, and education
-    -- optionally guessed from a resume, always reviewed by you before it
-    leaves this page. Nothing here touches a server or an account; it's
-    just a file you download and keep. Use it with the
-    <a href="https://github.com/asuramaya/lilguy/tree/master/autofill" style="color:var(--ink-secondary)">autofill userscript</a>
-    to fill out repetitive application fields on Greenhouse, Lever,
-    Ashby, Rippling, SmartRecruiters, and Workday.
+    Builds one file, <code>profile.json</code>, that stays on your
+    computer -- nothing here touches a server or an account.
   </p>
 
   <div class="card">
-    <h2>Start from a resume or an existing profile.json</h2>
-    <p class="note" style="margin-top:0">
-      A PDF resume gets a best-effort guess at name, email, phone,
-      school, degree, and GPA, parsed entirely in your browser via
-      <a href="https://mozilla.github.io/pdf.js/" target="_blank" style="color:var(--ink-secondary)">pdf.js</a> --
-      never uploaded anywhere. A <code>profile.json</code> you downloaded
-      before loads back in so you can edit it. Review everything below
-      either way.
-    </p>
-    <input type="file" id="resume-input" accept="application/pdf,.pdf,application/json,.json">
+    <label for="resume-input" class="dropzone" id="dropzone">
+      <svg id="dropzone-icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M7 18a4.5 4.5 0 0 1-1.44-8.77A5.5 5.5 0 0 1 16.3 7.03 4.5 4.5 0 0 1 17.5 16H16"></path>
+        <path d="M12 21v-8"></path>
+        <path d="m9 15 3-3 3 3"></path>
+      </svg>
+      <span class="dropzone-title" id="dropzone-title">Drop a resume (PDF) or profile.json here</span>
+      <span class="dropzone-hint">or click to browse -- parsed in your browser, never uploaded</span>
+      <input type="file" id="resume-input" accept="application/pdf,.pdf,application/json,.json" class="visually-hidden">
+    </label>
     <div id="resume-status" style="margin-top:8px;"></div>
   </div>
 
@@ -141,7 +157,9 @@
   <p class="note">
     To use it: install <a href="https://www.tampermonkey.net/" target="_blank" style="color:var(--ink-secondary)">Tampermonkey</a>,
     add the <a href="https://github.com/asuramaya/lilguy/blob/master/autofill/autofill.user.js" style="color:var(--ink-secondary)">autofill script</a>,
-    then paste this file's contents into its "Set autofill profile" menu command.
+    then paste this file's contents into its "Set autofill profile" menu
+    command to fill out Greenhouse, Lever, Ashby, Rippling,
+    SmartRecruiters, and Workday applications.
   </p>
 </div>
 
@@ -356,16 +374,18 @@
       : "Couldn't find any recognizable fields -- fill the form in manually.";
   }
 
-  document.getElementById("resume-input").addEventListener("change", async (event) => {
-    const file = event.target.files && event.target.files[0];
+  const dropzone = document.getElementById("dropzone");
+  const dropzoneTitle = document.getElementById("dropzone-title");
+  const fileInput = document.getElementById("resume-input");
+
+  async function handleImportFile(file) {
     const status = document.getElementById("resume-status");
-    if (!file) return;
     status.className = "";
+    dropzoneTitle.textContent = file.name;
 
     if (file.size > MAX_IMPORT_BYTES) {
       status.className = "err";
       status.textContent = `That file is ${(file.size / 1024 / 1024).toFixed(1)} MB -- too big to be a resume or a profile.json. Pick a different file.`;
-      event.target.value = "";
       return;
     }
 
@@ -377,7 +397,37 @@
       status.className = "err";
       status.textContent = "Couldn't read that file: " + err.message;
     }
+  }
+
+  fileInput.addEventListener("change", (event) => {
+    const file = event.target.files && event.target.files[0];
+    if (file) handleImportFile(file);
   });
+
+  // Drag-and-drop onto the same zone as the click-to-browse label. The
+  // label already forwards a click to the file input; drag events need
+  // their own wiring since a <label> doesn't get drop behavior for free.
+  ["dragenter", "dragover"].forEach((evt) => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach((evt) => {
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+    });
+  });
+  dropzone.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) handleImportFile(file);
+  });
+
+  // Without this, dropping a file anywhere outside the dropzone makes
+  // the browser navigate to that file instead of ignoring the drop.
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
 })();
 </script>
 
