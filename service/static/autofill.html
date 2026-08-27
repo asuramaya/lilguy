@@ -192,13 +192,15 @@
     </div>
   </div>
 
-  <p class="note">
-    To use it: install <a href="https://www.tampermonkey.net/" target="_blank" style="color:var(--ink-secondary)">Tampermonkey</a>,
-    add the <a href="https://github.com/asuramaya/lilguy/blob/master/autofill/autofill.user.js" style="color:var(--ink-secondary)">autofill script</a>,
-    then paste this file's contents into its "Set autofill profile" menu
-    command to fill out Greenhouse, Lever, Ashby, Rippling,
-    SmartRecruiters, and Workday applications.
-  </p>
+  <div class="card">
+    <h2>Using it on an application</h2>
+    <ol class="note" style="margin:0; padding-left: 18px;">
+      <li style="margin-bottom:8px;">Install <a href="https://www.tampermonkey.net/" target="_blank" style="color:var(--ink-secondary)">Tampermonkey</a> (or Violentmonkey), then add the <a href="https://github.com/asuramaya/lilguy/blob/master/autofill/autofill.user.js" target="_blank" style="color:var(--ink-secondary)">autofill script</a> to it -- one-time setup.</li>
+      <li style="margin-bottom:8px;">Click the Tampermonkey icon on any page &rarr; <strong>Set autofill profile (paste JSON)</strong> &rarr; paste in the contents of the <code>profile.json</code> you just downloaded. It's stored inside Tampermonkey, in your browser only.</li>
+      <li style="margin-bottom:8px;">Optional: <strong>Set stored resume (pick a file)</strong> to have your resume PDF auto-attach on file-upload fields.</li>
+      <li>Open an application on Greenhouse, Lever, Ashby, Rippling, SmartRecruiters, or Workday and reload the page. Matched fields get a green outline -- review every one before you hit submit; it never submits for you.</li>
+    </ol>
+  </div>
 </main>
 
 <script>

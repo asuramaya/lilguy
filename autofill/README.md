@@ -55,10 +55,12 @@ own sake:
    (Chrome/Edge/Firefox) or Violentmonkey.
 2. Open `autofill.user.js` from this folder, copy its contents into a new
    script in Tampermonkey (Dashboard → + → paste over the template → save).
-3. On any Greenhouse (`job-boards.greenhouse.io`, `boards.greenhouse.io`) or
-   Lever (`jobs.lever.co`) application page, click the Tampermonkey icon →
-   **Set autofill profile (paste JSON)** and paste in your filled-out copy
-   of `profile.example.json`.
+3. Build your `profile.json` -- fill in
+   [lilguy.win/autofill.html](https://lilguy.win/autofill.html) by hand or
+   by importing a resume PDF, then download it (or hand-edit a copy of
+   `profile.example.json`). On any supported application page, click the
+   Tampermonkey icon → **Set autofill profile (paste JSON)** and paste in
+   its contents.
 4. Optional: **Set stored resume (pick a file)** to enable auto-attaching
    your resume to file-upload fields labeled "resume" or "CV".
 5. Reload the application page. Filled fields get a green outline;
