@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>lilguy autofill setup</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23e8952a'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>">
+<style>
+  :root {
+    --canvas: #0d0d0c; --row: #161512; --border: #2b2823; --ink: #f0ede4;
+    --ink-secondary: #a39d8c; --ink-tertiary: #8a8474; --accent: #e8952a; --ok: #4a9b6e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--canvas); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px; line-height: 1.5;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 32px 20px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+  .brand svg { flex-shrink: 0; }
+  p.lede { color: var(--ink-secondary); margin: 0 0 28px; max-width: 54ch; }
+  .card {
+    background: var(--row); border: 1px solid var(--border); border-radius: 10px;
+    padding: 20px; margin-bottom: 20px;
+  }
+  .card h2 { font-size: 15px; margin: 0 0 12px; }
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 12px; color: var(--ink-tertiary); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+  .field input, .field select {
+    width: 100%; background: var(--canvas); border: 1px solid var(--border); color: var(--ink);
+    border-radius: 6px; padding: 8px 10px; font-size: 14px; font-family: inherit;
+  }
+  .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  details summary { cursor: pointer; color: var(--ink-tertiary); font-size: 13px; margin: 8px 0; }
+  .actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  button {
+    font-family: inherit; font-size: 14px; font-weight: 600; border-radius: 7px;
+    padding: 9px 16px; border: none; cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: #1a1208; }
+  button.ghost { background: transparent; color: var(--ink-tertiary); border: 1px solid var(--border); }
+  #save-status { font-size: 13px; color: var(--ok); }
+  .bookmarklet-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 14px 0; }
+  a.bookmarklet-btn {
+    display: inline-block; background: var(--accent); color: #1a1208; font-weight: 700;
+    padding: 10px 18px; border-radius: 8px; text-decoration: none; cursor: grab;
+  }
+  .note { font-size: 12.5px; color: var(--ink-tertiary); line-height: 1.6; }
+  code { background: var(--canvas); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="setup-view">
+  <div class="brand">
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="#e8952a"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+    <strong>lilguy</strong><span style="color:var(--ink-tertiary)">.win</span>
+  </div>
+  <h1>Autofill, no extension required</h1>
+  <p class="lede">
+    Save your profile once, right here in this browser. It's stored in this
+    page's own local storage, never sent to any server, never leaves your
+    device. Then drag the bookmarklet below to your bookmarks bar and click
+    it on any Greenhouse, Lever, Ashby, Rippling, SmartRecruiters, or
+    Workday application page.
+  </p>
+
+  <div class="card">
+    <h2>1. Your profile</h2>
+    <div class="grid2">
+      <div class="field"><label>First name</label><input data-k="firstName"></div>
+      <div class="field"><label>Last name</label><input data-k="lastName"></div>
+    </div>
+    <div class="field"><label>Full name (used when a form has just one name field)</label><input data-k="fullName"></div>
+    <div class="grid2">
+      <div class="field"><label>Email</label><input data-k="email" type="email"></div>
+      <div class="field"><label>Phone</label><input data-k="phone" type="tel"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>LinkedIn URL</label><input data-k="linkedin"></div>
+      <div class="field"><label>GitHub URL</label><input data-k="github"></div>
+    </div>
+    <div class="field"><label>Website / portfolio URL</label><input data-k="website"></div>
+    <div class="grid2">
+      <div class="field"><label>School</label><input data-k="school"></div>
+      <div class="field"><label>Degree</label><input data-k="degree"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Major</label><input data-k="major"></div>
+      <div class="field"><label>GPA</label><input data-k="gpa"></div>
+    </div>
+    <div class="field"><label>Address</label><input data-k="addressLine1"></div>
+    <div class="grid2">
+      <div class="field"><label>City</label><input data-k="city"></div>
+      <div class="field"><label>State</label><input data-k="state"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>ZIP</label><input data-k="zip"></div>
+      <div class="field"><label>Country</label><input data-k="country" value="United States"></div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>Authorized to work?</label><input data-k="workAuthorized" placeholder="Yes / No"></div>
+      <div class="field"><label>Need sponsorship?</label><input data-k="needsSponsorship" placeholder="Yes / No"></div>
+    </div>
+
+    <details>
+      <summary>EEO / voluntary self-ID fields (optional, recommended to leave blank)</summary>
+      <div class="field"><label>Gender</label><input data-k="gender"></div>
+      <div class="field"><label>Race / ethnicity</label><input data-k="raceEthnicity"></div>
+      <div class="field"><label>Veteran status</label><input data-k="veteranStatus"></div>
+      <div class="field"><label>Disability status</label><input data-k="disabilityStatus"></div>
+    </details>
+
+    <div class="actions">
+      <button class="primary" id="save-btn">Save profile to this browser</button>
+      <button class="ghost" id="clear-btn">Clear saved profile</button>
+      <span id="save-status"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. The bookmarklet</h2>
+    <p class="note" style="margin-top:0">
+      This link is the same for everyone &mdash; it carries no personal
+      data at all, so it's safe to bookmark, copy, or share. Your profile
+      only gets read at the moment you click it, on the page you're
+      actually applying on, after you confirm in a small popup.
+    </p>
+    <div class="bookmarklet-row">
+      <a class="bookmarklet-btn" id="bookmarklet-link" href="#" onclick="return false;">⚡ lilguy autofill</a>
+      <span class="note">&larr; drag this to your bookmarks bar</span>
+    </div>
+    <p class="note">
+      On mobile, or if your browser blocks dragging: right-click (or
+      long-press) the link above and choose "bookmark link" / "add to
+      bookmarks."
+    </p>
+  </div>
+
+  <p class="note">
+    Prefer a normal browser extension instead? See the
+    <a href="https://github.com/asuramaya/lilguy/tree/master/autofill" style="color:var(--ink-secondary)">Tampermonkey userscript version</a>
+    in the repo &mdash; same coverage, plus resume auto-attach, at the cost of installing a userscript manager first.
+  </p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const STORAGE_KEY = "lilguy-autofill-profile";
+  const FIELD_KEYS = ["firstName","lastName","fullName","email","phone","linkedin","github","website",
+    "school","degree","major","gpa","addressLine1","city","state","zip","country",
+    "workAuthorized","needsSponsorship","gender","raceEthnicity","veteranStatus","disabilityStatus"];
+
+  // The loader script's own SHA-256 (hex) -- the bookmarklet refuses to
+  // eval the fetched file if this doesn't match, so a tampered or
+  // unexpectedly-changed autofill-loader.js fails loudly instead of
+  // silently running different code than what shipped with this page.
+  const LOADER_HASH = "1de18393669646d48faac5e5d7f1697c1d3ce94b5fec94a0e70f3d75c49b6ead";
+
+  const BOOKMARKLET_SRC = `(function(){var h="${LOADER_HASH}";fetch("https://lilguy.win/autofill-loader.js").then(function(r){return r.text()}).then(function(src){return crypto.subtle.digest("SHA-256",new TextEncoder().encode(src)).then(function(buf){var hex=Array.from(new Uint8Array(buf)).map(function(b){return b.toString(16).padStart(2,"0")}).join("");if(hex!==h){alert("lilguy autofill: the loader script did not match its expected checksum -- refusing to run. Please check lilguy.win/autofill.html for an updated bookmarklet.");return;}(0,eval)(src);})}).catch(function(e){alert("lilguy autofill failed to load: "+e.message)})})();`;
+
+  function isEmbedded() {
+    try { return window.self !== window.top; } catch (e) { return true; }
+  }
+
+  function setupStandaloneView() {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    document.querySelectorAll("[data-k]").forEach((el) => {
+      if (saved[el.dataset.k]) el.value = saved[el.dataset.k];
+    });
+
+    document.getElementById("save-btn").addEventListener("click", () => {
+      const profile = {};
+      document.querySelectorAll("[data-k]").forEach((el) => {
+        if (el.value.trim()) profile[el.dataset.k] = el.value.trim();
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+      const status = document.getElementById("save-status");
+      status.textContent = "Saved to this browser.";
+      setTimeout(() => { status.textContent = ""; }, 3000);
+    });
+
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      localStorage.removeItem(STORAGE_KEY);
+      document.querySelectorAll("[data-k]").forEach((el) => { el.value = ""; });
+      const status = document.getElementById("save-status");
+      status.textContent = "Cleared.";
+      setTimeout(() => { status.textContent = ""; }, 3000);
+    });
+
+    const link = document.getElementById("bookmarklet-link");
+    link.href = "javascript:" + encodeURIComponent(BOOKMARKLET_SRC);
+  }
+
+  function setupEmbeddedView() {
+    document.title = "lilguy autofill";
+    document.documentElement.style.background = "#0d0d0c";
+    document.body.style.cssText = "margin:0;background:#0d0d0c;";
+    document.body.innerHTML = `
+      <div id="embed-root" style="padding:16px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#f0ede4;background:#0d0d0c;box-sizing:border-box;min-height:100vh;">
+        <div id="embed-content"></div>
+      </div>`;
+    const root = document.getElementById("embed-content");
+
+    let requester = null; // {source, origin}
+
+    function render(html) { root.innerHTML = html; }
+
+    function renderNoProfile() {
+      render(`
+        <div style="font-size:13px;line-height:1.5;">
+          <strong style="color:#e8952a;">lilguy autofill</strong><br>
+          No saved profile yet on this browser.
+          <a href="https://lilguy.win/autofill.html" target="_blank" style="color:#e8952a;">Set one up</a>,
+          then try again.
+        </div>
+        <button id="close-btn" style="margin-top:10px;background:transparent;border:1px solid #2b2823;color:#8a8474;border-radius:6px;padding:6px 12px;cursor:pointer;">Close</button>
+      `);
+      document.getElementById("close-btn").addEventListener("click", () => {
+        if (requester) requester.source.postMessage({ type: "lilguy-autofill:cancelled" }, requester.origin);
+      });
+    }
+
+    function renderConsent(profile, fromOrigin) {
+      let host = fromOrigin;
+      try { host = new URL(fromOrigin).hostname; } catch (e) {}
+      render(`
+        <div style="font-size:13px;line-height:1.5;">
+          <strong style="color:#e8952a;">lilguy autofill</strong><br>
+          Fill this page on <strong>${host}</strong> using your saved profile?
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;">
+          <button id="fill-btn" style="background:#e8952a;color:#1a1208;font-weight:700;border:none;border-radius:6px;padding:7px 14px;cursor:pointer;">Fill this page</button>
+          <button id="cancel-btn" style="background:transparent;border:1px solid #2b2823;color:#8a8474;border-radius:6px;padding:7px 14px;cursor:pointer;">Not now</button>
+        </div>
+      `);
+      document.getElementById("fill-btn").addEventListener("click", () => {
+        requester.source.postMessage({ type: "lilguy-autofill:profile", profile }, requester.origin);
+      });
+      document.getElementById("cancel-btn").addEventListener("click", () => {
+        requester.source.postMessage({ type: "lilguy-autofill:cancelled" }, requester.origin);
+      });
+    }
+
+    window.addEventListener("message", (event) => {
+      if (!event.data || event.data.type !== "lilguy-autofill:hello") return;
+      requester = { source: event.source, origin: event.origin };
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        requester.source.postMessage({ type: "lilguy-autofill:no-profile" }, requester.origin);
+        renderNoProfile();
+        return;
+      }
+      renderConsent(JSON.parse(raw), event.origin);
+    });
+
+    render(`<div style="font-size:13px;color:#8a8474;">Waiting for the page...</div>`);
+  }
+
+  if (isEmbedded() || new URLSearchParams(location.search).get("embed") === "1") {
+    setupEmbeddedView();
+  } else {
+    setupStandaloneView();
+  }
+})();
+</script>
+
+</body>
+</html>

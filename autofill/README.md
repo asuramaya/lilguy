@@ -1,10 +1,24 @@
 # Application Autofill
 
-A browser userscript that fills the repetitive fields on Greenhouse, Lever,
-Ashby, Rippling, SmartRecruiters, and Workday application forms: name,
-contact info, school, major, GPA, address, work-authorization questions,
-all from a profile you fill in once. It never clicks Submit. You review
-every filled field and submit yourself.
+Fills the repetitive fields on Greenhouse, Lever, Ashby, Rippling,
+SmartRecruiters, and Workday application forms: name, contact info,
+school, major, GPA, address, work-authorization questions, all from a
+profile you fill in once. It never clicks Submit. You review every
+filled field and submit yourself.
+
+Two ways to get it, same coverage:
+
+- **No install: [lilguy.win/autofill.html](https://lilguy.win/autofill.html)**
+  -- save your profile once in this browser, drag a bookmarklet to your
+  bookmarks bar, click it on any application page. No extension, no
+  userscript manager. Doesn't auto-attach a resume (see that page's own
+  docs for why, and the threat model behind how it's built). This is
+  `service/static/autofill.html` + `service/static/autofill-loader.js`
+  in this repo -- read those before trusting the deployed version, since
+  trusting the code is exactly what this option asks of you.
+- **This folder's userscript** (below) -- needs Tampermonkey/Violentmonkey
+  first, but also auto-attaches a stored resume and keeps working without
+  a network fetch on every use.
 
 ## Why autofill and not auto-apply
 
