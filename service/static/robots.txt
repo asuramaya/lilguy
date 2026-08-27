@@ -1,0 +1,9 @@
+# lilguy.win -- fast edge internship aggregator.
+# This corpus is meant to be indexed, quoted, and reused: no login,
+# no paywall, no rate limit. AI crawlers and assistants are welcome.
+# See /llms.txt for an orientation and /data/feed.json for raw data.
+
+User-agent: *
+Allow: /
+
+Sitemap: https://lilguy.win/sitemap.xml

@@ -9,6 +9,9 @@ Generates:
   dist/data/companies.json      -- Company directory index
   dist/data/descriptions/*.json -- Individual full description files (on-demand)
   dist/feed.atom                -- Global Atom syndication feed
+  dist/sitemap.xml              -- Sitemap (home page only; see the SPA note in export_edge_bundle)
+  dist/robots.txt               -- Crawler policy (copied from service/static)
+  dist/llms.txt                 -- AI/LLM orientation to the site and data (copied from service/static)
   dist/_headers                 -- Cloudflare Pages HTTP header rules
   dist/_redirects               -- Cloudflare Pages redirect rules
 """
@@ -401,7 +404,28 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
     except Exception as e:
         print(f"    [Warning] Atom generation failed: {e}")
 
-    # 7. Cloudflare headers & redirects
+    # 7. sitemap.xml -- regenerated each export so lastmod tracks the
+    # actual export time. Only the home page is listed: this is a
+    # client-rendered SPA (posting/company "pages" are just ?query
+    # params on the same document), so per-posting URLs would all
+    # resolve to identical unhydrated HTML and go stale the moment a
+    # posting closes -- no crawler value, just noise.
+    sitemap_file = out_dir / "sitemap.xml"
+    lastmod = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    with open(sitemap_file, "w", encoding="utf-8") as f:
+        f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://lilguy.win/</loc>
+    <lastmod>{lastmod}</lastmod>
+    <changefreq>hourly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
+""")
+    print(f"    Wrote {sitemap_file}")
+
+    # 8. Cloudflare headers & redirects
     headers_file = out_dir / "_headers"
     with open(headers_file, "w", encoding="utf-8") as f:
         f.write("""# Cache rules for static assets and data shards
@@ -419,6 +443,12 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
   Cache-Control: public, max-age=3600, s-maxage=3600
 /data/descriptions/*
   Cache-Control: public, max-age=86400, s-maxage=86400
+/sitemap.xml
+  Cache-Control: public, max-age=3600, s-maxage=3600
+/robots.txt
+  Cache-Control: public, max-age=3600, s-maxage=3600
+/llms.txt
+  Cache-Control: public, max-age=3600, s-maxage=3600
 
 # Security headers
 /*

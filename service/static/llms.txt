@@ -1,0 +1,22 @@
+# lilguy.win
+
+> Fast, zero-latency internship search engine aggregating open internship postings across 1,000+ employers in tech, finance, consulting, healthcare, and engineering.
+
+lilguy re-scrapes employer career pages and applicant tracking systems (Workday, Greenhouse, Lever, Ashby, SmartRecruiters, Oracle Recruiting, Rippling, and others) on a schedule, closes postings that disappear from their source board, deduplicates and standardizes the result, and republishes it as a static edge bundle that loads in well under a second. Every posting keeps its own original apply URL -- lilguy never intermediates applications and is not the employer for any listing.
+
+## Data
+
+- [Open postings feed](https://lilguy.win/data/feed.json): every currently-open posting as a flat JSON array. Fields include `company`, `title`, `location`, `url` (the employer's own ATS apply link), `category` (industry), `job_function`, `work_arrangement`, `cycle_season`, `cycle_year`, `posted_at_ts`, `first_seen`, `description_snippet`.
+- [Facets](https://lilguy.win/data/meta.json): aggregate counts by category, job function, work arrangement, hiring cycle, ATS platform, and location, plus a `generated_at` timestamp for this export.
+- [Company directory](https://lilguy.win/data/companies.json): one row per employer with posting counts, ATS platforms, and represented categories/locations.
+- [Atom feed](https://lilguy.win/feed.atom): the same open-postings corpus as a standard syndication feed, for feed readers.
+
+## Site
+
+- [Home](https://lilguy.win/): the search UI -- filter open postings by keyword, company, category, job function, work arrangement, hiring cycle, and location.
+
+## Notes for automated use
+
+- Data refreshes on a schedule, not in real time -- check `meta.json`'s `generated_at` before assuming freshness.
+- No API key or authentication is required for anything above. Please send a descriptive User-Agent and cache responses rather than polling faster than `generated_at` changes.
+- `url` on every posting is the employer's own ATS link -- do not present lilguy as the employer or the application destination.

@@ -28,7 +28,44 @@
 <meta name="twitter:image:alt" content="lilguy.win: every open internship, in one fast feed.">
 
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23e8952a'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>">
+<link rel="canonical" href="https://lilguy.win/">
 <link rel="alternate" type="application/atom+xml" title="lilguy.win" href="/feed.atom">
+<link rel="sitemap" type="application/xml" href="/sitemap.xml">
+
+<!-- Structured data: what this page is and where the raw corpus lives,
+     for search engines and AI crawlers/assistants alike. See /llms.txt
+     for the human/LLM-readable orientation to the underlying data. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "lilguy.win",
+  "url": "https://lilguy.win/",
+  "description": "Fast, zero-latency internship search engine aggregating open internship postings across 1,000+ employers in tech, finance, consulting, healthcare, and engineering.",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://lilguy.win/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Dataset",
+  "name": "lilguy open internship postings",
+  "description": "Every currently-open internship posting aggregated by lilguy.win, refreshed on a schedule and deduplicated across employer career pages and applicant tracking systems.",
+  "url": "https://lilguy.win/",
+  "isAccessibleForFree": true,
+  "creator": { "@type": "Organization", "name": "lilguy.win" },
+  "distribution": [
+    { "@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://lilguy.win/data/feed.json" },
+    { "@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://lilguy.win/data/meta.json" },
+    { "@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://lilguy.win/data/companies.json" },
+    { "@type": "DataDownload", "encodingFormat": "application/atom+xml", "contentUrl": "https://lilguy.win/feed.atom" }
+  ]
+}
+</script>
 <style>
   :root {
     --canvas: #0d0d0c;
