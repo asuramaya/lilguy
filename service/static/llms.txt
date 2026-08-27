@@ -10,10 +10,14 @@ lilguy re-scrapes employer career pages and applicant tracking systems (Workday,
 - [Facets](https://lilguy.win/data/meta.json): aggregate counts by category, job function, work arrangement, hiring cycle, ATS platform, and location, plus a `generated_at` timestamp for this export.
 - [Company directory](https://lilguy.win/data/companies.json): one row per employer with posting counts, ATS platforms, and represented categories/locations.
 - [Atom feed](https://lilguy.win/feed.atom): the same open-postings corpus as a standard syndication feed, for feed readers.
+- [Filtered Atom feeds](https://lilguy.win/feed.atom?category=Software+%26+Technology): the same endpoint accepts `company` (a companies.json `key`), `category`, `job_function`, `work_arrangement`, `cycle_season`, `cycle_year`, `q` (free text), `max_age_days`, and `limit` (≤500) as query params -- any combination, no account needed.
+- [Hiring-pace trends](https://lilguy.win/data/trends.json): a 12-week weekly opened/closed series and the current week's fastest-hiring employers, computed from postings' own history.
+- Badges: `https://lilguy.win/badge/total.svg` (site-wide open count) and `https://lilguy.win/badge/<company-key>.svg` (one employer's), as an embeddable SVG.
 
 ## Site
 
 - [Home](https://lilguy.win/): the search UI -- filter open postings by keyword, company, category, job function, work arrangement, hiring cycle, and location.
+- `https://lilguy.win/?posting=<id>` and `https://lilguy.win/?company=<key>` carry contextual title/description metadata (for share previews and search snippets) naming that specific role or employer, not just the generic homepage description.
 
 ## Notes for automated use
 

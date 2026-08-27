@@ -7,6 +7,8 @@ Generates:
   dist/data/meta.json           -- Aggregated facets (categories, functions, cycles, counts)
   dist/data/presets.json        -- Preset filter configurations
   dist/data/companies.json      -- Company directory index
+  dist/data/og_lookup.json      -- Minimal per-posting fields for contextual share previews
+  dist/data/trends.json         -- Weekly hiring-pace series + top movers, from existing timestamps
   dist/data/descriptions/*.json -- Individual full description files (on-demand)
   dist/feed.atom                -- Global Atom syndication feed
   dist/sitemap.xml              -- Sitemap (home page only; see the SPA note in export_edge_bundle)
@@ -320,6 +322,67 @@ def build_companies_directory(postings: list[dict]) -> list[dict]:
     return result
 
 
+def build_trends() -> dict:
+    """Hiring-pace stats computed straight from postings' existing
+    first_seen/closed_at timestamps -- closed rows are never deleted
+    (see schema.sql), so this is a rollup of history the corpus already
+    carries, not a new thing being tracked about anyone. No accounts,
+    no per-visitor data: it's an aggregate over the postings table.
+    """
+    weekly = {}
+    try:
+        with cursor() as cur:
+            cur.execute("""
+                SELECT date_trunc('week', first_seen)::date AS week, COUNT(*) AS n
+                FROM postings
+                WHERE first_seen >= now() - interval '12 weeks'
+                GROUP BY 1
+            """)
+            for row in cur.fetchall():
+                weekly.setdefault(row["week"].isoformat(), {"opened": 0, "closed": 0})["opened"] = row["n"]
+
+            cur.execute("""
+                SELECT date_trunc('week', closed_at)::date AS week, COUNT(*) AS n
+                FROM postings
+                WHERE closed_at IS NOT NULL AND closed_at >= now() - interval '12 weeks'
+                GROUP BY 1
+            """)
+            for row in cur.fetchall():
+                weekly.setdefault(row["week"].isoformat(), {"opened": 0, "closed": 0})["closed"] = row["n"]
+
+            cur.execute("""
+                SELECT company, COUNT(*) AS n
+                FROM postings
+                WHERE first_seen >= now() - interval '7 days'
+                GROUP BY company
+            """)
+            raw_movers = cur.fetchall()
+    except Exception as e:
+        print(f"    [Trends] Could not query database ({e}); skipping trends.")
+        return {"generated_at": datetime.now(timezone.utc).isoformat(), "weekly": [], "top_movers": []}
+
+    # Raw `company` values fragment the same employer across sources
+    # (e.g. "aecom2" vs "AECOM") -- merge through the same name
+    # standardization the rest of the export already applies before
+    # ranking, or one noisy alias could crowd out the real total.
+    merged = {}
+    for row in raw_movers:
+        name = standardize_company_name(row["company"])
+        merged[name] = merged.get(name, 0) + row["n"]
+    top_movers = [
+        {"company": name, "opened_7d": n}
+        for name, n in sorted(merged.items(), key=lambda x: x[1], reverse=True)[:10]
+    ]
+
+    weekly_series = [{"week": w, **counts} for w, counts in sorted(weekly.items())]
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "weekly": weekly_series,
+        "top_movers": top_movers,
+    }
+
+
 def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
     """Main export routine."""
     out_dir = Path(out_dir)
@@ -356,6 +419,31 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
     with open(feed_file, "w", encoding="utf-8") as f:
         json.dump(postings, f, ensure_ascii=False)
     print(f"    Wrote {feed_file} ({feed_file.stat().st_size / 1024:.1f} KB)")
+
+    # 1b. Write og_lookup.json -- minimal per-posting fields for the
+    # Cloudflare Pages Function that rewrites share-link previews
+    # (functions/_middleware.js). Deliberately not feed.json itself:
+    # that file is 6+ MB and carries fields a preview never needs.
+    og_lookup = {
+        p["id"]: {
+            "title": p.get("title", ""),
+            "company": p.get("company", ""),
+            "location": p.get("location", ""),
+            "category": p.get("category", ""),
+        }
+        for p in postings
+    }
+    og_file = data_dir / "og_lookup.json"
+    with open(og_file, "w", encoding="utf-8") as f:
+        json.dump(og_lookup, f, ensure_ascii=False)
+    print(f"    Wrote {og_file} ({og_file.stat().st_size / 1024:.1f} KB)")
+
+    print("==> Computing hiring-pace trends...")
+    trends = build_trends()
+    trends_file = data_dir / "trends.json"
+    with open(trends_file, "w", encoding="utf-8") as f:
+        json.dump(trends, f, indent=2, ensure_ascii=False)
+    print(f"    Wrote {trends_file}")
 
     # 2. Write meta.json
     meta_file = data_dir / "meta.json"
@@ -441,8 +529,14 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
   Cache-Control: public, max-age=3600, s-maxage=3600
 /data/companies.json
   Cache-Control: public, max-age=3600, s-maxage=3600
+/data/og_lookup.json
+  Cache-Control: public, max-age=300, s-maxage=300
+/data/trends.json
+  Cache-Control: public, max-age=3600, s-maxage=3600
 /data/descriptions/*
   Cache-Control: public, max-age=86400, s-maxage=86400
+/badge/*
+  Cache-Control: public, max-age=1800, s-maxage=1800
 /sitemap.xml
   Cache-Control: public, max-age=3600, s-maxage=3600
 /robots.txt

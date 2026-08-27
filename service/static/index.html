@@ -1702,6 +1702,7 @@
 <footer>
   <div class="wrap">
     <span><a id="atom-link" href="/feed.atom" target="_blank">subscribe (Atom)</a> &middot; <a href="/feed" target="_blank">/feed</a> &middot; <a href="/sources" target="_blank">/sources</a> &middot; <a href="/candidates" target="_blank">/candidates</a> &middot; <a href="/duplicates" target="_blank">/duplicates</a></span>
+    <span id="trends-line" hidden></span>
   </div>
 </footer>
 
@@ -2274,6 +2275,7 @@ async function initEdgeData() {
 
       fetch("/data/presets.json").then(r => r.ok ? r.json() : []).then(d => { EDGE_DATA.presets = d; });
       fetch("/data/companies.json").then(r => r.ok ? r.json() : []).then(d => { EDGE_DATA.companies = d; });
+      fetch("/data/trends.json").then(r => r.ok ? r.json() : null).then(renderTrendsLine).catch(() => {});
 
       EDGE_DATA.corpusPromise = fetch("/data/feed.json")
         .then(r => r.ok ? r.json() : [])
@@ -2286,6 +2288,19 @@ async function initEdgeData() {
   } catch (e) {
     EDGE_DATA.active = false;
   }
+}
+
+function renderTrendsLine(trends) {
+  const el = document.getElementById("trends-line");
+  if (!el || !trends || !Array.isArray(trends.weekly) || !trends.weekly.length) return;
+  const latest = trends.weekly[trends.weekly.length - 1];
+  let text = `this week: +${latest.opened} opened, ${latest.closed} closed`;
+  const mover = trends.top_movers && trends.top_movers[0];
+  if (mover && mover.opened_7d > 0) {
+    text += ` · ${mover.company} leads with ${mover.opened_7d} new`;
+  }
+  el.textContent = text;
+  el.hidden = false;
 }
 
 function edgePassesPreset(p, presetId) {

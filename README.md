@@ -19,6 +19,34 @@ Explore the live feed at **[lilguy.win](https://lilguy.win)** (mirrored at **[li
 - **📱 Responsive & Accessible UI**: Mobile-first layout with native bottom drawer filters, auto-zoom prevention on mobile inputs, persistent pagination, full keyboard navigation, and WCAG AA contrast.
 - **🤖 Application Autofill Suite**: Browser userscript (`autofill/`) that fills repetitive application fields from a local profile without auto-submitting.
 - **🎯 Forkable Filter Presets**: Ready-made filter configs in `presets/` for Software Engineering, Data & Analytics, Finance, Marketing, Sales, HR, and Supply Chain & Operations.
+- **📡 Filtered Feeds, Badges & Trends**: Subscribe to any filter combo as an Atom feed, embed a live posting-count badge, or pull weekly hiring-pace stats — see [Feeds, Badges & Trends](#-feeds-badges--trends) below. No account, no email, no data collected about who's watching.
+
+---
+
+## 📡 Feeds, Badges & Trends
+
+Everything here runs off the same static bundle everything else does — no signup, no API key, nothing stored server-side about who's asking.
+
+**Filtered Atom feeds** — subscribe in any feed reader, or point an RSS-to-Discord/Slack/IFTTT bot at it for a poll-based alert with zero infrastructure on either side:
+
+```
+https://lilguy.win/feed.atom?category=Software+%26+Technology
+https://lilguy.win/feed.atom?company=openai&job_function=Data+Science
+https://lilguy.win/feed.atom?q=robotics&max_age_days=7&limit=50
+```
+
+Supported params: `company` (a key from `/data/companies.json`), `category`, `job_function`, `work_arrangement`, `cycle_season`, `cycle_year`, `q` (free text), `max_age_days`, `limit` (≤500). No params returns the default unfiltered feed.
+
+**Embeddable badges** — a company's own open-role count, or the site total, as an SVG:
+
+```markdown
+![Open internships](https://lilguy.win/badge/total.svg)
+![OpenAI internships](https://lilguy.win/badge/openai.svg)
+```
+
+**Hiring-pace trends** — [`/data/trends.json`](https://lilguy.win/data/trends.json) publishes a 12-week weekly opened/closed series and the week's fastest-hiring employers, computed straight from postings' own `first_seen`/`closed_at` history (see `service/edge_export.py`'s `build_trends`). The homepage footer surfaces the latest week inline.
+
+**Contextual share previews** — a link to `?posting=<id>` or `?company=<key>` shows that specific role or employer's title/description when pasted into Slack, Discord, iMessage, or Twitter, instead of the generic homepage card (`functions/_middleware.js`, a Cloudflare Pages Function).
 
 ---
 
