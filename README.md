@@ -46,7 +46,7 @@ Supported params: `company` (a key from `/data/companies.json`), `category`, `jo
 
 **Hiring-pace trends** — [`/data/trends.json`](https://lilguy.win/data/trends.json) publishes a 12-week weekly opened/closed series and the week's fastest-hiring employers, computed straight from postings' own `first_seen`/`closed_at` history (see `service/edge_export.py`'s `build_trends`). The homepage footer surfaces the latest week inline.
 
-**Contextual share previews** — a link to `?posting=<id>` or `?company=<key>` shows that specific role or employer's title/description when pasted into Slack, Discord, iMessage, or Twitter, instead of the generic homepage card (`functions/_middleware.js`, a Cloudflare Pages Function).
+**Contextual share previews** — a link to `?posting=<id>`, `?company=<key>`, or `?category=<name>` shows that specific role, employer, or category's title/description **and a matching share-image** when pasted into Slack, Discord, or iMessage, instead of the generic homepage card (`functions/_middleware.js` + `functions/og-card.svg.js`, both Cloudflare Pages Functions). The per-entity image is SVG, rendered at the edge from the same static data the site itself reads — Twitter/X's card validator is pickier about non-raster `og:image` and may show no image there, a deliberate tradeoff against pulling a browser-rendering toolchain into this project just for image generation. The generic homepage share image (`og-image.png`) is a real PNG, regenerated on every export with that export's live open-role/employer counts (`service/og_image.py`, Pillow) — it used to be a hand-rendered screenshot with the numbers typed in as literal text.
 
 ---
 

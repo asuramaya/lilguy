@@ -10,6 +10,7 @@ Generates:
   dist/data/og_lookup.json      -- Minimal per-posting fields for contextual share previews
   dist/data/trends.json         -- Weekly hiring-pace series + top movers, from existing timestamps
   dist/data/descriptions/*.json -- Individual full description files (on-demand)
+  dist/og-image.png             -- Site-wide share-link image, regenerated with this export's live counts
   dist/feed.atom                -- Global Atom syndication feed
   dist/sitemap.xml              -- Sitemap (home page only; see the SPA note in export_edge_bundle)
   dist/robots.txt               -- Crawler policy (copied from service/static)
@@ -37,6 +38,7 @@ sys.path.insert(0, str(ROOT / "service"))
 import yaml
 from atom import render_atom
 from db import cursor
+from og_image import render_og_image
 from standardize import standardize_posting, standardize_company_name
 
 STATIC_DIR = ROOT / "service" / "static"
@@ -450,6 +452,14 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
     with open(meta_file, "w", encoding="utf-8") as f:
         json.dump(meta, f, indent=2, ensure_ascii=False)
     print(f"    Wrote {meta_file}")
+
+    # 2b. Regenerate og-image.png with THIS export's real counts -- this
+    # overwrites the copy the static-asset loop above already placed
+    # here, so freshness always wins over whatever was last checked in.
+    og_image_file = out_dir / "og-image.png"
+    with open(og_image_file, "wb") as f:
+        f.write(render_og_image(meta))
+    print(f"    Wrote {og_image_file}")
 
     # 3. Write presets.json
     presets_file = data_dir / "presets.json"

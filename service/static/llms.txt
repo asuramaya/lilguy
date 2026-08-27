@@ -17,7 +17,7 @@ lilguy re-scrapes employer career pages and applicant tracking systems (Workday,
 ## Site
 
 - [Home](https://lilguy.win/): the search UI -- filter open postings by keyword, company, category, job function, work arrangement, hiring cycle, and location.
-- `https://lilguy.win/?posting=<id>` and `https://lilguy.win/?company=<key>` carry contextual title/description metadata (for share previews and search snippets) naming that specific role or employer, not just the generic homepage description.
+- `https://lilguy.win/?posting=<id>`, `https://lilguy.win/?company=<key>`, and `https://lilguy.win/?category=<name>` carry contextual title/description metadata AND a matching share image, naming that specific role, employer, or category, not just the generic homepage description.
 
 ## Notes for automated use
 
