@@ -468,6 +468,11 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
 /api/meta  /data/meta.json  200
 /api/presets  /data/presets.json  200
 /api/companies  /data/companies.json  200
+
+# Catch-all: any other unmatched path (stray/legacy links, direct
+# navigation) resolves to the SPA shell instead of Cloudflare's bare
+# 404 -- this must stay LAST, first match wins in _redirects.
+/*  /index.html  200
 """)
 
     print(f"\n==> Edge export complete! Bundle ready at {out_dir}")
