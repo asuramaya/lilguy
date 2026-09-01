@@ -1,13 +1,15 @@
 """Tests for standardization engine (service/standardize.py)"""
 
 from service.standardize import (
+    JOB_FUNCTIONS,
     standardize_job_function,
     standardize_work_arrangement,
     standardize_location,
     standardize_cycle,
     clean_display_title,
     standardize_company_name,
-    standardize_posting
+    standardize_posting,
+    infer_category,
 )
 
 
@@ -32,6 +34,22 @@ def test_standardize_job_function():
     assert standardize_job_function("Legal & Regulatory Compliance Intern") == "Legal, Policy & Compliance"
     assert standardize_job_function("Civil Engineering Co-op") == "Civil & Environmental Engineering"
     assert standardize_job_function("Management Consulting Summer Associate") == "General Business & Consulting"
+
+
+def test_infer_category_maps_every_real_job_function_except_other():
+    # Regression: infer_category()'s internal fn_map had drifted out of
+    # sync with JOB_FUNCTIONS/JOB_FUNCTION_RULES above (old names like
+    # "Product & Program Management", "Healthcare & Medicine", "Strategy,
+    # Consulting & Corporate Dev" that standardize_job_function() hasn't
+    # returned since this taxonomy was last renamed) -- 8 of 14 real job
+    # functions silently fell through to "Uncategorized" with no test
+    # ever exercising this branch to catch it. Every non-"Other" entry in
+    # JOB_FUNCTIONS must resolve to a real category here.
+    for job_function in JOB_FUNCTIONS:
+        if job_function == "Other":
+            continue
+        result = infer_category("Some Unbranded Company", "Some Title", job_function, "Uncategorized")
+        assert result != "Uncategorized", f"{job_function!r} is not mapped in infer_category()'s fn_map"
 
 
 def test_standardize_work_arrangement():

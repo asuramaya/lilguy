@@ -644,22 +644,36 @@ def infer_category(company: str, title: str, job_function: str, current_category
         return "Media & Entertainment"
 
     # 3. Derive from classified job function
+    #
+    # These keys must match JOB_FUNCTIONS/JOB_FUNCTION_RULES above
+    # EXACTLY. They drifted out of sync at some point (this map still had
+    # an old naming scheme -- "Product & Program Management", "Healthcare
+    # & Medicine", "Strategy, Consulting & Corporate Dev", none of which
+    # standardize_job_function() has returned since the taxonomy above
+    # was last renamed) and every lookup for 8 of the 14 real job
+    # functions silently missed, falling through to step 4's
+    # "Uncategorized" -- confirmed live against the real backlog: 237
+    # sources had enough classified postings to resolve a category, only
+    # 93 actually did before this fix, with a mismatched job function
+    # more common than a matched one (Marketing, Sales, Healthcare, HR,
+    # Legal, Civil, Product, and General Business between them
+    # accounted for over half of every classified posting sampled).
     if job_function:
         fn_map = {
             "Software Engineering": "Software & Technology",
             "Data, AI & Machine Learning": "Data & Artificial Intelligence",
             "Hardware & Electrical Engineering": "Hardware & Electronics",
             "Mechanical & Aerospace Engineering": "Mechanical Engineering",
-            "Civil, Structural & Environmental Engineering": "Civil & Environmental Engineering",
-            "Product & Program Management": "Product Management",
+            "Civil & Environmental Engineering": "Civil & Environmental Engineering",
+            "Product Management & Design": "Product Management",
             "Finance, Accounting & Trading": "Finance & Accounting",
-            "Marketing, Brand & Growth": "Marketing & Growth",
-            "Sales, Account Management & BD": "Sales & Business Development",
+            "Marketing & Communications": "Marketing & Growth",
+            "Sales & Business Development": "Sales & Business Development",
             "Supply Chain, Logistics & Operations": "Supply Chain & Logistics",
-            "Healthcare & Medicine": "Healthcare & Life Sciences",
-            "Human Resources & Talent": "Human Resources & Talent",
-            "Legal, Compliance & Policy": "Legal & Compliance",
-            "Strategy, Consulting & Corporate Dev": "Management Consulting"
+            "Healthcare, Biotech & Life Sciences": "Healthcare & Life Sciences",
+            "Human Resources & Recruiting": "Human Resources & Talent",
+            "Legal, Policy & Compliance": "Legal & Compliance",
+            "General Business & Consulting": "Management Consulting"
         }
         if job_function in fn_map:
             return fn_map[job_function]
