@@ -8,6 +8,10 @@ from .jsonld import JsonLdConnector
 from .oracle_recruiting import OracleRecruitingConnector
 from .smartrecruiters import SmartRecruitersConnector
 from .rippling import RipplingConnector
+from .workable import WorkableConnector
+from .bamboohr import BambooHRConnector
+from .taleo import TaleoConnector
+from .icims import IcimsConnector
 
 CONNECTORS = {
     "greenhouse": GreenhouseConnector,
@@ -19,6 +23,10 @@ CONNECTORS = {
     "jsonld": JsonLdConnector,
     "oracle_recruiting": OracleRecruitingConnector,
     "rippling": RipplingConnector,
+    "workable": WorkableConnector,
+    "bamboohr": BambooHRConnector,
+    "taleo": TaleoConnector,
+    "icims": IcimsConnector,
 }
 
 __all__ = ["Posting", "Connector", "CONNECTORS"]

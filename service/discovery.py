@@ -298,6 +298,9 @@ GREENHOUSE_API = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs"
 LEVER_API = "https://api.lever.co/v0/postings/{token}?mode=json"
 ASHBY_API = "https://api.ashbyhq.com/posting-api/job-board/{token}"
 SMARTRECRUITERS_API = "https://api.smartrecruiters.com/v1/companies/{token}/postings"
+RIPPLING_API = "https://api.rippling.com/platform/api/ats/v1/board/{token}/jobs"
+WORKABLE_API = "https://apply.workable.com/api/v3/accounts/{token}/jobs"
+BAMBOOHR_API = "https://{token}.bamboohr.com/careers/list"
 JOB_URL_HINTS = re.compile(r"/(job|jobs|position|req|career)s?[/_-]", re.IGNORECASE)
 
 
@@ -415,6 +418,119 @@ def _probe_smartrecruiters(company: str):
     return None
 
 
+def _probe_rippling(company: str):
+    token = _slugify(company)
+    try:
+        r = requests.get(RIPPLING_API.format(token=token), timeout=TIMEOUT, headers=UA)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        jobs = data if isinstance(data, list) else (data or {}).get("jobs")
+        if jobs:
+            return {"ats": "rippling", "config": {"company": company, "ats": "rippling", "token": token,
+                                                    "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def _probe_workable(company: str):
+    # A hyphenated slug is tried alongside the bare alnum one --
+    # confirmed live that Workable account tokens are often the
+    # hyphenated company name ("back-market"), which _slugify's
+    # non-alnum-stripping would otherwise turn into "backmarket" and
+    # never find. Also confirmed live: Workable's WAF 403s a request
+    # with no Referer header regardless of token validity, so this sends
+    # one even at probe time, not just in the real connector.
+    hyphenated = re.sub(r"[^a-z0-9]+", "-", company.lower()).strip("-")
+    for token in dict.fromkeys([hyphenated, _slugify(company)]):
+        if not token:
+            continue
+        try:
+            r = requests.post(WORKABLE_API.format(token=token), json={}, timeout=TIMEOUT,
+                               headers={**UA, "Referer": f"https://apply.workable.com/{token}/",
+                                        "Content-Type": "application/json"})
+            if r.status_code != 200:
+                continue
+            jobs = (r.json() or {}).get("results")
+            if jobs:
+                return {"ats": "workable", "config": {"company": company, "ats": "workable", "token": token,
+                                                        "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+def _probe_bamboohr(company: str):
+    hyphenated = re.sub(r"[^a-z0-9]+", "-", company.lower()).strip("-")
+    for token in dict.fromkeys([hyphenated, _slugify(company)]):
+        if not token:
+            continue
+        try:
+            r = requests.get(BAMBOOHR_API.format(token=token), timeout=TIMEOUT, headers=UA)
+            if r.status_code != 200:
+                continue
+            result = (r.json() or {}).get("result")
+            if result:
+                return {"ats": "bamboohr", "config": {"company": company, "ats": "bamboohr", "token": token,
+                                                        "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
+        except Exception:  # noqa: BLE001
+            continue
+    return None
+
+
+# A guessable subset of real Taleo careersection slugs -- NOT exhaustive,
+# same accepted-limitation shape as WORKDAY_HOST_GUESSES above. Confirmed
+# live: WIPO uses a descriptive slug ("wp_internship"), NATO/many others
+# use a bare number ("2"). This only ever catches a `<slug>.taleo.net`
+# tenant -- the opaque `fa###.taleo.net` Oracle-hosted variant (confirmed
+# live via search results) isn't guessable from a company name at all,
+# same structural gap as oracle_recruiting.py's opaque host.
+TALEO_SECTION_GUESSES = ["2", "1", "ex", "jobs", "careers"]
+
+
+def _probe_taleo(company: str):
+    tenant = _slugify(company)
+    if not tenant:
+        return None
+    for section in TALEO_SECTION_GUESSES:
+        url = f"https://{tenant}.taleo.net/careersection/{section}/jobsearch.ftl?lang=en"
+        try:
+            r = requests.get(url, timeout=TIMEOUT, headers=UA)
+        except Exception:  # noqa: BLE001
+            continue
+        if r.status_code != 200 or "Career Section Unavailable" in r.text:
+            continue
+        if not PORTAL_RE.search(r.text):
+            continue
+        return {"ats": "taleo", "config": {"company": company, "ats": "taleo", "tenant": tenant,
+                                            "section": section, "category": "Uncategorized",
+                                            "max_pages": TRIAL_MAX_PAGES}}
+    return None
+
+
+PORTAL_RE = re.compile(r"queryString:\s*'[^']*portal=(\d+)")
+
+
+def _probe_icims(company: str):
+    slug = _slugify(company)
+    if not slug:
+        return None
+    url = (
+        f"https://careers-{slug}.icims.com/jobs/search"
+        "?pr=0&in_iframe=1&mobile=false&width=1200&height=500"
+        "&bga=true&needsRedirect=false&jan1offset=-360&jun1offset=-300"
+    )
+    try:
+        r = requests.get(url, timeout=TIMEOUT, headers=UA)
+        if r.status_code == 200 and "iCIMS_JobCardItem" in r.text:
+            return {"ats": "icims", "config": {"company": company, "ats": "icims", "slug": slug,
+                                                "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}}
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
 def _try_workday_guess(company: str, tenant: str, host: str, site: str):
     url = f"https://{tenant}.{host}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
     try:
@@ -514,7 +630,8 @@ def _probe_jsonld(company: str, domain: str):
     return None
 
 
-PROBES = [_probe_greenhouse, _probe_lever, _probe_ashby, _probe_smartrecruiters, _probe_workday]
+PROBES = [_probe_greenhouse, _probe_lever, _probe_ashby, _probe_smartrecruiters, _probe_workday,
+          _probe_rippling, _probe_workable, _probe_bamboohr, _probe_taleo, _probe_icims]
 
 # BUMP THIS WHENEVER PROBES CHANGES.
 #
@@ -536,7 +653,8 @@ PROBES = [_probe_greenhouse, _probe_lever, _probe_ashby, _probe_smartrecruiters,
 #
 # 1: greenhouse, lever, workday, jsonld
 # 2: + ashby, smartrecruiters (2026-08-18)
-PROBE_SET_VERSION = 2
+# 3: + rippling, workable, bamboohr, taleo, icims (2026-08-31)
+PROBE_SET_VERSION = 3
 
 
 def probe_candidate(company: str) -> dict | None:
