@@ -8,6 +8,18 @@ it needs (title, description_snippet) is already sitting in Postgres
 from the scrape that already happened. That makes it cheap enough to run
 every cycle without pacing concerns.
 
+CLAIMING HAS ATTEMPT-TRACKED BACKOFF, not a bare `ORDER BY s.id` -- the
+first version didn't, and confirmed live it's the exact same head-of-line
+shape already fixed once for the description backfill (see
+description_backfill.py's own docstring, and schema.sql's
+category_next_attempt_at column comment): a source that can never
+resolve stays instantly re-claimable at the head of the queue, and every
+cycle re-fetches the SAME lowest-id Uncategorized sources forever. 30
+consecutive batches against the real backlog fixed exactly 0, because
+the claim query is a pure function of unchanged data with nothing to
+make it advance -- every resolvable source sitting at a higher id was
+never even looked at.
+
 WHY COMPANY-NAME MATCHING ALONE ISN'T ENOUGH: standardize.py's
 infer_category() has company-name heuristics (a bank name implies
 Financial Services, etc.), but measured live against the real backlog
@@ -57,6 +69,17 @@ SAMPLE_SIZE = 10
 # primary category if there's no clear majority either way.
 MIN_SAMPLES = 2
 
+# Same fix, same shape, same reason as description_backfill.py's
+# BACKOFF_HOURS: capped exponential backoff so a source that can never
+# resolve (no open postings, or postings with no classifiable signal)
+# gets pushed to the back of the queue instead of blocking every
+# resolvable source behind it forever. Longer-tailed than the
+# description backfill's -- what changes here is a source gaining NEW
+# postings with clearer signal, which happens on whatever cadence the
+# scraper itself runs, not a flaky HTTP endpoint recovering within
+# minutes -- so re-checking within the hour buys nothing.
+BACKOFF_HOURS = (6, 24, 72, 168, 336)
+
 
 def _claim_batch(limit: int) -> list[dict]:
     with cursor() as cur:
@@ -72,7 +95,8 @@ def _claim_batch(limit: int) -> list[dict]:
                    ) AS sample_postings
             FROM sources s
             WHERE s.category = 'Uncategorized'
-            ORDER BY s.id
+              AND (s.category_next_attempt_at IS NULL OR s.category_next_attempt_at <= now())
+            ORDER BY s.category_next_attempt_at NULLS FIRST, s.id
             LIMIT %s
             """,
             (SAMPLE_SIZE, limit),
@@ -90,6 +114,23 @@ def _update_source_category(source_id: int, category: str, config: dict) -> None
         )
 
 
+def _defer(source_id: int) -> None:
+    """Backoff chosen in SQL from the row's own attempt count, so this is
+    ONE statement -- reading the count and writing it back would race
+    with a concurrent tick and could pin a row to the first rung."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE sources
+               SET category_attempts = LEAST(category_attempts + 1, 32767),
+                   category_next_attempt_at = now() + make_interval(
+                       hours => (%s::int[])[LEAST(category_attempts + 1, %s)])
+             WHERE id = %s
+            """,
+            (list(BACKOFF_HOURS), len(BACKOFF_HOURS), source_id),
+        )
+
+
 def run(limit: int = 20) -> dict:
     """Never raises: one malformed row must not stop the scheduler."""
     rows = _claim_batch(limit)
@@ -100,6 +141,7 @@ def run(limit: int = 20) -> dict:
     for row in rows:
         postings = row.get("sample_postings") or []
         if not postings:
+            _defer(row["source_id"])
             skipped += 1
             continue
 
@@ -112,6 +154,7 @@ def run(limit: int = 20) -> dict:
                 categories.append(guess)
 
         if len(categories) < MIN_SAMPLES:
+            _defer(row["source_id"])
             skipped += 1
             continue
 
@@ -120,6 +163,7 @@ def run(limit: int = 20) -> dict:
             _update_source_category(row["source_id"], top_category, row["config"])
             fixed += 1
         else:
+            _defer(row["source_id"])
             skipped += 1
 
     return {"attempted": len(rows), "fixed": fixed, "skipped": skipped}

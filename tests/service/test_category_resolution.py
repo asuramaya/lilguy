@@ -136,3 +136,57 @@ def test_a_fixed_source_is_not_reclaimed_on_a_second_pass():
     cat_res.run(limit=5)
     out = cat_res.run(limit=5)
     assert out["attempted"] == 0
+
+
+def test_a_permanently_unresolvable_source_cannot_starve_the_ones_behind_it():
+    """The exact head-of-line shape already fixed once for the
+    description backfill (test_workday_descriptions.py's own test of the
+    same name), reproduced here: the first version of this sweep's claim
+    query had no attempt tracking, so a source with no open postings (or
+    postings with no classifiable title signal) stayed instantly
+    re-claimable at the head of `ORDER BY s.id` and every cycle re-fetched
+    the SAME lowest-id source forever, never reaching a resolvable one
+    behind it. Confirmed live against the real backlog before this fix:
+    30 consecutive batches, 0 fixed, every time.
+    """
+    stuck = _source("stuckco")  # zero postings, unresolvable -- lower id, sits at the head
+    victim = _source("aecom2")  # resolvable -- higher id, sits behind it
+    _open_posting(victim, "Architecture Design Intern", path="/a")
+    _open_posting(victim, "Civil Engineering Intern", path="/b")
+
+    first = cat_res.run(limit=1)
+    assert first["skipped"] == 1
+    assert _category(victim)["category"] == "Uncategorized"  # never reached yet
+
+    second = cat_res.run(limit=1)
+    assert second["fixed"] == 1, "the queue must advance past a source that can never resolve"
+    assert _category(victim)["category"] != "Uncategorized"
+
+
+def test_backoff_lengthens_with_repeated_skip_and_is_capped():
+    sid = _source("stuckco")
+    for _ in range(len(cat_res.BACKOFF_HOURS) + 2):
+        out = cat_res.run(limit=5)
+        assert out["skipped"] == 1
+        _rewind(sid)
+
+    with db.cursor() as cur:
+        cur.execute("SELECT category_attempts FROM sources WHERE id = %s", (sid,))
+        assert cur.fetchone()["category_attempts"] == len(cat_res.BACKOFF_HOURS) + 2
+
+    # Capped rather than unbounded: a source that never resolves must
+    # still come back around eventually, just never often enough to
+    # monopolise the queue.
+    with db.cursor() as cur:
+        cur.execute("SELECT category_next_attempt_at - now() AS gap FROM sources WHERE id = %s", (sid,))
+        gap_hours = cur.fetchone()["gap"].total_seconds() / 3600
+    assert gap_hours <= max(cat_res.BACKOFF_HOURS) + 1
+
+
+def _rewind(source_id):
+    """Pretend the backoff window has elapsed."""
+    with db.cursor() as cur:
+        cur.execute(
+            "UPDATE sources SET category_next_attempt_at = now() - interval '1 minute' WHERE id = %s",
+            (source_id,),
+        )

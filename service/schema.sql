@@ -398,6 +398,26 @@ ALTER TABLE events ADD CONSTRAINT events_kind_check
 -- version and becomes eligible exactly once.
 ALTER TABLE discovery_candidates ADD COLUMN IF NOT EXISTS probe_set_version SMALLINT NOT NULL DEFAULT 0;
 
+-- category_resolution.py's mechanical sweep had no attempt tracking --
+-- the exact same head-of-line shape already fixed once for the
+-- description backfill (see that column's own comment above): a source
+-- that can never resolve (no open postings, or postings whose titles
+-- carry no classifiable signal) stayed instantly re-claimable at the
+-- head of `ORDER BY s.id`, and every cycle re-fetched the SAME
+-- lowest-id Uncategorized sources forever -- confirmed live, 30
+-- consecutive batches against the real backlog with 0 fixed every time,
+-- because the query is a pure function of unchanged data with nothing
+-- to make it advance. Resolvable sources sitting at higher ids were
+-- never reached at all.
+--
+-- next_attempt_at is what breaks the cycle, same fix, same reason.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS category_attempts SMALLINT NOT NULL DEFAULT 0;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS category_next_attempt_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS sources_category_pending_idx
+    ON sources (category_next_attempt_at NULLS FIRST, id)
+    WHERE category = 'Uncategorized';
+
 -- ---------------------------------------------------------------------
 -- Indexes deliberately REMOVED, with the measurements that justified it
 -- ---------------------------------------------------------------------
