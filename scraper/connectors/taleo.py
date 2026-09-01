@@ -44,6 +44,17 @@ class TaleoConnector(Connector):
     gap as oracle_recruiting.py's opaque per-company host, and not
     fixable by guessing.
 
+    A second, separate gap (confirmed live on NATO's own `<tenant>.
+    taleo.net` board, tenant/section both correct): some Taleo templates
+    don't expose the RSS feed's portal id on the bare landing page at
+    all -- no `queryString` JS variable, no RSS link in the DOM until an
+    actual search has been run first. This connector's fetch() will
+    raise "couldn't find a portal id" for a tenant like that even with a
+    perfectly correct `tenant`/`section` -- not fixable from this page
+    alone; would need to simulate an actual search POST first, not
+    attempted here since WIPO's simpler template covers the case this
+    was built for.
+
     The RSS feed carries title/link/description/pubDate but NOT a
     structured location field -- confirmed live (WIPO). This makes a
     best-effort attempt to pull a location out of the per-job detail

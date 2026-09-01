@@ -481,11 +481,23 @@ def _probe_bamboohr(company: str):
 
 # A guessable subset of real Taleo careersection slugs -- NOT exhaustive,
 # same accepted-limitation shape as WORKDAY_HOST_GUESSES above. Confirmed
-# live: WIPO uses a descriptive slug ("wp_internship"), NATO/many others
-# use a bare number ("2"). This only ever catches a `<slug>.taleo.net`
-# tenant -- the opaque `fa###.taleo.net` Oracle-hosted variant (confirmed
-# live via search results) isn't guessable from a company name at all,
-# same structural gap as oracle_recruiting.py's opaque host.
+# live: WIPO uses a descriptive slug ("wp_internship"), not in this list
+# -- missed by this probe entirely, a genuine guessing-coverage gap, not
+# a bug (WIPO's own connector fetch() works fine once configured by
+# hand). This only ever catches a `<slug>.taleo.net` tenant -- the opaque
+# `fa###.taleo.net` Oracle-hosted variant (confirmed live via search
+# results) isn't guessable from a company name at all, same structural
+# gap as oracle_recruiting.py's opaque host.
+#
+# A THIRD limitation, also confirmed live (NATO, section="2", a real
+# working tenant): some Taleo templates don't expose the RSS portal id
+# on the bare, un-searched landing page at all -- no `queryString` JS
+# variable, no RSS link in the DOM until an actual search has run.
+# PORTAL_RE simply won't match on those tenants even with the right
+# section guessed correctly. Net effect: this probe's real-world hit
+# rate on Taleo is low, similar in spirit to Workday's guessing gap --
+# most Taleo sources will need to be added by hand via
+# docs/adding-a-source.md, same as Oracle Recruiting Cloud already is.
 TALEO_SECTION_GUESSES = ["2", "1", "ex", "jobs", "careers"]
 
 
