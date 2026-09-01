@@ -7,7 +7,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "service"))
 
 from candidate_sources import (  # noqa: E402
     _latest_commoncrawl_index,
+    fetch_commoncrawl_bamboohr_tokens,
     fetch_commoncrawl_greenhouse_tokens,
+    fetch_commoncrawl_icims_slugs,
+    fetch_commoncrawl_taleo_tenants,
+    fetch_commoncrawl_workable_tokens,
     fetch_commoncrawl_workday_tenants,
     fetch_sec_edgar_company_names,
     fetch_wikipedia_category_companies,
@@ -159,6 +163,82 @@ def test_workday_tenants_skip_locale_segments_and_robots_and_pick_most_common_si
         results = fetch_commoncrawl_workday_tenants(index="CC-MAIN-TEST")
 
     assert results == [{"tenant": "acme", "wd_host": "wd1", "site": "Search"}]
+
+
+def test_workable_tokens_are_lowercased_path_tokens():
+    def fake_get(url, params=None, headers=None, timeout=None):
+        params = params or {}
+        if params.get("showNumPages"):
+            return FakeResponse({"pages": 1})
+        return FakeResponse(text=_cdx_jsonl(
+            "https://apply.workable.com/Back-Market/j/ABC123/",
+            "https://apply.workable.com/back-market/j/DEF456/",
+            "https://apply.workable.com/robots.txt",
+        ))
+
+    with patch("candidate_sources.requests.get", side_effect=fake_get):
+        tokens = fetch_commoncrawl_workable_tokens(index="CC-MAIN-TEST")
+
+    assert tokens == ["back-market"]
+
+
+def test_icims_slugs_require_careers_prefix_and_ignore_other_subdomains():
+    # Confirmed live: *.icims.com hosts plenty of non-board subdomains
+    # (cdn, images, www) that this pattern's broad CDX query also
+    # returns -- only the "careers-" ones are real candidate boards.
+    def fake_get(url, params=None, headers=None, timeout=None):
+        params = params or {}
+        if params.get("showNumPages"):
+            return FakeResponse({"pages": 1})
+        return FakeResponse(text=_cdx_jsonl(
+            "https://careers-acme.icims.com/jobs/search?ss=1",
+            "https://CAREERS-ACME.icims.com/jobs/5512/intern/job",
+            "https://cdn02.icims.com/a/images.icims.com/script.js",
+            "https://www.icims.com/",
+        ))
+
+    with patch("candidate_sources.requests.get", side_effect=fake_get):
+        slugs = fetch_commoncrawl_icims_slugs(index="CC-MAIN-TEST")
+
+    assert slugs == ["acme"]
+
+
+def test_bamboohr_tokens_from_careers_subdomain():
+    def fake_get(url, params=None, headers=None, timeout=None):
+        params = params or {}
+        if params.get("showNumPages"):
+            return FakeResponse({"pages": 1})
+        return FakeResponse(text=_cdx_jsonl(
+            "https://acme.bamboohr.com/careers/123",
+            "https://ACME.bamboohr.com/careers/list",
+        ))
+
+    with patch("candidate_sources.requests.get", side_effect=fake_get):
+        tokens = fetch_commoncrawl_bamboohr_tokens(index="CC-MAIN-TEST")
+
+    assert tokens == ["acme"]
+
+
+def test_taleo_tenants_pick_most_common_section_per_tenant():
+    urls = [
+        "https://wipo.taleo.net/careersection/wp_internship/jobsearch.ftl?lang=en",
+        "https://wipo.taleo.net/careersection/wp_internship/jobsearch.ftl?lang=fr",
+        "https://wipo.taleo.net/careersection/2/jobsearch.ftl?lang=en",
+        "https://nato.taleo.net/careersection/2/jobsearch.ftl?lang=en",
+    ]
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        params = params or {}
+        if params.get("showNumPages"):
+            return FakeResponse({"pages": 1})
+        return FakeResponse(text=_cdx_jsonl(*urls))
+
+    with patch("candidate_sources.requests.get", side_effect=fake_get):
+        results = fetch_commoncrawl_taleo_tenants(index="CC-MAIN-TEST")
+
+    assert {"tenant": "wipo", "section": "wp_internship"} in results
+    assert {"tenant": "nato", "section": "2"} in results
+    assert len(results) == 2
 
 
 def test_commoncrawl_paginates_across_multiple_cdx_pages():

@@ -64,8 +64,12 @@ from connectors import CONNECTORS  # noqa: E402
 
 from candidate_sources import (  # noqa: E402
     fetch_commoncrawl_ashby_tokens,
+    fetch_commoncrawl_bamboohr_tokens,
     fetch_commoncrawl_greenhouse_tokens,
+    fetch_commoncrawl_icims_slugs,
     fetch_commoncrawl_smartrecruiters_tokens,
+    fetch_commoncrawl_taleo_tenants,
+    fetch_commoncrawl_workable_tokens,
     fetch_commoncrawl_workday_tenants,
     fetch_sec_edgar_company_names,
     fetch_wikipedia_category_companies,
@@ -239,9 +243,19 @@ def _seed_commoncrawl_candidates_if_due() -> None:
     # than a 404, which looks identical to a company with no openings --
     # so the usual .lower() would silently discard almost every real
     # board.
+    # Workable, BambooHR, and iCIMS join the same plain-name path for the
+    # same reason: each one's probe (_probe_workable/_probe_bamboohr/
+    # _probe_icims) already tries a slugified AND/OR hyphenated form of
+    # whatever "company" string it's given, which is a no-op when that
+    # string is already the real token -- confirmed, this is the exact
+    # mechanism that fixes each probe's own guessing gap (see their
+    # respective fetch_commoncrawl_* docstrings in candidate_sources.py).
     for label, fetcher, ats, fold_case in (
         ("Ashby", fetch_commoncrawl_ashby_tokens, "ashby", True),
         ("SmartRecruiters", fetch_commoncrawl_smartrecruiters_tokens, "smartrecruiters", False),
+        ("Workable", fetch_commoncrawl_workable_tokens, "workable", True),
+        ("BambooHR", fetch_commoncrawl_bamboohr_tokens, "bamboohr", True),
+        ("iCIMS", fetch_commoncrawl_icims_slugs, "icims", True),
     ):
         try:
             found = fetcher()
@@ -284,6 +298,31 @@ def _seed_commoncrawl_candidates_if_due() -> None:
                 rows,
             )
         print(f"[discovery] seeded {len(workday_triples)} Workday candidate(s) from Common Crawl", flush=True)
+
+    try:
+        taleo_pairs = fetch_commoncrawl_taleo_tenants()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[discovery] Common Crawl Taleo fetch failed ({exc})", flush=True)
+        taleo_pairs = []
+    taleo_pairs = [t for t in taleo_pairs if (t["tenant"].lower(), "taleo") not in existing]
+    if taleo_pairs:
+        # Pre-resolved (ats, config) rows, same reasoning as Workday's
+        # above -- a real, confirmed-crawled (tenant, section) pair
+        # sidesteps _probe_taleo()'s TALEO_SECTION_GUESSES entirely,
+        # including the exact WIPO-shaped case ("wp_internship") that
+        # guessing can never find.
+        rows = []
+        for t in taleo_pairs:
+            config = {"company": t["tenant"], "ats": "taleo", "tenant": t["tenant"], "section": t["section"],
+                      "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}
+            rows.append((t["tenant"], "taleo", psycopg2.extras.Json(config)))
+        with cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO discovery_candidates (company, ats, config) VALUES %s ON CONFLICT (company) DO NOTHING",
+                rows,
+            )
+        print(f"[discovery] seeded {len(taleo_pairs)} Taleo candidate(s) from Common Crawl", flush=True)
 
 # Small, bounded guess matrices -- NOT exhaustive. Confirmed live this
 # session that blind Workday guessing has a low hit rate (Ford/Toyota/

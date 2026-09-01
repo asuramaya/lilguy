@@ -275,79 +275,126 @@ def _fetch_commoncrawl_cdx_urls(url_pattern: str, index: str) -> list[str]:
     return urls
 
 
-def fetch_commoncrawl_greenhouse_tokens(index: str = None) -> list[str]:
-    """Real, currently-live Greenhouse board tokens (the slug in
-    boards.greenhouse.io/{token}/jobs/...) straight from Common Crawl --
-    each one is a company that already, verifiably, has a Greenhouse
-    board, not a guess. These slot directly into discovery.py's existing
-    candidate seed: _probe_greenhouse() already does `_slugify(company)`
-    before querying, which is a no-op on an already-slug-shaped token, so
-    no discovery.py changes are needed to consume these as plain
-    candidate names.
+_SKIP_PATH_TOKENS = ("robots.txt", "favicon.ico")
 
-    Queries BOTH boards.greenhouse.io and job-boards.greenhouse.io --
-    Greenhouse migrated their canonical domain at some point and Common
-    Crawl has real, current coverage of both (confirmed live: the older
-    domain 301-redirects to the newer one, but plenty of pages are still
-    indexed under it directly).
+
+def fetch_commoncrawl_path_tokens(domains: list[str], lowercase: bool = True, index: str = None) -> list[str]:
+    """Generic first-path-segment token fetcher -- the shared shape
+    behind every ATS below whose board URL is `{domain}/{token}/...`:
+    Greenhouse, Ashby, SmartRecruiters, Workable all look like this.
+    Each token is a company that verifiably has a board there already,
+    not a guess -- and every probe in discovery.py that consumes these
+    already slugifies (or, for a case-sensitive one, tries the token
+    as-is) before querying, which is a no-op on an already-slug-shaped
+    token, so these feed in as plain candidate names with no special
+    handling on the discovery.py side.
+
+    `domains` can list more than one host -- Greenhouse migrated its
+    canonical domain at some point and Common Crawl has real, current
+    coverage of both (confirmed live: the older domain 301-redirects to
+    the newer one, but plenty of pages are still indexed under it
+    directly). Most ATS platforms only need one.
+
+    The trailing path segments that are not board tokens are dropped
+    explicitly: an application URL is often `/{token}/{job-id}/apply`,
+    so taking the FIRST segment is what identifies the board.
     """
     index = index or _latest_commoncrawl_index()
     tokens: set[str] = set()
-    for domain in ("boards.greenhouse.io", "job-boards.greenhouse.io"):
+    for domain in domains:
+        marker = f"{domain}/"
         for url in _fetch_commoncrawl_cdx_urls(f"{domain}/*", index):
-            marker = f"{domain}/"
             if marker not in url:
                 continue
-            token = url.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0].lower()
-            if token and token != "robots.txt":
+            token = url.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0]
+            if lowercase:
+                token = token.lower()
+            if token and token.lower() not in _SKIP_PATH_TOKENS:
                 tokens.add(token)
     return sorted(tokens)
 
 
-def fetch_commoncrawl_ashby_tokens(index: str = None) -> list[str]:
-    """Real, currently-live Ashby board slugs (jobs.ashbyhq.com/{slug}).
-
-    Same shape and same reasoning as the Greenhouse fetcher above: each
-    token is a company that verifiably has a board, not a guess, and
-    _probe_ashby() slugifies before querying, which is a no-op on an
-    already-slug-shaped token -- so these feed in as plain candidate
-    names with no special handling.
-
-    The trailing path segments that are not board slugs are dropped
-    explicitly: an application URL is /{slug}/{job-uuid}/application, so
-    taking the FIRST segment is what identifies the board.
+def fetch_commoncrawl_subdomain_tokens(url_pattern: str, host_re: re.Pattern, index: str = None) -> list[str]:
+    """Generic token fetcher for an ATS whose board lives at a variable
+    SUBDOMAIN rather than a fixed domain plus a path token -- confirmed
+    shape: iCIMS (careers-{slug}.icims.com), BambooHR ({slug}.bamboohr.
+    com). `host_re` must have exactly one capture group around the slug;
+    matched against the full URL so it's free to anchor on a literal
+    prefix inside the hostname (e.g. "careers-") that CDX's own pattern
+    syntax can't express as a mid-hostname wildcard -- `url_pattern`
+    is deliberately broader than that prefix for exactly this reason,
+    filtered down here instead.
     """
     index = index or _latest_commoncrawl_index()
     tokens: set[str] = set()
-    marker = "jobs.ashbyhq.com/"
-    for url in _fetch_commoncrawl_cdx_urls("jobs.ashbyhq.com/*", index):
-        if marker not in url:
-            continue
-        token = url.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0].lower()
-        if token and token not in ("robots.txt", "favicon.ico"):
-            tokens.add(token)
+    for url in _fetch_commoncrawl_cdx_urls(url_pattern, index):
+        m = host_re.search(url)
+        if m:
+            tokens.add(m.group(1).lower())
     return sorted(tokens)
+
+
+def fetch_commoncrawl_greenhouse_tokens(index: str = None) -> list[str]:
+    """Real, currently-live Greenhouse board tokens. Queries BOTH
+    boards.greenhouse.io and job-boards.greenhouse.io -- Greenhouse
+    migrated their canonical domain at some point and Common Crawl has
+    real, current coverage of both. See fetch_commoncrawl_path_tokens
+    for the shared mechanics."""
+    return fetch_commoncrawl_path_tokens(
+        ["boards.greenhouse.io", "job-boards.greenhouse.io"], lowercase=True, index=index
+    )
+
+
+def fetch_commoncrawl_ashby_tokens(index: str = None) -> list[str]:
+    """Real, currently-live Ashby board slugs (jobs.ashbyhq.com/{slug})."""
+    return fetch_commoncrawl_path_tokens(["jobs.ashbyhq.com"], lowercase=True, index=index)
 
 
 def fetch_commoncrawl_smartrecruiters_tokens(index: str = None) -> list[str]:
     """Real, currently-live SmartRecruiters company identifiers
     (jobs.smartrecruiters.com/{Identifier}).
 
-    Case is PRESERVED here, unlike every other fetcher in this module,
+    Case is PRESERVED here, unlike every other path-token fetcher,
     because SmartRecruiters' identifier is case-sensitive and lowercasing
     it produces a token that returns an empty list rather than a 404 --
     a miss that looks exactly like a company with no openings.
     """
-    index = index or _latest_commoncrawl_index()
-    tokens: set[str] = set()
-    marker = "jobs.smartrecruiters.com/"
-    for url in _fetch_commoncrawl_cdx_urls("jobs.smartrecruiters.com/*", index):
-        if marker not in url:
-            continue
-        token = url.split(marker, 1)[1].split("/", 1)[0].split("?", 1)[0]
-        if token and token not in ("robots.txt", "favicon.ico"):
-            tokens.add(token)
-    return sorted(tokens)
+    return fetch_commoncrawl_path_tokens(["jobs.smartrecruiters.com"], lowercase=False, index=index)
+
+
+def fetch_commoncrawl_workable_tokens(index: str = None) -> list[str]:
+    """Real, currently-live Workable account tokens
+    (apply.workable.com/{token}/). Fixes a real gap the guessing-only
+    _probe_workable() has: Workable tokens are often hyphenated
+    ("back-market") rather than the bare company slug, and there's no
+    way to guess that from a company name alone -- these come from
+    verifiably real, currently-live boards instead."""
+    return fetch_commoncrawl_path_tokens(["apply.workable.com"], lowercase=True, index=index)
+
+
+ICIMS_HOST_RE = re.compile(r"https?://careers-([a-z0-9-]+)\.icims\.com", re.IGNORECASE)
+BAMBOOHR_HOST_RE = re.compile(r"https?://([a-z0-9-]+)\.bamboohr\.com", re.IGNORECASE)
+
+
+def fetch_commoncrawl_icims_slugs(index: str = None) -> list[str]:
+    """Real, currently-live iCIMS board slugs (careers-{slug}.icims.com).
+
+    Fixes a real, significant gap the guessing-only _probe_icims() has:
+    confirmed live via search results that many real iCIMS slugs are NOT
+    derived from the company name at all (In-Q-Tel's is "iqt", one
+    observed board is bare "mdi", another "professionalservices") -- a
+    company-name guess structurally cannot find these. `*.icims.com/*`
+    is queried broadly (CDX can't wildcard a literal prefix like
+    "careers-" in the middle of a hostname) and filtered down to the
+    "careers-" ones by ICIMS_HOST_RE.
+    """
+    return fetch_commoncrawl_subdomain_tokens("*.icims.com/*", ICIMS_HOST_RE, index=index)
+
+
+def fetch_commoncrawl_bamboohr_tokens(index: str = None) -> list[str]:
+    """Real, currently-live BambooHR account tokens
+    ({token}.bamboohr.com/careers)."""
+    return fetch_commoncrawl_subdomain_tokens("*.bamboohr.com/careers*", BAMBOOHR_HOST_RE, index=index)
 
 
 def fetch_commoncrawl_workday_tenants(index: str = None) -> list[dict]:
@@ -383,4 +430,40 @@ def fetch_commoncrawl_workday_tenants(index: str = None) -> list[dict]:
         tenant, host = key.split("|", 1)
         best_site = max(votes.items(), key=lambda kv: kv[1])[0]
         results.append({"tenant": tenant, "wd_host": host, "site": best_site})
+    return results
+
+
+TALEO_URL_RE = re.compile(
+    r"https?://([a-z0-9-]+)\.taleo\.net/careersection/([^/]+)/jobsearch\.ftl", re.IGNORECASE
+)
+
+
+def fetch_commoncrawl_taleo_tenants(index: str = None) -> list[dict]:
+    """Real (tenant, section) pairs straight from Common Crawl -- sidesteps
+    _probe_taleo()'s guessing-based TALEO_SECTION_GUESSES entirely (see
+    that function's own docstring: section slugs are often company-chosen
+    and not derivable at all, confirmed live on WIPO's "wp_internship").
+    Same shape and same "most commonly observed value wins" voting as
+    fetch_commoncrawl_workday_tenants above -- a tenant can have more than
+    one real section crawled (e.g. a general one and a locale- or
+    department-specific one).
+
+    Doesn't resolve the RSS feed's portal id -- that's extracted at
+    connector fetch() time from the live page (see taleo.py), not
+    knowable from a crawled URL alone.
+    """
+    index = index or _latest_commoncrawl_index()
+    section_votes: dict[str, dict[str, int]] = {}
+    for url in _fetch_commoncrawl_cdx_urls("*.taleo.net/careersection/*/jobsearch.ftl*", index):
+        m = TALEO_URL_RE.match(url)
+        if not m:
+            continue
+        tenant, section = m.group(1).lower(), m.group(2)
+        votes = section_votes.setdefault(tenant, {})
+        votes[section] = votes.get(section, 0) + 1
+
+    results = []
+    for tenant, votes in section_votes.items():
+        best_section = max(votes.items(), key=lambda kv: kv[1])[0]
+        results.append({"tenant": tenant, "section": best_section})
     return results

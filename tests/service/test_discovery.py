@@ -219,10 +219,11 @@ def _stub_commoncrawl(monkeypatch, **overrides):
     """
     monkeypatch.setattr(discovery, "_last_commoncrawl_seed_at", None)  # force the gate open
     for name in ("fetch_commoncrawl_greenhouse_tokens", "fetch_commoncrawl_ashby_tokens",
-                 "fetch_commoncrawl_smartrecruiters_tokens"):
+                 "fetch_commoncrawl_smartrecruiters_tokens", "fetch_commoncrawl_workable_tokens",
+                 "fetch_commoncrawl_bamboohr_tokens", "fetch_commoncrawl_icims_slugs"):
         monkeypatch.setattr(discovery, name, overrides.pop(name, lambda: []))
-    monkeypatch.setattr(discovery, "fetch_commoncrawl_workday_tenants",
-                        overrides.pop("fetch_commoncrawl_workday_tenants", lambda: []))
+    for name in ("fetch_commoncrawl_workday_tenants", "fetch_commoncrawl_taleo_tenants"):
+        monkeypatch.setattr(discovery, name, overrides.pop(name, lambda: []))
     assert not overrides, f"unknown fetcher(s): {sorted(overrides)}"
 
 
@@ -374,6 +375,43 @@ def test_smartrecruiters_candidate_case_is_preserved(monkeypatch):
     with db.cursor() as cur:
         cur.execute("SELECT company FROM discovery_candidates")
         assert [r["company"] for r in cur.fetchall()] == ["Visa"]
+
+
+def test_workable_bamboohr_icims_seed_as_plain_candidate_names(monkeypatch):
+    # Same reasoning as Ashby/SmartRecruiters above: each probe already
+    # tries the given string as-is (hyphenated or slugified), so a bare
+    # real token needs no pre-resolved config.
+    _stub_commoncrawl(
+        monkeypatch,
+        fetch_commoncrawl_workable_tokens=lambda: ["back-market"],
+        fetch_commoncrawl_bamboohr_tokens=lambda: ["helpscout"],
+        fetch_commoncrawl_icims_slugs=lambda: ["federatedinsurance"],
+    )
+    discovery._seed_commoncrawl_candidates_if_due()
+
+    with db.cursor() as cur:
+        cur.execute("SELECT company, ats FROM discovery_candidates")
+        rows = cur.fetchall()
+    assert {r["company"] for r in rows} == {"back-market", "helpscout", "federatedinsurance"}
+    assert all(r["ats"] is None for r in rows), "plain names, not pre-resolved configs"
+
+
+def test_taleo_seeds_as_preresolved_tenant_section_pairs(monkeypatch):
+    # Sidesteps _probe_taleo()'s TALEO_SECTION_GUESSES entirely -- a real
+    # crawled (tenant, section) pair needs no guessing.
+    _stub_commoncrawl(
+        monkeypatch,
+        fetch_commoncrawl_taleo_tenants=lambda: [{"tenant": "wipo", "section": "wp_internship"}],
+    )
+    discovery._seed_commoncrawl_candidates_if_due()
+
+    with db.cursor() as cur:
+        cur.execute("SELECT company, ats, config FROM discovery_candidates")
+        rows = cur.fetchall()
+    assert len(rows) == 1
+    assert rows[0]["company"] == "wipo"
+    assert rows[0]["ats"] == "taleo"
+    assert rows[0]["config"]["section"] == "wp_internship"
 
 
 def test_a_failing_commoncrawl_fetcher_does_not_stop_the_others(monkeypatch):
