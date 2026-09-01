@@ -12,6 +12,7 @@ from .workable import WorkableConnector
 from .bamboohr import BambooHRConnector
 from .taleo import TaleoConnector
 from .icims import IcimsConnector
+from .ukg import UkgConnector
 
 CONNECTORS = {
     "greenhouse": GreenhouseConnector,
@@ -27,6 +28,7 @@ CONNECTORS = {
     "bamboohr": BambooHRConnector,
     "taleo": TaleoConnector,
     "icims": IcimsConnector,
+    "ukg": UkgConnector,
 }
 
 __all__ = ["Posting", "Connector", "CONNECTORS"]

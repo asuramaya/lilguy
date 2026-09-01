@@ -467,3 +467,38 @@ def fetch_commoncrawl_taleo_tenants(index: str = None) -> list[dict]:
         best_section = max(votes.items(), key=lambda kv: kv[1])[0]
         results.append({"tenant": tenant, "section": best_section})
     return results
+
+
+UKG_URL_RE = re.compile(
+    r"https?://(recruiting2?\.ultipro\.com)/([a-z0-9]+)/JobBoard/([0-9a-f-]{36})", re.IGNORECASE
+)
+
+
+def fetch_commoncrawl_ukg_boards(index: str = None) -> list[dict]:
+    """Real (host, tenant, board_id) triples for UKG Pro Recruiting
+    (formerly UltiPro) boards, straight from Common Crawl.
+
+    Unlike Workday's `site` or Taleo's `section`, there's nothing to vote
+    on here -- a crawled URL's board_id IS the canonical, unique board
+    identifier for that tenant (an opaque GUID, not a company-chosen
+    label with multiple real variants), so every match is kept rather
+    than reduced to "most common."
+
+    Queries both recruiting.ultipro.com and recruiting2.ultipro.com --
+    confirmed live, UKG splits real tenants across both.
+    """
+    index = index or _latest_commoncrawl_index()
+    seen: set[tuple[str, str, str]] = set()
+    results = []
+    for host_pattern in ("recruiting.ultipro.com/*/JobBoard/*", "recruiting2.ultipro.com/*/JobBoard/*"):
+        for url in _fetch_commoncrawl_cdx_urls(host_pattern, index):
+            m = UKG_URL_RE.match(url)
+            if not m:
+                continue
+            host, tenant, board_id = m.group(1).lower(), m.group(2), m.group(3).lower()
+            key = (host, tenant.lower(), board_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append({"host": host, "tenant": tenant, "board_id": board_id})
+    return results

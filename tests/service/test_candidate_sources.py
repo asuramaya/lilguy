@@ -11,6 +11,7 @@ from candidate_sources import (  # noqa: E402
     fetch_commoncrawl_greenhouse_tokens,
     fetch_commoncrawl_icims_slugs,
     fetch_commoncrawl_taleo_tenants,
+    fetch_commoncrawl_ukg_boards,
     fetch_commoncrawl_workable_tokens,
     fetch_commoncrawl_workday_tenants,
     fetch_sec_edgar_company_names,
@@ -239,6 +240,31 @@ def test_taleo_tenants_pick_most_common_section_per_tenant():
     assert {"tenant": "wipo", "section": "wp_internship"} in results
     assert {"tenant": "nato", "section": "2"} in results
     assert len(results) == 2
+
+
+def test_ukg_boards_dedupe_and_query_both_hosts():
+    urls = [
+        "https://recruiting.ultipro.com/ACM1000ACME/JobBoard/86df2700-c124-49b9-b096-7cacea55e9dd/?q=",
+        "https://recruiting.ultipro.com/ACM1000ACME/JobBoard/86df2700-c124-49b9-b096-7cacea55e9dd/OpportunityDetail?opportunityId=1",
+        "https://recruiting2.ultipro.com/BET1000BETA/JobBoard/73d20f56-33cd-4859-a6e3-7c858a9a8241/",
+    ]
+
+    def fake_get(url, params=None, headers=None, timeout=None):
+        params = params or {}
+        if params.get("showNumPages"):
+            return FakeResponse({"pages": 1})
+        if "recruiting.ultipro.com" in params["url"] and "recruiting2" not in params["url"]:
+            return FakeResponse(text=_cdx_jsonl(*urls[:2]))
+        return FakeResponse(text=_cdx_jsonl(urls[2]))
+
+    with patch("candidate_sources.requests.get", side_effect=fake_get):
+        results = fetch_commoncrawl_ukg_boards(index="CC-MAIN-TEST")
+
+    assert {"host": "recruiting.ultipro.com", "tenant": "ACM1000ACME",
+             "board_id": "86df2700-c124-49b9-b096-7cacea55e9dd"} in results
+    assert {"host": "recruiting2.ultipro.com", "tenant": "BET1000BETA",
+             "board_id": "73d20f56-33cd-4859-a6e3-7c858a9a8241"} in results
+    assert len(results) == 2  # the two ACME URLs collapse to one board
 
 
 def test_commoncrawl_paginates_across_multiple_cdx_pages():

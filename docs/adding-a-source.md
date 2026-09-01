@@ -3,19 +3,20 @@
 Every company posts jobs through one ATS (applicant tracking system) or
 another. These have a connector here with a public, callable API:
 **Greenhouse**, **Lever**, **Workday**, **Ashby**, **SmartRecruiters**,
-**Rippling**, **Workable**, **BambooHR**, **Taleo**, **iCIMS**, and
-**Oracle Recruiting Cloud** (the last found and verified via a live
-browser session; it isn't discoverable from the outside, see step 1).
-Taleo and iCIMS don't expose a clean JSON API the way the others do —
-Taleo's connector reads its public candidate-facing RSS feed, iCIMS'
-scrapes its server-rendered HTML result list — see each connector's own
-docstring for specifics. Almost everything else that cares about SEO
-also publishes **schema.org/JobPosting** structured data on individual
-job pages, findable via that company's own sitemap. That's the `jsonld`
-connector (see `docs/sourcing-model.md`'s Tier 1.5 section), and it's
-worth trying BEFORE assuming you need a new vendor-specific connector
-class. Only fall back to "not wired up yet" (SuccessFactors, ADP, UKG,
-Paycom, custom; see the bottom of this doc) once both have failed.
+**Rippling**, **Workable**, **BambooHR**, **Taleo**, **iCIMS**, **UKG Pro
+Recruiting** (formerly UltiPro), and **Oracle Recruiting Cloud** (the
+last found and verified via a live browser session; it isn't
+discoverable from the outside, see step 1). Taleo and iCIMS don't expose
+a clean JSON API the way the others do — Taleo's connector reads its
+public candidate-facing RSS feed, iCIMS' scrapes its server-rendered
+HTML result list — see each connector's own docstring for specifics.
+Almost everything else that cares about SEO also publishes
+**schema.org/JobPosting** structured data on individual job pages,
+findable via that company's own sitemap. That's the `jsonld` connector
+(see `docs/sourcing-model.md`'s Tier 1.5 section), and it's worth trying
+BEFORE assuming you need a new vendor-specific connector class. Only
+fall back to "not wired up yet" (SuccessFactors, ADP, Paycom, custom;
+see the bottom of this doc) once both have failed.
 
 Note this doc is about SOURCING: "does a posting exist here at all."
 Whether it shows up in YOUR feed once it's in `data/all_postings.json` is
@@ -76,6 +77,12 @@ once you land on a job listing or search page:
   Recruiting Cloud's opaque host below.
 - **iCIMS**: URL contains `careers-<slug>.icims.com/jobs/search`.
   `<slug>` is the subdomain label.
+- **UKG Pro Recruiting / UltiPro**: URL contains `recruiting.ultipro.com/
+  <tenant>/JobBoard/<board-id>` or `recruiting2.ultipro.com/...` (UKG
+  splits tenants across both hosts). `<board-id>` is an opaque GUID, not
+  guessable — same shape as Oracle Recruiting Cloud's opaque host below,
+  which is why this one has no guessing probe at all and is only ever
+  found via Common Crawl (see `candidate_sources.fetch_commoncrawl_ukg_boards`).
 - **Anything else** (careers page loads job data via some other domain,
   e.g. `*.successfactors.com`, `*.adp.com`, `*.ukg.net`): not supported
   yet, see below.
@@ -182,6 +189,16 @@ company's size, industry, or what you'd expect a similar company to use.
   category: Industrial Manufacturing
 ```
 
+**UKG Pro Recruiting / UltiPro:**
+```yaml
+- company: Example Corp
+  ats: ukg
+  host: recruiting.ultipro.com
+  tenant: EXA1000EXCO
+  board_id: 86df2700-c124-49b9-b096-7cacea55e9dd
+  category: Industrial Manufacturing
+```
+
 **Generic JSON-LD** (any ATS, if the company publishes a job sitemap):
 ```yaml
 - company: Example Corp
@@ -222,15 +239,45 @@ filtered view usually means its postings' text doesn't match any
 
 ## Unsupported ATS platforms
 
-SuccessFactors, ADP, UKG, and Paycom power a real slice of large
-enterprise/industrial employers and don't have a documented, stable
-public JSON API the way the connectors above do, AND (unlike many
-companies) don't necessarily publish a job sitemap the `jsonld` connector
-could use either, since each is more involved to reverse-engineer from
-DevTools and more likely to change shape without notice, or sits fully
-behind a candidate-account login. Adding a connector for one is a
-legitimate contribution (`scraper/connectors/`, follow the pattern in
-`icims.py` for an HTML-scrape target or `taleo.py` for an RSS-feed one,
-the two most recently added and the clearest examples of "found via a
-live browser session, not guessed") but wasn't built out here rather
-than ship something unverified.
+Each of these was actually scouted live (real boards, real network
+traces), not just assumed unsupported — worth reading before re-scouting
+one from scratch.
+
+**SuccessFactors**: a genuine dead end for a dedicated connector,
+confirmed via a specialist job-scraping vendor's own public writeup, not
+just this project's own attempt. The older `career*.successfactors.com`
+portals are JavaScript-only with signed XHRs and no JSON API at all. The
+newer "Career Site Builder" product (`*.jobs.hr.cloud.sap`) is HTML, but
+every employer runs it on their own fully custom domain with no shared
+hostname pattern — meaning there's no consistent CDX pattern for Common
+Crawl to search either, unlike every ATS above. Whatever's coverable here
+already goes through the `jsonld` connector; the rest needs the same
+per-company hand configuration Oracle Recruiting Cloud already requires.
+
+**ADP (MyJobs)**: has a genuine public, unauthenticated JSON API —
+confirmed live: `GET myjobs.adp.com/public/staffing/v1/career-site/
+<token>` returns real company config (including an `orgoid`) with no
+auth at all. The actual job-search call, `GET my.adp.com/myadp_prefix/
+mycareer/public/staffing/v1/job-requisitions/apply-custom-filters`, needs
+that `orgoid` PLUS a second header, `postingChannelId`, whose value isn't
+present in any loaded JS bundle and isn't a guessable constant (every
+plausible value tried returned "postingChannelId not found") — it has to
+be read off a real browser's Network panel (Copy as cURL) mid-session,
+which wasn't available this pass. A connector here is very likely
+buildable, just not finished — the missing piece is one header value,
+not the platform's overall shape.
+
+**Paycom**: identifiers are a fully opaque 32-character hex `clientkey`
+(`paycomonline.net/v4/ats/web.php/jobs?clientkey=...`), worse than Oracle
+Recruiting Cloud's opaque host — no guessing is possible at all. The
+landing page also renders almost nothing server-side, suggesting the
+real data lives behind a JS-driven API the same way ADP's does. Not
+pursued past this point; a Common-Crawl-based discovery (same technique
+as UKG's) is plausible in principle if the underlying API turns out to
+be reachable, but that wasn't confirmed.
+
+Adding a connector for any of these is a legitimate contribution
+(`scraper/connectors/`, follow the pattern in `icims.py` for an
+HTML-scrape target, `taleo.py` for an RSS-feed one, or `ukg.py` for a
+platform whose only viable discovery path is Common Crawl) but wasn't
+finished here rather than ship something unverified.

@@ -222,7 +222,8 @@ def _stub_commoncrawl(monkeypatch, **overrides):
                  "fetch_commoncrawl_smartrecruiters_tokens", "fetch_commoncrawl_workable_tokens",
                  "fetch_commoncrawl_bamboohr_tokens", "fetch_commoncrawl_icims_slugs"):
         monkeypatch.setattr(discovery, name, overrides.pop(name, lambda: []))
-    for name in ("fetch_commoncrawl_workday_tenants", "fetch_commoncrawl_taleo_tenants"):
+    for name in ("fetch_commoncrawl_workday_tenants", "fetch_commoncrawl_taleo_tenants",
+                 "fetch_commoncrawl_ukg_boards"):
         monkeypatch.setattr(discovery, name, overrides.pop(name, lambda: []))
     assert not overrides, f"unknown fetcher(s): {sorted(overrides)}"
 
@@ -412,6 +413,26 @@ def test_taleo_seeds_as_preresolved_tenant_section_pairs(monkeypatch):
     assert rows[0]["company"] == "wipo"
     assert rows[0]["ats"] == "taleo"
     assert rows[0]["config"]["section"] == "wp_internship"
+
+
+def test_ukg_seeds_as_preresolved_host_tenant_board_triples(monkeypatch):
+    # UKG has no guessing probe at all -- board_id is an opaque GUID --
+    # so Common Crawl is the only path a UKG source can ever be found.
+    _stub_commoncrawl(
+        monkeypatch,
+        fetch_commoncrawl_ukg_boards=lambda: [
+            {"host": "recruiting.ultipro.com", "tenant": "ACM1000ACME", "board_id": "86df2700-c124-49b9-b096-7cacea55e9dd"}
+        ],
+    )
+    discovery._seed_commoncrawl_candidates_if_due()
+
+    with db.cursor() as cur:
+        cur.execute("SELECT company, ats, config FROM discovery_candidates")
+        rows = cur.fetchall()
+    assert len(rows) == 1
+    assert rows[0]["company"] == "ACM1000ACME"
+    assert rows[0]["ats"] == "ukg"
+    assert rows[0]["config"]["board_id"] == "86df2700-c124-49b9-b096-7cacea55e9dd"
 
 
 def test_a_failing_commoncrawl_fetcher_does_not_stop_the_others(monkeypatch):

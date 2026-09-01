@@ -69,6 +69,7 @@ from candidate_sources import (  # noqa: E402
     fetch_commoncrawl_icims_slugs,
     fetch_commoncrawl_smartrecruiters_tokens,
     fetch_commoncrawl_taleo_tenants,
+    fetch_commoncrawl_ukg_boards,
     fetch_commoncrawl_workable_tokens,
     fetch_commoncrawl_workday_tenants,
     fetch_sec_edgar_company_names,
@@ -323,6 +324,29 @@ def _seed_commoncrawl_candidates_if_due() -> None:
                 rows,
             )
         print(f"[discovery] seeded {len(taleo_pairs)} Taleo candidate(s) from Common Crawl", flush=True)
+
+    try:
+        ukg_triples = fetch_commoncrawl_ukg_boards()
+    except Exception as exc:  # noqa: BLE001
+        print(f"[discovery] Common Crawl UKG fetch failed ({exc})", flush=True)
+        ukg_triples = []
+    ukg_triples = [t for t in ukg_triples if (t["tenant"].lower(), "ukg") not in existing]
+    if ukg_triples:
+        # UKG has no guessing probe at all (see _probe_* functions below --
+        # there isn't one for "ukg") -- board_id is a fully opaque GUID,
+        # so Common Crawl is the ONLY way this project finds a UKG source.
+        rows = []
+        for t in ukg_triples:
+            config = {"company": t["tenant"], "ats": "ukg", "host": t["host"], "tenant": t["tenant"],
+                      "board_id": t["board_id"], "category": "Uncategorized", "max_pages": TRIAL_MAX_PAGES}
+            rows.append((t["tenant"], "ukg", psycopg2.extras.Json(config)))
+        with cursor() as cur:
+            psycopg2.extras.execute_values(
+                cur,
+                "INSERT INTO discovery_candidates (company, ats, config) VALUES %s ON CONFLICT (company) DO NOTHING",
+                rows,
+            )
+        print(f"[discovery] seeded {len(ukg_triples)} UKG candidate(s) from Common Crawl", flush=True)
 
 # Small, bounded guess matrices -- NOT exhaustive. Confirmed live this
 # session that blind Workday guessing has a low hit rate (Ford/Toyota/
