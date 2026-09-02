@@ -360,8 +360,16 @@ def build_trends() -> dict:
             """)
             raw_movers = cur.fetchall()
     except Exception as e:
+        # A transient DB hiccup here must not ship an empty-but-well-formed
+        # trends.json over a previously-good one -- verified live: a real
+        # deploy once did exactly that (the query itself works fine against
+        # the same DB moments later), and an empty {"weekly": [], ...} is
+        # indistinguishable from "genuinely nothing happened this week" to
+        # a client. Returning None instead tells the caller to skip the
+        # write and leave trends.json out of this deploy rather than
+        # overwrite good data with a false one.
         print(f"    [Trends] Could not query database ({e}); skipping trends.")
-        return {"generated_at": datetime.now(timezone.utc).isoformat(), "weekly": [], "top_movers": []}
+        return None
 
     # Raw `company` values fragment the same employer across sources
     # (e.g. "aecom2" vs "AECOM") -- merge through the same name
@@ -442,10 +450,13 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
 
     print("==> Computing hiring-pace trends...")
     trends = build_trends()
-    trends_file = data_dir / "trends.json"
-    with open(trends_file, "w", encoding="utf-8") as f:
-        json.dump(trends, f, indent=2, ensure_ascii=False)
-    print(f"    Wrote {trends_file}")
+    if trends is None:
+        print("    Skipping trends.json (query failed) -- not shipping an empty stand-in.")
+    else:
+        trends_file = data_dir / "trends.json"
+        with open(trends_file, "w", encoding="utf-8") as f:
+            json.dump(trends, f, indent=2, ensure_ascii=False)
+        print(f"    Wrote {trends_file}")
 
     # 2. Write meta.json
     meta_file = data_dir / "meta.json"

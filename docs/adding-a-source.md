@@ -256,16 +256,29 @@ per-company hand configuration Oracle Recruiting Cloud already requires.
 
 **ADP (MyJobs)**: has a genuine public, unauthenticated JSON API —
 confirmed live: `GET myjobs.adp.com/public/staffing/v1/career-site/
-<token>` returns real company config (including an `orgoid`) with no
-auth at all. The actual job-search call, `GET my.adp.com/myadp_prefix/
-mycareer/public/staffing/v1/job-requisitions/apply-custom-filters`, needs
-that `orgoid` PLUS a second header, `postingChannelId`, whose value isn't
-present in any loaded JS bundle and isn't a guessable constant (every
-plausible value tried returned "postingChannelId not found") — it has to
-be read off a real browser's Network panel (Copy as cURL) mid-session,
-which wasn't available this pass. A connector here is very likely
-buildable, just not finished — the missing piece is one header value,
-not the platform's overall shape.
+<token>` returns real company config with no auth at all. A prior pass
+of this doc guessed the job-search call needed `orgoid` plus a
+`postingChannelId` header pulled from DevTools — that was wrong.
+Live network inspection (Chrome DevTools Protocol, not JS-bundle
+grepping) shows the actual headers are `rolecode: manager` and
+`myJobsToken`, and both are sitting in that SAME zero-auth config
+response already (`myJobsToken` is a ~368-char AWS-KMS-ciphertext-shaped
+blob, right next to `orgoid`) — no DevTools access needed to find them.
+
+That still isn't enough to build a working connector: replaying the
+identical URL and headers from a plain script, with the real browser's
+own session cookies included, returns `{"count":0,"jobRequisitions":[]}`
+— while the same request fired by the page's own code, one tab-reload
+apart, returns real results (63 jobs, in the tenant tested). The
+zero-result response is silent, exactly like UKG's empty-body trap, but
+here changing the request body/headers doesn't fix it. `myjobs.adp.com`
+runs Akamai Bot Manager (visible as `/akam/13/...` sensor-data
+collection calls on every page load) sitting in front of this specific
+endpoint, and it appears to gate on behavioral telemetry a plain HTTP
+client can't produce — not on any header value. Confirming that theory
+further, or working around it, would mean reverse-engineering and
+defeating Akamai's bot detection, which this project won't do. Treat
+ADP as not buildable via a normal connector, not as "one header away."
 
 **Paycom**: identifiers are a fully opaque 32-character hex `clientkey`
 (`paycomonline.net/v4/ats/web.php/jobs?clientkey=...`), worse than Oracle
