@@ -40,7 +40,25 @@ keywords_any:
 # A posting is dropped if it matches any of these, even if it also
 # matched keywords_any or is a trusted company. Empty by default — add
 # terms here as you find noise specific to your own filter.
-exclude_keywords: []
+#
+# These three are the same failure mode as the "operations" keyword this
+# file already dropped: a horizontal tech company's generic "About Us"
+# boilerplate name-drops "supply chain" / "transportation" as one
+# of many industries it serves, and that boilerplate is identical across
+# every one of that company's open reqs -- so a single sentence can
+# wrongly pull dozens of unrelated Software Engineering internships into
+# this feed. Confirmed live: measured a 43-posting (6.2% of 693) overlap
+# with the software-engineering preset before this fix, nearly all from
+# 3 companies repeating one boilerplate sentence each (Palantir, Samsara,
+# Databricks) -- down to 6 after, and those 6 are genuine (companies
+# whose actual business IS logistics: Goventi builds logistics robots,
+# Redwood Materials runs a battery supply chain, Cahoot is a fulfillment
+# company). Phrase-level, not word-level, so a real posting that happens
+# to share one of these words can't be caught by accident.
+exclude_keywords:
+  - forecast supply chain disruptions # Palantir's own boilerplate, verbatim, in every posting
+  - next mode of transportation # Databricks' own boilerplate, verbatim, in every posting
+  - agriculture, construction, field services, transportation # Samsara's own boilerplate, verbatim, in every posting
 
 # Postings from these companies always pass, regardless of keywords_any —
 # their entire business already IS the target domain, so their own

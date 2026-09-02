@@ -20,7 +20,15 @@ keywords_any:
   - transportation
   - freight
 
-exclude_keywords: []
+# Kept in sync with ../filters.yaml: excludes 3 companies' identical
+# "About Us" boilerplate sentences that name-drop supply chain/
+# transportation as one of many industries served, wrongly pulling in
+# unrelated Software Engineering internships (confirmed live: cut a
+# 43-posting overlap with the software-engineering preset down to 6).
+exclude_keywords:
+  - forecast supply chain disruptions
+  - next mode of transportation
+  - agriculture, construction, field services, transportation
 
 trusted_companies:
   - Flexport
