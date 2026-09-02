@@ -154,6 +154,15 @@ dropdown fills don't work once tested against a real form, that's the
 next thing to fix, but the account-creation step itself is a wall this
 project's tooling can't get past on its own.
 
+Re-confirmed live (2026-09-02, a real J.B. Hunt posting via
+`jbhunt.wd501.myworkdayjobs.com`): the gate is unchanged, and the
+progress stepper at the top of the "Apply Manually" form names the full
+flow behind it: **Create Account/Sign In → My Information → My
+Experience → Application Questions 1 of 2 → Application Questions 2 of 2
+→ Voluntary Disclosures → Self Identify → Review**. "My Information" is
+the personal-info step referred to above. Still needs a human past
+account creation — nothing here changes that.
+
 Radio buttons and checkboxes (common for yes/no work-authorization
 questions) are intentionally skipped rather than guessed at. Matching the
 right *option* within a group needs comparing the option's own label text
