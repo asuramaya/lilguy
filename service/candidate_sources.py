@@ -37,9 +37,12 @@ filters.yaml, not by narrowing what gets sourced in the first place.
 """
 import json
 import re
+import socket
 import time
+from contextlib import contextmanager
 
 import requests
+import urllib3.util.connection as _urllib3_connection
 
 # SEC's fair-access policy actively rejects requests that don't look
 # like a real descriptive identifier -- confirmed live: a User-Agent
@@ -218,8 +221,32 @@ COMMONCRAWL_TIMEOUT = 60  # a full CDX page can be several MB and take longer th
 _LOCALE_SEGMENT_RE = re.compile(r"^[a-z]{2}(-[A-Za-z]{2,4})?$")
 
 
+@contextmanager
+def _prefer_ipv4_for_commoncrawl():
+    """index.commoncrawl.org has a confirmed-live network quirk on this
+    project's infrastructure (both hosting and the maintainer's own
+    network sit behind the same egress path): an IPv6 connection to this
+    host succeeds at the TCP layer but then fails TLS with a fatal alert,
+    while IPv4 to the exact same host works cleanly -- reproduced
+    identically with plain curl and with requests, ruling out anything
+    requests/urllib3-specific. Scoped to just these calls via a context
+    manager rather than a process-wide monkeypatch, since nothing else
+    this project talks to (SEC EDGAR, Wikipedia, every real ATS host) has
+    shown the same problem, and this service runs its fetches
+    sequentially, not on background threads that could race this
+    module-level toggle.
+    """
+    original = _urllib3_connection.allowed_gai_family
+    _urllib3_connection.allowed_gai_family = lambda: socket.AF_INET
+    try:
+        yield
+    finally:
+        _urllib3_connection.allowed_gai_family = original
+
+
 def _latest_commoncrawl_index() -> str:
-    resp = requests.get(COMMONCRAWL_COLLINFO_URL, headers=UA, timeout=TIMEOUT)
+    with _prefer_ipv4_for_commoncrawl():
+        resp = requests.get(COMMONCRAWL_COLLINFO_URL, headers=UA, timeout=TIMEOUT)
     resp.raise_for_status()
     return resp.json()[0]["id"]  # most recent index is always first
 
@@ -237,8 +264,9 @@ def _get_cdx_page_with_retry(base: str, url_pattern: str, page: int, attempts: i
     last_exc = None
     for attempt in range(attempts):
         try:
-            resp = requests.get(base, params={"url": url_pattern, "output": "json", "page": page},
-                                 headers=UA, timeout=COMMONCRAWL_TIMEOUT)
+            with _prefer_ipv4_for_commoncrawl():
+                resp = requests.get(base, params={"url": url_pattern, "output": "json", "page": page},
+                                     headers=UA, timeout=COMMONCRAWL_TIMEOUT)
             resp.raise_for_status()
             return resp
         except requests.RequestException as exc:
@@ -257,8 +285,9 @@ def _fetch_commoncrawl_cdx_urls(url_pattern: str, index: str) -> list[str]:
     checks showNumPages rather than assuming either shape.
     """
     base = f"https://index.commoncrawl.org/{index}-index"
-    meta = requests.get(base, params={"url": url_pattern, "output": "json", "showNumPages": "true"},
-                         headers=UA, timeout=TIMEOUT).json()
+    with _prefer_ipv4_for_commoncrawl():
+        meta = requests.get(base, params={"url": url_pattern, "output": "json", "showNumPages": "true"},
+                             headers=UA, timeout=TIMEOUT).json()
     num_pages = meta.get("pages", 1)
     urls: list[str] = []
     for page in range(num_pages):
