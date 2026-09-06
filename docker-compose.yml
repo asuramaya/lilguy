@@ -85,6 +85,21 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Not a live service: this deployment's job is to scan (discovery +
+  # scheduler) and hand the result to the edge (Cloudflare Pages), not to
+  # serve HTTP traffic itself. Confirmed live (2026-09-06) that nothing
+  # depends on api being continuously reachable -- edge_export.py reads
+  # Postgres directly, and 72h of access logs showed nothing but a single
+  # manual poke from the Docker bridge gateway (someone curling
+  # 127.0.0.1:8000 on this box) plus verify_deploy.sh's own removed
+  # health check. This block still exists ONLY because publish_edge.sh's
+  # fallback path (`docker compose run --rm api python
+  # service/edge_export.py`) reuses api's build/environment as a generic
+  # one-off Python runner -- same reason migrate stays `restart: "no"`
+  # rather than being deleted. `docker compose up` will start and
+  # immediately exit this cleanly (like migrate); it never binds a port
+  # or serves anything unless you explicitly `docker compose run --rm api
+  # uvicorn service.api:app ...` by hand.
   api:
     build: .
     depends_on:
@@ -92,10 +107,8 @@ services:
         condition: service_completed_successfully
     environment:
       DATABASE_URL: postgresql://internships:${POSTGRES_PASSWORD:?missing .env}@postgres:5432/internships
-    command: uvicorn service.api:app --host 0.0.0.0 --port 8000
-    ports:
-      - "127.0.0.1:8000:8000"
-    restart: unless-stopped
+    command: python3 -c "print('api is on-demand only -- docker compose run --rm api <command>')"
+    restart: "no"
     deploy:
       resources:
         limits:

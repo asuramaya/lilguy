@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Confirms deployed services are actually WORKING, not merely started.
 #
-#   scripts/verify_deploy.sh api scheduler discovery
+#   scripts/verify_deploy.sh scheduler discovery
 #
 # Split out of deploy.sh so it can be RUN against a deliberately broken
 # container. A gate that can only be exercised by doing a real deploy is
@@ -60,15 +60,12 @@ for s in "${SERVICES[@]}"; do
   fi
 done
 
-# The api is the only service here with an HTTP surface, so it's the only
-# one that can be asked whether it SERVES rather than merely runs. Each
-# service needs its own such probe; there is no generic one.
-if printf '%s\n' "${SERVICES[@]}" | grep -qx api; then
-  if ! ssh "$HOST" "curl -sf -m 10 http://127.0.0.1:8000/health >/dev/null"; then
-    echo "!! api is running but /health does not answer" >&2
-    exit 1
-  fi
-  echo "   api /health ok"
-fi
+# api is deliberately not watched here: confirmed live (2026-09-06) this
+# deployment's job is to scan and hand results to the edge, not serve
+# HTTP, so api runs on-demand only (docker compose run, never `up`) and
+# always shows Exited(0) -- the "running" check above would fail it
+# every time if it were passed in. If a future service DOES serve HTTP
+# and needs an is-it-actually-answering probe (not just is-it-running),
+# add one scoped to that service's own name here.
 
 echo "   ${SERVICES[*]} settled"

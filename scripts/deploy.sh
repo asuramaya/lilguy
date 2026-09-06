@@ -8,7 +8,7 @@
 # This does.
 #
 #   scripts/deploy.sh                    # test, push, rebuild everything
-#   scripts/deploy.sh api                # test, push, rebuild just api
+#   scripts/deploy.sh discovery          # test, push, rebuild just discovery
 #   SKIP_TESTS=1 scripts/deploy.sh       # explicit, deliberate override
 #
 set -euo pipefail
@@ -40,8 +40,11 @@ else
 fi
 
 echo "==> verifying the deploy is actually up"
+# api excluded on purpose -- it's an on-demand build target only
+# (docker compose run, never `up`), so it always shows Exited(0) rather
+# than running and would fail this check every time.
 WATCH=("${SERVICES[@]}")
-if [ ${#WATCH[@]} -eq 0 ]; then WATCH=(api scheduler discovery); fi
+if [ ${#WATCH[@]} -eq 0 ]; then WATCH=(scheduler discovery); fi
 scripts/verify_deploy.sh "${WATCH[@]}"
 
 echo "==> deployed $(git rev-parse --short HEAD), services settled"

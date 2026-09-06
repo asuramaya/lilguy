@@ -37,7 +37,10 @@ docker-compose.yml
 ├── migrate       -- one-shot: creates the schema, imports sources.yaml
 ├── scheduler.py  -- runs forever: concurrent, per-source-cadence fetching
 ├── discovery.py  -- runs forever: candidate probing + self-healing
-└── api.py        -- FastAPI: /feed, /sources, /candidates over HTTP
+└── api.py        -- FastAPI: /feed, /sources, /candidates over HTTP,
+                     on-demand only (see "Running it" below) -- this
+                     deployment scans and hands results to the edge, it
+                     doesn't serve
 ```
 
 **scheduler.py** polls `sources` for rows whose `next_scrape_at` has
@@ -294,8 +297,8 @@ external requests, so forbidding everything else costs nothing.
 ## Deploying
 
 ```
-scripts/run_tests.sh              # whole suite against a throwaway Postgres
-scripts/deploy.sh api scheduler   # test, push, rebuild, then VERIFY
+scripts/run_tests.sh                    # whole suite against a throwaway Postgres
+scripts/deploy.sh discovery scheduler   # test, push, rebuild, then VERIFY
 ```
 
 `deploy.sh` runs everything that can refuse before anything that mutates:
@@ -312,7 +315,10 @@ is a different claim from "started":
 - confirm each container is in state `running` (an unresolvable name
   resolves to `missing`, so a typo'd service fails rather than being
   silently skipped)
-- ask the api's `/health` whether it serves rather than merely runs
+
+api is deliberately excluded from this: it's an on-demand build target
+only (see "Running it" above), always `Exited(0)` rather than `running`,
+so the state check above would fail it every time it were watched.
 
 **The delta is the load-bearing part, not the status.** `docker compose up
 -d` returns when containers start, and a crashlooping container reads
@@ -449,8 +455,18 @@ research work no longer needing to be redesigned from scratch each time.
 
 ## Running it
 
+`docker compose up -d --build` starts postgres, discovery, and scheduler
+only. This deployment's job is to scan and hand results to the edge
+(Cloudflare Pages), not serve HTTP -- confirmed live (2026-09-06) nothing
+depends on the api service being continuously reachable, so it no longer
+auto-starts (it exits immediately, same as migrate). It still exists as
+a build target: `docker compose run --rm api python service/edge_export.py`
+is what publish_edge.sh's fallback path actually runs. To use api's HTTP
+surface for local debugging, start it explicitly first:
+
 ```
 docker compose up -d --build
+docker compose run --rm -p 127.0.0.1:8000:8000 -d api uvicorn service.api:app --host 0.0.0.0 --port 8000
 curl localhost:8000/health
 curl localhost:8000/feed                                    # this fork's default filter
 curl "localhost:8000/feed?preset=software-engineering"      # any preset in presets/
@@ -464,7 +480,7 @@ curl localhost:8000/posting/<id>                             # one posting + dup
 curl localhost:8000/source/1                                 # one board: health, cadence, employers carried
 curl localhost:8000/ats/workday                              # one platform and its quirks
 scripts/run_tests.sh                                          # whole suite against a scratch Postgres
-scripts/deploy.sh api                                         # test, push, rebuild, verify (refuses on red)
+scripts/deploy.sh discovery                                   # test, push, rebuild, verify (refuses on red)
 scripts/resolve_source_names.py                               # ask boards their real name (dry run; --apply)
 docker compose logs -f scheduler                              # watch it fetch in real time
 ```
