@@ -28,7 +28,10 @@ else
     echo "--> Trying via ssh to hd-agent to export database..."
     ssh hd-agent "cd /srv/internships && docker compose run --rm -v /srv/internships:/srv/internships -w /srv/internships api python service/edge_export.py --out-dir /srv/internships/dist"
     echo "--> Syncing dist from hd-agent..."
-    rsync -avz hd-agent:/srv/internships/dist/ "${OUT_DIR}/"
+    # --delete: without it local dist/ keeps every shard hd-agent has since pruned, and
+    # the wrangler upload below hits the 20,000-file Pages ceiling again (second ratchet,
+    # same incident as edge_export.py's own shard pruning).
+    rsync -avz --delete hd-agent:/srv/internships/dist/ "${OUT_DIR}/"
   }
 fi
 
