@@ -20,3 +20,21 @@ from edge_export import build_trends  # noqa: E402
 def test_a_failed_trends_query_returns_none_not_an_empty_stand_in():
     with patch("edge_export.cursor", side_effect=RuntimeError("connection refused")):
         assert build_trends() is None
+
+
+def test_prune_removes_shards_for_closed_postings_and_keeps_live_ones(tmp_path):
+    # Regression: shards were only ever written, never removed, so the
+    # directory ratcheted past Cloudflare Pages' 20,000-file ceiling
+    # (22,015 shards vs 11,018 open postings) and every publish failed.
+    from edge_export import prune_description_shards
+
+    (tmp_path / "live1.json").write_text("{}")
+    (tmp_path / "live2.json").write_text("{}")
+    (tmp_path / "closed1.json").write_text("{}")
+    (tmp_path / "closed2.json").write_text("{}")
+    (tmp_path / "notes.txt").write_text("not a shard")
+
+    pruned = prune_description_shards(tmp_path, {"live1", "live2"})
+
+    assert pruned == 2
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["live1.json", "live2.json", "notes.txt"]

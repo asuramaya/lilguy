@@ -13,8 +13,10 @@
 #   DISCORD_WEBHOOK_URL=... scripts/health_check.sh
 #
 # Cron entry lives in hd-agent's own crontab (not committed -- it embeds
-# the webhook URL), alongside the existing backup/audit jobs:
-#   */15 * * * * DISCORD_WEBHOOK_URL=... /srv/internships/scripts/health_check.sh >> /var/log/internships-health.log 2>&1
+# the webhook URL; logs go under /home/agent, NOT /var/log -- user agent cannot
+# create files there, so a >> redirect fails and cron silently never runs the
+# command, which is how this check sat dead for 17 days), alongside the existing backup/audit jobs:
+#   */15 * * * * DISCORD_WEBHOOK_URL=... /srv/internships/scripts/health_check.sh >> /home/agent/logs/internships-health.log 2>&1
 set -uo pipefail
 
 PROBLEMS=()

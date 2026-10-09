@@ -393,6 +393,17 @@ def build_trends() -> dict:
     }
 
 
+def prune_description_shards(desc_dir: Path, live_desc_ids: set) -> int:
+    """Delete shards whose desc_id isn't in the live set; returns how many."""
+    live = {f"{d}.json" for d in live_desc_ids}
+    pruned = 0
+    for f in desc_dir.glob("*.json"):
+        if f.name not in live:
+            f.unlink()
+            pruned += 1
+    return pruned
+
+
 def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
     """Main export routine."""
     out_dir = Path(out_dir)
@@ -497,6 +508,21 @@ def export_edge_bundle(out_dir: Path, include_descriptions: bool = True):
                     json.dump(desc_map[pid], f, ensure_ascii=False)
                 written_desc += 1
         print(f"    Wrote/updated {written_desc} description JSON files in {desc_dir}")
+
+        # Shards only ever got written, never removed, so dist/data/
+        # descriptions ratcheted up with every posting that ever opened
+        # (22,015 files against 11,018 open postings, 2026-10-09) until
+        # the total crossed Cloudflare Pages' 20,000-file-per-deployment
+        # ceiling and every publish failed for days -- the live site
+        # sat 5 days stale with nothing alerting. feed.json only lists
+        # open postings, so a closed posting's shard is unreachable.
+        # Guarded on written_desc > 0 so an empty export (DB hiccup,
+        # local-dev fixture fallback) can never be read as "everything
+        # closed" and wipe the directory -- the same silent-empty-result
+        # failure build_trends() had.
+        if written_desc > 0:
+            pruned = prune_description_shards(desc_dir, {p["desc_id"] for p in postings})
+            print(f"    Pruned {pruned} description shards for postings no longer open")
 
     # 6. Generate Atom Feed
     atom_file = out_dir / "feed.atom"
