@@ -24,7 +24,16 @@ else
   elif [ -x ".venv-test/bin/python" ]; then
     PY_BIN=".venv-test/bin/python"
   fi
-  $PY_BIN service/edge_export.py --out-dir "${OUT_DIR}" || {
+  # Local export needs Pillow (og_image) and DB access; when Pillow is missing the
+  # attempt can only die with a ModuleNotFoundError traceback, which is log noise that
+  # reads like a real failure. Go straight to hd-agent in that case.
+  if $PY_BIN -c 'import PIL' 2>/dev/null; then
+    LOCAL_EXPORT="$PY_BIN service/edge_export.py --out-dir ${OUT_DIR}"
+  else
+    echo "--> No Pillow in ${PY_BIN}; exporting on hd-agent instead of locally."
+    LOCAL_EXPORT="false"
+  fi
+  $LOCAL_EXPORT || {
     echo "--> Trying via ssh to hd-agent to export database..."
     ssh hd-agent "cd /srv/internships && docker compose run --rm -v /srv/internships:/srv/internships -w /srv/internships api python service/edge_export.py --out-dir /srv/internships/dist"
     echo "--> Syncing dist from hd-agent..."
