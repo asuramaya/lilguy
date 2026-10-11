@@ -4,10 +4,31 @@
 # Usage:
 #   scripts/publish_edge.sh
 #   scripts/publish_edge.sh --skip-deploy
+#   scripts/publish_edge.sh --if-stale   # no-op unless the live edge is >=4h old
+#
+# --if-stale exists because this runs from a workstation that sleeps: a fixed
+# "0 */4" cron simply doesn't fire while the machine is suspended (2026-10-10: a
+# 12h sleep left the edge 16h stale and paged Discord). Cron it every 30 min
+# with --if-stale: it catches up within 30 min of wake, yet still deploys only
+# ~6x/day, well under Cloudflare Pages' 500-deploys/month free cap.
 #
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+if [ "${1:-}" = "--if-stale" ]; then
+  shift
+  AGE_H="$(curl -sf -m 15 https://lilguy.win/data/meta.json | python3 -c "
+import json,sys
+from datetime import datetime, timezone
+g = datetime.fromisoformat(json.load(sys.stdin)['generated_at'].replace('Z', '+00:00'))
+print(int((datetime.now(timezone.utc) - g).total_seconds() // 3600))" 2>/dev/null || echo 999)"
+  if [ "$AGE_H" -lt 4 ]; then
+    echo "==> edge is ${AGE_H}h old; nothing to do ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+    exit 0
+  fi
+  echo "==> edge is ${AGE_H}h old; publishing"
+fi
 
 OUT_DIR="${OUT_DIR:-dist}"
 SKIP_DEPLOY="${1:-}"
