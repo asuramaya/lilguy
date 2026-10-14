@@ -88,24 +88,47 @@ except Exception:
 fi
 
 # Report
+#
+# Discord dedupe: the check runs every 15 min, so a single multi-hour
+# staleness episode used to post ~40 identical messages (83 for two episodes,
+# 2026-10-10..14). Post when the SET of problems changes (hour counts are
+# stripped so "6h stale" and "7h stale" are the same problem), repeat at most
+# every REPEAT_HOURS while it persists, and post one "recovered" note when it
+# clears. Everything is still written to the log every run.
+STATE_FILE="${HEALTH_STATE_FILE:-/home/agent/logs/internships-health.state}"
+REPEAT_HOURS="${HEALTH_REPEAT_HOURS:-6}"
+NOW_EPOCH="$(date +%s)"
+
+post_discord() {
+  [ -n "${DISCORD_WEBHOOK_URL:-}" ] || { echo "!! DISCORD_WEBHOOK_URL not set -- problems logged here only" >&2; return 0; }
+  # jq builds the JSON payload (not printf/string interpolation) so
+  # text containing quotes or newlines can't break the request.
+  local payload
+  payload="$(jq -n --arg content "$1" '{content: $content}')"
+  curl -sf -m 15 -H "Content-Type: application/json" -d "$payload" "$DISCORD_WEBHOOK_URL" >/dev/null || \
+    echo "!! also failed to post to Discord" >&2
+}
+
 if [ "${#PROBLEMS[@]}" -eq 0 ]; then
   echo "==> health check ok ($(date -u +%Y-%m-%dT%H:%M:%SZ))"
+  if [ -s "$STATE_FILE" ]; then
+    post_discord "$(printf '**lilguy health check recovered** (%s) -- all checks passing again.' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
+    rm -f "$STATE_FILE"
+  fi
   exit 0
 fi
 
 echo "!! health check found ${#PROBLEMS[@]} problem(s):"
 for p in "${PROBLEMS[@]}"; do echo "   - $p"; done
 
-if [ -n "${DISCORD_WEBHOOK_URL:-}" ]; then
+KEY="$(printf '%s\n' "${PROBLEMS[@]}" | sed -E 's/[0-9]+h stale/Nh stale/; s/generated_at=[^)]*/generated_at=X/' | sha1sum | cut -d' ' -f1)"
+LAST_KEY=""; LAST_EPOCH=0
+if [ -s "$STATE_FILE" ]; then read -r LAST_KEY LAST_EPOCH < "$STATE_FILE" || true; fi
+if [ "$KEY" != "$LAST_KEY" ] || [ $(( NOW_EPOCH - ${LAST_EPOCH:-0} )) -ge $(( REPEAT_HOURS * 3600 )) ]; then
   BODY="$(printf '**lilguy health check failed** (%s)\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)")"
   for p in "${PROBLEMS[@]}"; do BODY="${BODY}$(printf '\n- %s' "$p")"; done
-  # jq builds the JSON payload (not printf/string interpolation) so
-  # problem text containing quotes or newlines can't break the request.
-  PAYLOAD="$(jq -n --arg content "$BODY" '{content: $content}')"
-  curl -sf -m 15 -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL" >/dev/null || \
-    echo "!! also failed to post to Discord" >&2
-else
-  echo "!! DISCORD_WEBHOOK_URL not set -- problems logged here only" >&2
+  post_discord "$BODY"
+  echo "$KEY $NOW_EPOCH" > "$STATE_FILE"
 fi
 
 exit 1
